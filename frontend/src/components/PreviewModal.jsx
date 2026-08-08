@@ -15,6 +15,8 @@ function PreviewModal({
   title = "Preview",
   subtitle,
   items = [],
+  tableColumns = [],
+  tableRows = [],
   onCancel,
   onConfirm,
   onPrint,
@@ -79,6 +81,36 @@ function PreviewModal({
             </div>
           ))}
         </div>
+
+        {tableColumns.length > 0 && tableRows.length > 0 ? (
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <colgroup>
+                {tableColumns.map((column) => (
+                  <col key={column.key || column.label} style={{ width: column.width || "auto" }} />
+                ))}
+              </colgroup>
+              <thead>
+                <tr>
+                  {tableColumns.map((column) => (
+                    <th key={column.key || column.label}>{column.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tableRows.map((row, rowIndex) => (
+                  <tr key={rowIndex}>
+                    {tableColumns.map((column) => (
+                      <td key={column.key || column.label}>
+                        {formatValue(row?.[column.key] ?? row?.[column.label])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
 
         <div className={styles.footer}>
           <button type="button" className={styles.cancel} onClick={onCancel} disabled={confirming}>

@@ -11,6 +11,7 @@ const wrappingTypes = ["Carding", "Drawing", "Simplex"];
 export const WRAPPING_INPUT_SCREEN_COUNT = wrappingTypes.length;
 const MACHINE_FIELDS = [
   "S.No",
+  "Entry ID",
   "Date",
   "ID",
   "Mac Name",
@@ -24,6 +25,7 @@ const MACHINE_FIELDS = [
 ];
 const OCR_TABLE_COLUMN_WIDTHS = {
   "S.No": 46,
+  "Entry ID": 132,
   Date: 118,
   ID: 96,
   "Mac Name": 104,
@@ -35,6 +37,20 @@ const OCR_TABLE_COLUMN_WIDTHS = {
   User: 120,
   Remark: 120,
 };
+const PREVIEW_ROW_FIELDS = [
+  "S.No",
+  "Entry ID",
+  "Date",
+  "ID",
+  "Mac Name",
+  "Shift",
+  "Std. Hank",
+  "Avg. Hank",
+  "SD",
+  "CV",
+  "User",
+  "Remark",
+];
 const WRAPPING_SAVE_ENDPOINTS = {
   carding: "/carding/wrapping-carding-notebook",
   drawing: "/drawframe/wrapping-drawframe-notebook",
@@ -48,6 +64,30 @@ const formatSavedRecordMessage = (selectedType, payload) => {
     ? `Saved ${selectedType} OCR record #${resolvedId}.`
     : `Saved ${selectedType} OCR record.`;
 };
+
+const getPreviewEntryId = (rows) =>
+  rows.find((row) => String(row?.entry_id || row?.["Entry ID"] || "").trim())?.entry_id ||
+  rows.find((row) => String(row?.entry_id || row?.["Entry ID"] || "").trim())?.["Entry ID"] ||
+  "-";
+
+const getPreviewTableRows = (rows) =>
+  rows.map((row, index) => {
+    const entryId = String(row?.entry_id || row?.["Entry ID"] || "").trim();
+    return {
+      "S.No": String(row?.["S.No"] || index + 1),
+      "Entry ID": entryId || "-",
+      Date: String(row?.Date || row?.date || row?.entry_date || "").trim() || "-",
+      ID: String(row?.ID || row?.id || "").trim() || "-",
+      "Mac Name": String(row?.["Mac Name"] || row?.mac_name || "").trim() || "-",
+      Shift: String(row?.Shift || row?.shift || "").trim() || "-",
+      "Std. Hank": String(row?.["Std. Hank"] || row?.std_hank || "").trim() || "-",
+      "Avg. Hank": String(row?.["Avg. Hank"] || row?.avg_hank || "").trim() || "-",
+      SD: String(row?.SD || row?.sd || "").trim() || "-",
+      CV: String(row?.CV || row?.cv || "").trim() || "-",
+      User: String(row?.User || row?.user || row?.user_name || "").trim() || "-",
+      Remark: String(row?.Remark || row?.remark || "").trim() || "-",
+    };
+  });
 
 function Wrapping({ fixedType = "", backPath = "/departments/quality-control", title = "Quality Control - Wrapping Notebook" }) {
   const router = useRouter();
@@ -129,7 +169,13 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
 
   const updateCell = (rowIndex, field, value) => {
     setRows((current) =>
-      current.map((row, index) => (index === rowIndex ? { ...row, [field]: value } : row))
+      current.map((row, index) =>
+        index === rowIndex
+          ? field === "Entry ID"
+            ? { ...row, entry_id: value, [field]: value }
+            : { ...row, [field]: value }
+          : row
+      )
     );
   };
 
@@ -371,7 +417,7 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
                     {MACHINE_FIELDS.map((field) => (
                       <td key={field} style={{ padding: 6, borderBottom: "1px solid #edf2f7" }}>
                         <input
-                          value={row[field] || ""}
+                          value={field === "Entry ID" ? row.entry_id || row[field] || "" : row[field] || ""}
                           onChange={(event) => updateCell(rowIndex, field, event.target.value)}
                           style={{ width: "100%", height: 28, border: "1px solid #dbe3ef", borderRadius: 6, padding: field === "S.No" ? "0 6px" : "0 7px", boxSizing: "border-box", fontSize: 12 }}
                         />
@@ -403,13 +449,9 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
         open={showPreview}
         title="Wrapping Preview"
         subtitle="Wrapping Notebook"
-        items={[
-          { label: "Type", value: selectedType },
-          { label: "File", value: file?.name || "-" },
-          { label: "Rows", value: rows.length },
-          ...rows.map((row, index) => ({ label: `Row ${index + 1}`, value: row, wide: true })),
-        ]}
-        typeValue={selectedType}
+        items={[]}
+        tableColumns={MACHINE_FIELDS.map((field) => ({ key: field, label: field, width: OCR_TABLE_COLUMN_WIDTHS[field] }))}
+        tableRows={getPreviewTableRows(rows)}
         onCancel={() => setShowPreview(false)}
         onConfirm={confirmSubmit}
         confirmLabel={isSaving ? "Submitting..." : "Submit"}
