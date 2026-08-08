@@ -1358,6 +1358,7 @@ const saveWrappingCardingNotebook = async (req, res, next) => {
       return res.status(400).json({ message: 'rows are required' });
     }
     const operatorName = getAuthenticatedOperatorName(req);
+    const submissionId = await nextWrappingCardingSubmissionId();
 
     await client.query('BEGIN');
 
@@ -1366,7 +1367,6 @@ const saveWrappingCardingNotebook = async (req, res, next) => {
       const row = rows[index];
       const dateText = String(row.date_text ?? row.date ?? row.Date ?? '').trim();
       const entryDate = parseNotebookDate(row.entry_date ?? row.date ?? row.Date ?? dateText);
-      const submissionId = await nextWrappingCardingSubmissionId();
 
       const result = await client.query(
         `INSERT INTO wrapping.carding_notebook (

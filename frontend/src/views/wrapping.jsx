@@ -59,10 +59,15 @@ const WRAPPING_SAVE_ENDPOINTS = {
 
 const toDocType = (type) => String(type || "Carding").trim().toLowerCase();
 const formatSavedRecordMessage = (selectedType, payload) => {
-  const resolvedId = String(payload?.id ?? payload?.entry_id ?? payload?.entryId ?? "").trim();
-  return resolvedId
-    ? `Saved ${selectedType} OCR record #${resolvedId}.`
-    : `Saved ${selectedType} OCR record.`;
+  const savedRows = Array.isArray(payload?.data) ? payload.data : [];
+  const resolvedId = String(
+    savedRows[0]?.entry_id ?? payload?.id ?? payload?.entry_id ?? payload?.entryId ?? ""
+  ).trim();
+  const rowCount = savedRows.length || payload?.count || 0;
+  if (!resolvedId) return `Saved ${selectedType} OCR record.`;
+  return rowCount > 1
+    ? `Saved ${selectedType} OCR record ${resolvedId} (${rowCount} rows).`
+    : `Saved ${selectedType} OCR record ${resolvedId}.`;
 };
 
 const getPreviewEntryId = (rows) =>
@@ -169,13 +174,7 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
 
   const updateCell = (rowIndex, field, value) => {
     setRows((current) =>
-      current.map((row, index) =>
-        index === rowIndex
-          ? field === "Entry ID"
-            ? { ...row, entry_id: value, [field]: value }
-            : { ...row, [field]: value }
-          : row
-      )
+      current.map((row, index) => (index === rowIndex ? { ...row, [field]: value } : row))
     );
   };
 
@@ -416,11 +415,20 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
                   <tr key={rowIndex}>
                     {MACHINE_FIELDS.map((field) => (
                       <td key={field} style={{ padding: 6, borderBottom: "1px solid #edf2f7" }}>
-                        <input
-                          value={field === "Entry ID" ? row.entry_id || row[field] || "" : row[field] || ""}
-                          onChange={(event) => updateCell(rowIndex, field, event.target.value)}
-                          style={{ width: "100%", height: 28, border: "1px solid #dbe3ef", borderRadius: 6, padding: field === "S.No" ? "0 6px" : "0 7px", boxSizing: "border-box", fontSize: 12 }}
-                        />
+                        {field === "Entry ID" ? (
+                          <input
+                            value="Auto-assigned on save"
+                            disabled
+                            title="Entry ID is assigned by the server when this record is saved."
+                            style={{ width: "100%", height: 28, border: "1px solid #edf2f7", borderRadius: 6, padding: "0 7px", boxSizing: "border-box", fontSize: 12, color: "#94a3b8", background: "#f8fafc" }}
+                          />
+                        ) : (
+                          <input
+                            value={row[field] || ""}
+                            onChange={(event) => updateCell(rowIndex, field, event.target.value)}
+                            style={{ width: "100%", height: 28, border: "1px solid #dbe3ef", borderRadius: 6, padding: field === "S.No" ? "0 6px" : "0 7px", boxSizing: "border-box", fontSize: 12 }}
+                          />
+                        )}
                       </td>
                     ))}
                   </tr>
