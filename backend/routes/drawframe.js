@@ -34,6 +34,13 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
   const entry_id = formatScreenEntryId(screenKey, record[idField]);
   return entry_id ? { ...record, entry_id } : { ...record };
 };
+const getAuthenticatedOperatorName = (req) =>
+  String(
+    req.user?.full_name ||
+    req.user?.name ||
+    req.user?.employee_id ||
+    ''
+  ).trim() || null;
 const isUniqueViolation = (err) => err && err.code === '23505';
 const DRAWFRAME_FR_ALLOWED_LIKE = [
   'FR%HSR%',
@@ -74,66 +81,11 @@ const toNullableNumber = (value) => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
-const ensureWrappingDrawframeNotebookTable = async () => {
-  await client.query(`CREATE SCHEMA IF NOT EXISTS wrapping`);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS wrapping.drawframe_notebook (
-      id BIGSERIAL PRIMARY KEY,
-      entry_id TEXT,
-      serial_no INTEGER,
-      date_text TEXT,
-      entry_date DATE,
-      source_id TEXT,
-      mac_name TEXT,
-      shift TEXT,
-      std_hank TEXT,
-      avg_hank NUMERIC(12,3),
-      sd NUMERIC(12,3),
-      cv TEXT,
-      user_name TEXT,
-      remark TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    ALTER TABLE wrapping.drawframe_notebook
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS serial_no INTEGER,
-      ADD COLUMN IF NOT EXISTS date_text TEXT,
-      ADD COLUMN IF NOT EXISTS entry_date DATE,
-      ADD COLUMN IF NOT EXISTS source_id TEXT,
-      ADD COLUMN IF NOT EXISTS mac_name TEXT,
-      ADD COLUMN IF NOT EXISTS shift TEXT,
-      ADD COLUMN IF NOT EXISTS std_hank TEXT,
-      ADD COLUMN IF NOT EXISTS avg_hank NUMERIC(12,3),
-      ADD COLUMN IF NOT EXISTS sd NUMERIC(12,3),
-      ADD COLUMN IF NOT EXISTS cv TEXT,
-      ADD COLUMN IF NOT EXISTS user_name TEXT,
-      ADD COLUMN IF NOT EXISTS remark TEXT;
-  `);
-
-  await client.query(`
-    ALTER TABLE wrapping.drawframe_notebook
-      DROP COLUMN IF EXISTS serial_no;
-  `);
-  await client.query(`
-    ALTER TABLE wrapping.drawframe_notebook
-      ALTER COLUMN avg_hank TYPE NUMERIC(12,3),
-      ALTER COLUMN sd TYPE NUMERIC(12,3);
-  `);
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS wrapping_drawframe_notebook_entry_id_uq
-    ON wrapping.drawframe_notebook (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS wrapping_drawframe_notebook_entry_date_idx
-    ON wrapping.drawframe_notebook (entry_date DESC, id DESC);
-  `);
+const nextWrappingDrawframeSubmissionId = async () => {
+  const result = await client.query(
+    `SELECT nextval('wrapping.drawframe_notebook_submission_seq') AS n`
+  );
+  return `DWR-${String(result.rows[0].n).padStart(4, '0')}`;
 };
 
 const ensureWrappingAPercentTable = async () => {
@@ -735,7 +687,6 @@ const getWrappingComberNoilPercent = async (req, res, next) => {
 
 const saveWrappingDrawframeNotebook = async (req, res, next) => {
   try {
-    await ensureWrappingDrawframeNotebookTable();
 
     const inputRows = Array.isArray(req.body?.rows)
       ? req.body.rows
@@ -748,6 +699,9 @@ const saveWrappingDrawframeNotebook = async (req, res, next) => {
       return res.status(400).json({ message: 'rows are required' });
     }
 
+    const operatorName = getAuthenticatedOperatorName(req);
+    const submissionId = await nextWrappingDrawframeSubmissionId();
+
     await client.query('BEGIN');
 
     const savedRows = [];
@@ -758,22 +712,23 @@ const saveWrappingDrawframeNotebook = async (req, res, next) => {
 
       const result = await client.query(
         `INSERT INTO wrapping.drawframe_notebook (
-          entry_id, date_text, entry_date, source_id, mac_name,
-          shift, std_hank, avg_hank, sd, cv, user_name, remark
+          entry_id, ocr_id, date_text, entry_date, mac_name,
+          shift, std_hank, avg_hank, sd, cv, operator, user_name, remark
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
         RETURNING *`,
         [
-          row.entry_id ?? null,
+          submissionId,
+          row.entry_id ?? row.id_no ?? row.sourceId ?? row.ID ?? row.id_value ?? row.notebook_id ?? null,
           dateText || null,
           entryDate,
-          row.source_id ?? row.id_no ?? row.sourceId ?? row.ID ?? row.id_value ?? row.notebook_id ?? null,
           row.mac_name ?? row.machine_name ?? row.macName ?? row['Mac Name'] ?? null,
           row.shift ?? row.Shift ?? null,
           row.std_hank ?? row.standard_hank ?? row['Std. Hank'] ?? row.stdHank ?? null,
           toNullableNumber(row.avg_hank ?? row.average_hank ?? row['Avg. Hank'] ?? row.avgHank),
           toNullableNumber(row.sd ?? row.SD),
           row.cv ?? row.CV ?? null,
+          operatorName,
           row.user_name ?? row.user ?? row.User ?? null,
           row.remark ?? row.remarks ?? row.Remark ?? null
         ]
@@ -791,7 +746,7 @@ const saveWrappingDrawframeNotebook = async (req, res, next) => {
   } catch (error) {
     await client.query('ROLLBACK');
     if (isUniqueViolation(error)) {
-      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+      return res.status(409).json({ message: 'Duplicate OCR ID. Please use a unique ID.' });
     }
     next(error);
   }
@@ -799,7 +754,6 @@ const saveWrappingDrawframeNotebook = async (req, res, next) => {
 
 const getWrappingDrawframeNotebook = async (req, res, next) => {
   try {
-    await ensureWrappingDrawframeNotebookTable();
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.max(1, parseInt(req.query.limit, 10) || 50);

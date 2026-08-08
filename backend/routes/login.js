@@ -106,6 +106,7 @@ router.post('/login', async (req, res, next) => {
         role_id: role.id,
         role: role.name,
         employee_id: user.employee_id,
+        full_name: user.full_name,
         level: user.level
       },
       process.env.JWT_SECRET || 'jwt_secret',

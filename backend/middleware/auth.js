@@ -58,6 +58,7 @@ function auth(req, res, next) {
       role: decoded.role,
       departments: decoded.departments,
       employee_id: decoded.employee_id,
+      full_name: decoded.full_name,
       level: decoded.level
     };
 
