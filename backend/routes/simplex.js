@@ -29,6 +29,13 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
   const entry_id = formatScreenEntryId(screenKey, record[idField]);
   return entry_id ? { ...record, entry_id } : { ...record };
 };
+const getAuthenticatedOperatorName = (req) =>
+  String(
+    req.user?.full_name ||
+    req.user?.name ||
+    req.user?.employee_id ||
+    ''
+  ).trim() || null;
 const isUniqueViolation = (err) => err && err.code === '23505';
 // These Simplex tables store created_at/updated_at as `timestamp WITHOUT time zone` with a bare
 // CURRENT_TIMESTAMP default — on this DB, that silently writes a different offset than what gets
@@ -135,56 +142,11 @@ const toNullableNumber = (value) => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
-const ensureWrappingSimplexNotebookTable = async () => {
-  await client.query(`CREATE SCHEMA IF NOT EXISTS wrapping`);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS wrapping.simplex_notebook (
-      id BIGSERIAL PRIMARY KEY,
-      entry_id TEXT,
-      serial_no INTEGER,
-      date_text TEXT,
-      entry_date DATE,
-      source_id TEXT,
-      mac_name TEXT,
-      shift TEXT,
-      std_hank TEXT,
-      avg_hank NUMERIC(12,4),
-      sd NUMERIC(12,4),
-      cv TEXT,
-      user_name TEXT,
-      remark TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    ALTER TABLE wrapping.simplex_notebook
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS serial_no INTEGER,
-      ADD COLUMN IF NOT EXISTS date_text TEXT,
-      ADD COLUMN IF NOT EXISTS entry_date DATE,
-      ADD COLUMN IF NOT EXISTS source_id TEXT,
-      ADD COLUMN IF NOT EXISTS mac_name TEXT,
-      ADD COLUMN IF NOT EXISTS shift TEXT,
-      ADD COLUMN IF NOT EXISTS std_hank TEXT,
-      ADD COLUMN IF NOT EXISTS avg_hank NUMERIC(12,4),
-      ADD COLUMN IF NOT EXISTS sd NUMERIC(12,4),
-      ADD COLUMN IF NOT EXISTS cv TEXT,
-      ADD COLUMN IF NOT EXISTS user_name TEXT,
-      ADD COLUMN IF NOT EXISTS remark TEXT;
-  `);
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS wrapping_simplex_notebook_entry_id_uq
-    ON wrapping.simplex_notebook (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS wrapping_simplex_notebook_entry_date_idx
-    ON wrapping.simplex_notebook (entry_date DESC, id DESC);
-  `);
+const nextWrappingSimplexSubmissionId = async () => {
+  const result = await client.query(
+    `SELECT nextval('wrapping.simplex_notebook_submission_seq') AS n`
+  );
+  return `SWR-${String(result.rows[0].n).padStart(4, '0')}`;
 };
 
 const ensureSimplexNotebookTable = async () => {
@@ -716,7 +678,6 @@ const getSimplexNotebook = async (req, res, next) => {
 
 const saveWrappingSimplexNotebook = async (req, res, next) => {
   try {
-    await ensureWrappingSimplexNotebookTable();
 
     const inputRows = Array.isArray(req.body?.rows)
       ? req.body.rows
@@ -729,6 +690,9 @@ const saveWrappingSimplexNotebook = async (req, res, next) => {
       return res.status(400).json({ message: 'rows are required' });
     }
 
+    const operatorName = getAuthenticatedOperatorName(req);
+    const submissionId = await nextWrappingSimplexSubmissionId();
+
     await client.query('BEGIN');
 
     const savedRows = [];
@@ -739,23 +703,24 @@ const saveWrappingSimplexNotebook = async (req, res, next) => {
 
       const result = await client.query(
         `INSERT INTO wrapping.simplex_notebook (
-          entry_id, serial_no, date_text, entry_date, source_id, mac_name,
-          shift, std_hank, avg_hank, sd, cv, user_name, remark
+          entry_id, ocr_id, serial_no, date_text, entry_date, mac_name,
+          shift, std_hank, avg_hank, sd, cv, operator, user_name, remark
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         RETURNING *`,
         [
-          row.entry_id ?? null,
+          submissionId,
+          row.entry_id ?? row.id_no ?? row.sourceId ?? row.ID ?? row.id_value ?? row.notebook_id ?? null,
           toNullableNumber(row.serial_no ?? row.s_no ?? row.sno ?? row['S.No'] ?? row.SNo ?? (index + 1)),
           dateText || null,
           entryDate,
-          row.source_id ?? row.id_no ?? row.sourceId ?? row.ID ?? row.id_value ?? row.notebook_id ?? null,
           row.mac_name ?? row.machine_name ?? row.macName ?? row['Mac Name'] ?? null,
           row.shift ?? row.Shift ?? null,
           row.std_hank ?? row.standard_hank ?? row['Std. Hank'] ?? row.stdHank ?? null,
           toNullableNumber(row.avg_hank ?? row.average_hank ?? row['Avg. Hank'] ?? row.avgHank),
           toNullableNumber(row.sd ?? row.SD),
           row.cv ?? row.CV ?? null,
+          operatorName,
           row.user_name ?? row.user ?? row.User ?? null,
           row.remark ?? row.remarks ?? row.Remark ?? null
         ]
@@ -773,7 +738,7 @@ const saveWrappingSimplexNotebook = async (req, res, next) => {
   } catch (error) {
     await client.query('ROLLBACK');
     if (isUniqueViolation(error)) {
-      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+      return res.status(409).json({ message: 'Duplicate OCR ID. Please use a unique ID.' });
     }
     next(error);
   }
@@ -781,7 +746,6 @@ const saveWrappingSimplexNotebook = async (req, res, next) => {
 
 const getWrappingSimplexNotebook = async (req, res, next) => {
   try {
-    await ensureWrappingSimplexNotebookTable();
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.max(1, parseInt(req.query.limit, 10) || 50);
