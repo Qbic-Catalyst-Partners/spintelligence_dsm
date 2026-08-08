@@ -11,7 +11,6 @@ const wrappingTypes = ["Carding", "Drawing", "Simplex"];
 export const WRAPPING_INPUT_SCREEN_COUNT = wrappingTypes.length;
 const MACHINE_FIELDS = [
   "S.No",
-  "Entry ID",
   "Date",
   "ID",
   "Mac Name",
@@ -25,7 +24,6 @@ const MACHINE_FIELDS = [
 ];
 const OCR_TABLE_COLUMN_WIDTHS = {
   "S.No": 46,
-  "Entry ID": 132,
   Date: 118,
   ID: 96,
   "Mac Name": 104,
@@ -39,7 +37,6 @@ const OCR_TABLE_COLUMN_WIDTHS = {
 };
 const PREVIEW_ROW_FIELDS = [
   "S.No",
-  "Entry ID",
   "Date",
   "ID",
   "Mac Name",
@@ -70,17 +67,10 @@ const formatSavedRecordMessage = (selectedType, payload) => {
     : `Saved ${selectedType} OCR record ${resolvedId}.`;
 };
 
-const getPreviewEntryId = (rows) =>
-  rows.find((row) => String(row?.entry_id || row?.["Entry ID"] || "").trim())?.entry_id ||
-  rows.find((row) => String(row?.entry_id || row?.["Entry ID"] || "").trim())?.["Entry ID"] ||
-  "-";
-
 const getPreviewTableRows = (rows) =>
   rows.map((row, index) => {
-    const entryId = String(row?.entry_id || row?.["Entry ID"] || "").trim();
     return {
       "S.No": String(row?.["S.No"] || index + 1),
-      "Entry ID": entryId || "-",
       Date: String(row?.Date || row?.date || row?.entry_date || "").trim() || "-",
       ID: String(row?.ID || row?.id || "").trim() || "-",
       "Mac Name": String(row?.["Mac Name"] || row?.mac_name || "").trim() || "-",
@@ -91,6 +81,49 @@ const getPreviewTableRows = (rows) =>
       CV: String(row?.CV || row?.cv || "").trim() || "-",
       User: String(row?.User || row?.user || row?.user_name || "").trim() || "-",
       Remark: String(row?.Remark || row?.remark || "").trim() || "-",
+    };
+  });
+
+const normalizeWrappingSaveRows = (rows) =>
+  rows.map((row, index) => {
+    const serialNo = row?.["S.No"] ?? row?.s_no ?? row?.sno ?? index + 1;
+    const dateText = row?.date_text ?? row?.Date ?? row?.date ?? row?.entry_date ?? "";
+    const macName = row?.mac_name ?? row?.["Mac Name"] ?? row?.machine_name ?? row?.macName ?? "";
+    const shift = row?.shift ?? row?.Shift ?? "";
+    const stdHank = row?.std_hank ?? row?.["Std. Hank"] ?? row?.stdHank ?? "";
+    const avgHank = row?.avg_hank ?? row?.["Avg. Hank"] ?? row?.avgHank ?? "";
+    const sd = row?.sd ?? row?.SD ?? "";
+    const cv = row?.cv ?? row?.CV ?? "";
+    const userName = row?.user_name ?? row?.user ?? row?.User ?? "";
+    const remark = row?.remark ?? row?.remarks ?? row?.Remark ?? "";
+
+    return {
+      ...row,
+      serial_no: serialNo,
+      s_no: serialNo,
+      sno: serialNo,
+      date_text: dateText,
+      date: dateText,
+      Date: dateText,
+      mac_name: macName,
+      "Mac Name": macName,
+      shift,
+      Shift: shift,
+      std_hank: stdHank,
+      "Std. Hank": stdHank,
+      avg_hank: avgHank,
+      "Avg. Hank": avgHank,
+      sd,
+      SD: sd,
+      cv,
+      CV: cv,
+      user_name: userName,
+      user: userName,
+      User: userName,
+      remark,
+      remarks: remark,
+      Remark: remark,
+      entry_id: row?.entry_id ?? row?.id_no ?? row?.sourceId ?? row?.ID ?? row?.id_value ?? row?.notebook_id ?? null,
     };
   });
 
@@ -232,7 +265,7 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
         mc_name: rows.find((row) => String(row["Mac Name"] || "").trim())?.["Mac Name"] || "",
         ocr_json: ocrJson,
         manual_json: rows,
-        rows,
+        rows: normalizeWrappingSaveRows(rows),
       });
       setMessage("");
       setSuccessMessage(formatSavedRecordMessage(selectedType, response.data));
@@ -415,20 +448,11 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
                   <tr key={rowIndex}>
                     {MACHINE_FIELDS.map((field) => (
                       <td key={field} style={{ padding: 6, borderBottom: "1px solid #edf2f7" }}>
-                        {field === "Entry ID" ? (
-                          <input
-                            value="Auto-assigned on save"
-                            disabled
-                            title="Entry ID is assigned by the server when this record is saved."
-                            style={{ width: "100%", height: 28, border: "1px solid #edf2f7", borderRadius: 6, padding: "0 7px", boxSizing: "border-box", fontSize: 12, color: "#94a3b8", background: "#f8fafc" }}
-                          />
-                        ) : (
-                          <input
-                            value={row[field] || ""}
-                            onChange={(event) => updateCell(rowIndex, field, event.target.value)}
-                            style={{ width: "100%", height: 28, border: "1px solid #dbe3ef", borderRadius: 6, padding: field === "S.No" ? "0 6px" : "0 7px", boxSizing: "border-box", fontSize: 12 }}
-                          />
-                        )}
+                        <input
+                          value={row[field] || ""}
+                          onChange={(event) => updateCell(rowIndex, field, event.target.value)}
+                          style={{ width: "100%", height: 28, border: "1px solid #dbe3ef", borderRadius: 6, padding: field === "S.No" ? "0 6px" : "0 7px", boxSizing: "border-box", fontSize: 12 }}
+                        />
                       </td>
                     ))}
                   </tr>
