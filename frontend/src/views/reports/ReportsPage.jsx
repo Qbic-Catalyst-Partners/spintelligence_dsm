@@ -96,6 +96,25 @@ import {
 import { getSpinningProcessParameterEntries } from "@/apis/spinning";
 import styles from "@/styles/reports.module.css";
 
+const ALL_TYPES_VALUE = "__all_types__";
+
+// Bounded fan-out for "All Type" reports: a sub-department can have 10+ notebook types, so
+// firing every type's request at once (unbounded Promise.all) spikes backend CPU. Cap how many
+// run concurrently instead.
+const mapWithConcurrency = async (items, limit, mapper) => {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await mapper(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+};
+
 const fetchEndpointRows = async (endpoint, params = {}) => {
   const response = await apiConfig.get(
     endpoint,
@@ -3355,6 +3374,29 @@ const loadExcelJS = async () => {
   return excelJSImport?.default || excelJSImport;
 };
 
+// Excel sheet names are capped at 31 chars and can't repeat within a workbook — used by the
+// "All Type" export so every notebook type gets its own uniquely-named worksheet.
+const getWorksheetName = (name, index, usedNames) => {
+  const fallbackName = `Report ${index + 1}`;
+  const baseName =
+    String(name || fallbackName)
+      .replace(/[:\\/?*[\]]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 31) || fallbackName;
+  let sheetName = baseName;
+  let suffix = 2;
+
+  while (usedNames.has(sheetName)) {
+    const suffixText = ` ${suffix}`;
+    sheetName = `${baseName.slice(0, 31 - suffixText.length)}${suffixText}`;
+    suffix += 1;
+  }
+
+  usedNames.add(sheetName);
+  return sheetName;
+};
+
 const escapePdfText = (value) =>
   String(value ?? "")
     .replace(/[^\x20-\x7E]/g, " ")
@@ -3556,6 +3598,8 @@ function ReportsPage() {
   const [analysisLevel, setAnalysisLevel] = useState("");
   const [analysisUserId, setAnalysisUserId] = useState("");
   const [rows, setRows] = useState([]);
+  const [rowsByType, setRowsByType] = useState({});
+  const [useAllFields, setUseAllFields] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [operatorByEntryKey, setOperatorByEntryKey] = useState({});
@@ -3613,6 +3657,15 @@ function ReportsPage() {
     ? accessibleReportSources[department]?.[TEAM_PERFORMANCE_SUB_DEPARTMENT]?.[TEAM_PERFORMANCE_REPORT_TYPE]
     : accessibleReportSources[department]?.[subDepartment]?.[reportType];
   const isInvoiceDataReport = String(reportType || "").trim().toLowerCase().includes("invoice");
+  // "All Type" (whole sub-department) and the "include all fields" toggle both bypass the
+  // drag-drop field picker entirely — picking fields makes no sense across several notebooks'
+  // worth of unrelated columns, and showing every catalog field for one notebook doesn't need
+  // the picker either. Neither applies to Team Performance/Analysis, which only ever has one type.
+  const isAllTypeSelected = !isTeamPerformanceReport && reportType === ALL_TYPES_VALUE;
+  const isGeneralReportFlow = isAllTypeSelected || (!isTeamPerformanceReport && useAllFields);
+  const reportTypeOptions = isTeamPerformanceReport || !reportTypes.length
+    ? reportTypes
+    : [ALL_TYPES_VALUE, ...reportTypes];
 
   const getUserId = (user) =>
     String(user?.id || user?.user_id || user?.userId || user?.employeeId || user?.employee_id || user?.email || "");
@@ -3681,12 +3734,35 @@ function ReportsPage() {
     const nextReportTypes = isAnalysisDepartment(nextDepartment)
       ? Object.keys(accessibleReportSources[nextDepartment]?.[TEAM_PERFORMANCE_SUB_DEPARTMENT] || {})
       : Object.keys(accessibleReportSources[nextDepartment]?.[nextSubDepartment] || {});
-    const nextReportType = nextReportTypes.includes(reportType) ? reportType : (nextReportTypes[0] || "");
+    const isAllTypeStillValid =
+      reportType === ALL_TYPES_VALUE && !isAnalysisDepartment(nextDepartment) && nextReportTypes.length > 0;
+    const nextReportType = isAllTypeStillValid
+      ? reportType
+      : nextReportTypes.includes(reportType)
+        ? reportType
+        : (nextReportTypes[0] || "");
 
     if (nextDepartment !== department) setDepartment(nextDepartment);
     if (nextSubDepartment !== subDepartment) setSubDepartment(nextSubDepartment);
     if (nextReportType !== reportType) setReportType(nextReportType);
   }, [accessibleReportSources, department, departments, reportType, subDepartment]);
+
+  // Deliberately lightweight field list for the "include all fields"/"All Type" flows — just the
+  // catalog for that notebook type, falling back to whatever columns are actually present on its
+  // rows. Unlike `availableFields` below (which has ~100 screen-specific exclusion/alias rules
+  // tuned for picking a handful of columns for ONE type at a time), these flows show every field
+  // for potentially every type in a sub-department at once, so they intentionally reuse the same
+  // simple composition the old standalone General Report page used rather than that heavier logic.
+  const getAllFieldsForType = (typeName, typeRows) => {
+    const catalogFields = uniqueOptions(getThresholdFieldsForScreen(typeName, subDepartment))
+      .map(toReportField)
+      .filter(Boolean);
+    const fields = catalogFields.length ? catalogFields : inferFields(typeRows);
+    return fields.filter(
+      (field, index, list) =>
+        index === list.findIndex((item) => getCanonicalReportFieldKey(item) === getCanonicalReportFieldKey(field))
+    );
+  };
 
   const availableFields = useMemo(() => {
     const inferredFields = inferFields(rows);
@@ -4391,6 +4467,26 @@ function ReportsPage() {
     });
   }, [dateFilterActive, endDate, isInvoiceDataReport, rows, startDate]);
 
+  // Same date-range filter as filteredRows above, parameterized by type name so it can also be
+  // applied per-section for "All Type" reports (each section's own typeName decides whether it's
+  // an invoice-style screen that skips date filtering, same as the single-type path does).
+  const filterRowsForType = (typeRows, typeName) => {
+    if (String(typeName || "").trim().toLowerCase().includes("invoice")) return typeRows;
+    if (!dateFilterActive) return typeRows;
+    if (!startDate && !endDate) return typeRows;
+
+    return typeRows.filter((row) => {
+      const rawDate = getRowDate(row);
+      if (!rawDate) return true;
+      const date = new Date(rawDate);
+      if (Number.isNaN(date.getTime())) return true;
+      const rowDateKey = toInputDate(date);
+      if (startDate && rowDateKey < startDate) return false;
+      if (endDate && rowDateKey > endDate) return false;
+      return true;
+    });
+  };
+
   useEffect(() => {
     let isMounted = true;
     const loadOperators = async () => {
@@ -4502,13 +4598,19 @@ function ReportsPage() {
         const response = await fetchBuilderOptions({ department, sub_department: subDepartment });
         if (!isMounted) return;
         const nextScreens = getInputScreenOptions(response?.data || {}, department, subDepartment);
-        const nextScreen = nextScreens.includes(reportType) ? reportType : (nextScreens[0] || "");
+        const nextScreen =
+          reportType === ALL_TYPES_VALUE && nextScreens.length
+            ? reportType
+            : nextScreens.includes(reportType) ? reportType : (nextScreens[0] || "");
         setBuilderOptions((current) => ({ ...current, input_screens: nextScreens, input_fields: [] }));
         setReportType(nextScreen);
       } catch {
         if (!isMounted) return;
         const nextScreens = getInputScreenOptions({}, department, subDepartment);
-        const nextScreen = nextScreens.includes(reportType) ? reportType : (nextScreens[0] || "");
+        const nextScreen =
+          reportType === ALL_TYPES_VALUE && nextScreens.length
+            ? reportType
+            : nextScreens.includes(reportType) ? reportType : (nextScreens[0] || "");
         setBuilderOptions((current) => ({ ...current, input_screens: nextScreens, input_fields: [] }));
         setReportType(nextScreen);
       }
@@ -4586,6 +4688,7 @@ function ReportsPage() {
   useEffect(() => {
     if (!department || !subDepartment || !reportType) {
       setRows([]);
+      setRowsByType({});
       setError("No report screens are assigned to this user.");
       return;
     }
@@ -4600,145 +4703,174 @@ function ReportsPage() {
     // resolve. Skip the fetch entirely (WITHOUT clearing rows/requestId — the reconciling effect
     // fires again right after with the real subDepartment/reportType pairing, which must still be
     // able to complete normally) until reportType is actually valid for this subDepartment.
-    if (!isTeamPerformanceReport && !reportTypes.includes(reportType)) {
+    if (!isTeamPerformanceReport && reportType !== ALL_TYPES_VALUE && !reportTypes.includes(reportType)) {
       return;
     }
 
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     setRows([]);
+    setRowsByType({});
     setError("");
 
     let isActive = true;
 
+    // Fetches + normalizes rows for a single notebook type. Parameterized on typeName (rather
+    // than reading the selected reportType from closure) so the exact same per-screen dispatch
+    // logic can be reused both for the single selected type and, looped across every type in
+    // reportTypes, for "All Type" (whole sub-department) reports.
+    const fetchReportRowsForType = async (typeName) => {
+      const reportSource = isTeamPerformanceReport
+        ? selectedReportSource
+        : accessibleReportSources[department]?.[subDepartment]?.[typeName];
+      const reportFetcher =
+        reportSource?.fetcher ||
+        (reportSource?.endpoint ? fetchEndpointRows.bind(null, reportSource.endpoint) : null);
+      const canonicalReport = normalizeReportSelection({
+        departmentName: department,
+        subDepartmentName: subDepartment,
+        typeName,
+      });
+
+      const baseReportParams = {
+        start_date: startDate,
+        end_date: endDate,
+        department: canonicalReport.department,
+        subDepartment: canonicalReport.subDepartment,
+        sub_department: canonicalReport.subDepartment,
+        reportType: canonicalReport.reportType,
+        report_type: canonicalReport.reportType,
+        input_screen: canonicalReport.reportType,
+        ...(isTeamPerformanceReport ? { level: analysisLevel, user_id: analysisUserId } : {}),
+      };
+      const generalReportFetcher = (params = {}) => fetchGeneralReportDataRows({ ...baseReportParams, ...params });
+      // Draw Frame's "A%" notebook and Simplex's "SMXCots Checking Data Entry"/"SMX Breaks Study
+      // Report"/"Stretch %" all store one entry's per-item breakdown as a nested array
+      // (rows/manual_json/ocr_json, `items`, or `tables`) describing a single record, not
+      // multiple physical entries — skip the generic nested-array row expansion for these
+      // screens (unlike Wrapping's OCR notebooks, where each nested row really is its own
+      // separate entry).
+      const skipsNestedRowExpansion =
+        (subDepartment === "Draw Frame" && typeName === "A%") ||
+        isParametersArrayWheelChangeReport(subDepartment, typeName) ||
+        (subDepartment === "Simplex" &&
+          ["SMXCots Checking Data Entry", "SMX Breaks Study Report", "Stretch %"].includes(typeName)) ||
+        (subDepartment === "Spinning" && ["Count Change", "Ring Frame Log Book"].includes(typeName)) ||
+        (subDepartment === "Autoconer" && ["Drum wise Appearance"].includes(typeName));
+      const isOpennessReport = subDepartment === "Mixing" && typeName === "Openness Data Entry";
+      const isMixingProcessParameterReport = subDepartment === "Mixing" && typeName === "Process Parameter";
+      const brWasteStudyType =
+        subDepartment === "Blow Room"
+          ? BR_WASTE_STUDY_TYPE_BY_REPORT_TYPE[typeName]
+          : subDepartment === "Carding"
+            ? CARD_WASTE_STUDY_TYPE_BY_REPORT_TYPE[typeName]
+            : null;
+      const isDropTestReport = subDepartment === "Blow Room" && typeName === "Drop Test Data Entry";
+      const isLapCvReport =
+        subDepartment === "Blow Room" &&
+        ["B/R CV1M Data Entry Within Lap", "B/R Between Lap CV%"].includes(typeName);
+      const isComberLapCvReport =
+        subDepartment === "Comber" && typeName === "Ribbon Lap CV1M Data Entry";
+      const betweenWithinCardType =
+        subDepartment === "Carding" ? BETWEEN_WITHIN_CARD_TYPE_BY_REPORT_TYPE[typeName] : null;
+      const isCardThickPlaceReport = subDepartment === "Carding" && typeName === "Thick place & CV";
+      const isCardingNatiReport = subDepartment === "Carding" && typeName === "Nati Data Entry";
+      const isComberNatiReport = subDepartment === "Comber" && typeName === "Nati Data Entry";
+      const isComberNoilReport = subDepartment === "Comber" && typeName === "Comber Nolis %";
+      const isCardingDfkReport = subDepartment === "Carding" && typeName === "Card DFK Data";
+      const drawFrameCotsSubType =
+        subDepartment === "Draw Frame" ? DRAWFRAME_COTS_SUB_TYPE_BY_REPORT_TYPE[typeName] : null;
+      const isDrawFrameYarnCvReport = subDepartment === "Draw Frame" && typeName === "1 Yard / Half Yard CV Entry";
+      const isSpinningCountChangeReport = subDepartment === "Spinning" && typeName === "Count Change";
+      const isRingFrameLogBookReport = subDepartment === "Spinning" && typeName === "Ring Frame Log Book";
+      const isAutoconerRewindingStudyReport = subDepartment === "Autoconer" && typeName === "Rewinding Study";
+      const isAutoconerConeDensityReport = subDepartment === "Autoconer" && typeName === "Cone Density";
+      const isAutoconerLycraCheckingReport = subDepartment === "Autoconer" && typeName === "Lycra % Checking";
+      const isAutoconerSpliceStrengthReport = subDepartment === "Autoconer" && typeName === "Splice Strength";
+      const isAutoconerDrumWiseAppearanceReport = subDepartment === "Autoconer" && typeName === "Drum wise Appearance";
+      const extractRows = isOpennessReport
+        ? normalizeOpennessRows
+        : isMixingProcessParameterReport
+          ? normalizeMixingProcessParameterRows
+          : brWasteStudyType
+            ? normalizeBrWasteStudyRows(brWasteStudyType)
+            : isDropTestReport
+            ? normalizeDropTestRows
+            : isLapCvReport
+              ? normalizeLapCvRows
+              : isComberLapCvReport
+                ? normalizeComberLapCvRows
+                : betweenWithinCardType
+                  ? normalizeBetweenWithinCardRows(betweenWithinCardType)
+                  : isCardThickPlaceReport
+                    ? normalizeCardThickPlaceRows
+                    : isCardingNatiReport
+                      ? normalizeCardingNatiRows
+                      : isComberNatiReport
+                        ? normalizeComberNatiRows
+                        : isComberNoilReport
+                          ? normalizeComberNoilRows
+                          : isCardingDfkReport
+                            ? normalizeCardingDfkRows
+                            : drawFrameCotsSubType
+                              ? normalizeDrawFrameCotsRows(drawFrameCotsSubType)
+                              : isDrawFrameYarnCvReport
+                                ? normalizeDrawFrameYarnCvRows
+                                : isSpinningCountChangeReport
+                                  ? normalizeSpinningCountChangeRows
+                                  : isRingFrameLogBookReport
+                                    ? normalizeRingFrameLogBookRows
+                                    : isAutoconerRewindingStudyReport
+                                      ? normalizeAutoconerRewindingStudyRows
+                                      : isAutoconerConeDensityReport
+                                        ? normalizeAutoconerConeDensityRows
+                                        : isAutoconerLycraCheckingReport
+                                          ? normalizeAutoconerLycraCheckingRows
+                                          : isAutoconerSpliceStrengthReport
+                                            ? normalizeAutoconerSpliceStrengthRows
+                                            : isAutoconerDrumWiseAppearanceReport
+                                              ? normalizeAutoconerDrumWiseAppearanceRows
+                                              : skipsNestedRowExpansion
+                                                ? extractResponseRows
+                                                : normalizeRows;
+
+      if (reportFetcher) {
+        try {
+          return await fetchAllReportRows(reportFetcher, baseReportParams, extractRows);
+        } catch (directError) {
+          return await fetchAllReportRows(generalReportFetcher, baseReportParams, extractRows);
+        }
+      }
+      return await fetchAllReportRows(generalReportFetcher, baseReportParams, extractRows);
+    };
+
     const loadReport = async () => {
       try {
         setLoading(true);
-        const reportSource = selectedReportSource;
-        const reportFetcher =
-          reportSource?.fetcher ||
-          (reportSource?.endpoint ? fetchEndpointRows.bind(null, reportSource.endpoint) : null);
-        const canonicalReport = normalizeReportSelection({
-          departmentName: department,
-          subDepartmentName: subDepartment,
-          typeName: reportType,
-        });
 
-        const baseReportParams = {
-          start_date: startDate,
-          end_date: endDate,
-          department: canonicalReport.department,
-          subDepartment: canonicalReport.subDepartment,
-          sub_department: canonicalReport.subDepartment,
-          reportType: canonicalReport.reportType,
-          report_type: canonicalReport.reportType,
-          input_screen: canonicalReport.reportType,
-          ...(isTeamPerformanceReport ? { level: analysisLevel, user_id: analysisUserId } : {}),
-        };
-        const generalReportFetcher = (params = {}) => fetchGeneralReportDataRows({ ...baseReportParams, ...params });
-        // Draw Frame's "A%" notebook and Simplex's "SMXCots Checking Data Entry"/"SMX Breaks Study
-        // Report"/"Stretch %" all store one entry's per-item breakdown as a nested array
-        // (rows/manual_json/ocr_json, `items`, or `tables`) describing a single record, not
-        // multiple physical entries — skip the generic nested-array row expansion for these
-        // screens (unlike Wrapping's OCR notebooks, where each nested row really is its own
-        // separate entry).
-        const skipsNestedRowExpansion =
-          (subDepartment === "Draw Frame" && reportType === "A%") ||
-          isParametersArrayWheelChangeReport(subDepartment, reportType) ||
-          (subDepartment === "Simplex" &&
-            ["SMXCots Checking Data Entry", "SMX Breaks Study Report", "Stretch %"].includes(reportType)) ||
-          (subDepartment === "Spinning" && ["Count Change", "Ring Frame Log Book"].includes(reportType)) ||
-          (subDepartment === "Autoconer" && ["Drum wise Appearance"].includes(reportType));
-        const isOpennessReport = subDepartment === "Mixing" && reportType === "Openness Data Entry";
-        const isMixingProcessParameterReport = subDepartment === "Mixing" && reportType === "Process Parameter";
-        const brWasteStudyType =
-          subDepartment === "Blow Room"
-            ? BR_WASTE_STUDY_TYPE_BY_REPORT_TYPE[reportType]
-            : subDepartment === "Carding"
-              ? CARD_WASTE_STUDY_TYPE_BY_REPORT_TYPE[reportType]
-              : null;
-        const isDropTestReport = subDepartment === "Blow Room" && reportType === "Drop Test Data Entry";
-        const isLapCvReport =
-          subDepartment === "Blow Room" &&
-          ["B/R CV1M Data Entry Within Lap", "B/R Between Lap CV%"].includes(reportType);
-        const isComberLapCvReport =
-          subDepartment === "Comber" && reportType === "Ribbon Lap CV1M Data Entry";
-        const betweenWithinCardType =
-          subDepartment === "Carding" ? BETWEEN_WITHIN_CARD_TYPE_BY_REPORT_TYPE[reportType] : null;
-        const isCardThickPlaceReport = subDepartment === "Carding" && reportType === "Thick place & CV";
-        const isCardingNatiReport = subDepartment === "Carding" && reportType === "Nati Data Entry";
-        const isComberNatiReport = subDepartment === "Comber" && reportType === "Nati Data Entry";
-        const isComberNoilReport = subDepartment === "Comber" && reportType === "Comber Nolis %";
-        const isCardingDfkReport = subDepartment === "Carding" && reportType === "Card DFK Data";
-        const drawFrameCotsSubType =
-          subDepartment === "Draw Frame" ? DRAWFRAME_COTS_SUB_TYPE_BY_REPORT_TYPE[reportType] : null;
-        const isDrawFrameYarnCvReport = subDepartment === "Draw Frame" && reportType === "1 Yard / Half Yard CV Entry";
-        const isSpinningCountChangeReport = subDepartment === "Spinning" && reportType === "Count Change";
-        const isRingFrameLogBookReport = subDepartment === "Spinning" && reportType === "Ring Frame Log Book";
-        const isAutoconerRewindingStudyReport = subDepartment === "Autoconer" && reportType === "Rewinding Study";
-        const isAutoconerConeDensityReport = subDepartment === "Autoconer" && reportType === "Cone Density";
-        const isAutoconerLycraCheckingReport = subDepartment === "Autoconer" && reportType === "Lycra % Checking";
-        const isAutoconerSpliceStrengthReport = subDepartment === "Autoconer" && reportType === "Splice Strength";
-        const isAutoconerDrumWiseAppearanceReport = subDepartment === "Autoconer" && reportType === "Drum wise Appearance";
-        const extractRows = isOpennessReport
-          ? normalizeOpennessRows
-          : isMixingProcessParameterReport
-            ? normalizeMixingProcessParameterRows
-            : brWasteStudyType
-              ? normalizeBrWasteStudyRows(brWasteStudyType)
-              : isDropTestReport
-              ? normalizeDropTestRows
-              : isLapCvReport
-                ? normalizeLapCvRows
-                : isComberLapCvReport
-                  ? normalizeComberLapCvRows
-                  : betweenWithinCardType
-                    ? normalizeBetweenWithinCardRows(betweenWithinCardType)
-                    : isCardThickPlaceReport
-                      ? normalizeCardThickPlaceRows
-                      : isCardingNatiReport
-                        ? normalizeCardingNatiRows
-                        : isComberNatiReport
-                          ? normalizeComberNatiRows
-                          : isComberNoilReport
-                            ? normalizeComberNoilRows
-                            : isCardingDfkReport
-                              ? normalizeCardingDfkRows
-                              : drawFrameCotsSubType
-                                ? normalizeDrawFrameCotsRows(drawFrameCotsSubType)
-                                : isDrawFrameYarnCvReport
-                                  ? normalizeDrawFrameYarnCvRows
-                                  : isSpinningCountChangeReport
-                                    ? normalizeSpinningCountChangeRows
-                                    : isRingFrameLogBookReport
-                                      ? normalizeRingFrameLogBookRows
-                                      : isAutoconerRewindingStudyReport
-                                        ? normalizeAutoconerRewindingStudyRows
-                                        : isAutoconerConeDensityReport
-                                          ? normalizeAutoconerConeDensityRows
-                                          : isAutoconerLycraCheckingReport
-                                            ? normalizeAutoconerLycraCheckingRows
-                                            : isAutoconerSpliceStrengthReport
-                                              ? normalizeAutoconerSpliceStrengthRows
-                                              : isAutoconerDrumWiseAppearanceReport
-                                                ? normalizeAutoconerDrumWiseAppearanceRows
-                                                : skipsNestedRowExpansion
-                                                  ? extractResponseRows
-                                                  : normalizeRows;
+        if (reportType === ALL_TYPES_VALUE) {
+          // Bounded concurrency (see mapWithConcurrency above) — a sub-department can have 10+
+          // notebook types, and firing every type's request at once would spike backend CPU.
+          const results = await mapWithConcurrency(reportTypes, 3, async (typeName) => {
+            try {
+              return [typeName, await fetchReportRowsForType(typeName)];
+            } catch {
+              return [typeName, []];
+            }
+          });
 
-        let nextRows = [];
-        if (reportFetcher) {
-          try {
-            nextRows = await fetchAllReportRows(reportFetcher, baseReportParams, extractRows);
-          } catch (directError) {
-            nextRows = await fetchAllReportRows(generalReportFetcher, baseReportParams, extractRows);
+          if (isActive && requestIdRef.current === requestId) {
+            setRowsByType(Object.fromEntries(results));
+            setRows(results.flatMap(([, typeRows]) => typeRows));
+            setError("");
           }
-        } else {
-          nextRows = await fetchAllReportRows(generalReportFetcher, baseReportParams, extractRows);
+          return;
         }
 
+        const nextRows = await fetchReportRowsForType(reportType);
         if (isActive && requestIdRef.current === requestId) {
           setRows(nextRows);
+          setRowsByType({ [reportType]: nextRows });
           setError("");
         }
       } catch (requestError) {
@@ -5252,23 +5384,45 @@ function ReportsPage() {
   };
 
   const exportRows = filteredRows;
-  const activeReportDisplay = normalizeReportSelection({
-    departmentName: department,
-    subDepartmentName: subDepartment,
-    typeName: reportType,
-  });
+  const activeReportDisplay = isAllTypeSelected
+    ? { department, subDepartment, reportType: "All Type" }
+    : normalizeReportSelection({
+        departmentName: department,
+        subDepartmentName: subDepartment,
+        typeName: reportType,
+      });
   const activeReportDisplayText = `${activeReportDisplay.department} / ${activeReportDisplay.subDepartment} / ${activeReportDisplay.reportType}`;
 
+  // One row-section per notebook type: just the current type (custom-fields or all-fields) for
+  // the normal single-type flow, or every type in the sub-department for "All Type". Drives both
+  // the multi-table render below and the CSV/Excel/PDF exports so a whole sub-department's report
+  // downloads as one workbook with one sheet per notebook, same as the old General Report page.
+  const exportSections = isAllTypeSelected
+    ? reportTypes.map((typeName) => {
+        const typeRows = filterRowsForType(rowsByType[typeName] || [], typeName);
+        return { typeName, rows: typeRows, fields: getAllFieldsForType(typeName, typeRows) };
+      })
+    : [
+        {
+          typeName: reportType,
+          rows: exportRows,
+          fields: isGeneralReportFlow ? getAllFieldsForType(reportType, exportRows) : selectedFields,
+        },
+      ];
+
   const buildCsv = () => {
-    const header = selectedFields.map((field) => field.label).join(",");
-    const body = exportRows
-      .map((row) =>
-        selectedFields
-          .map((field) => `"${getCellValue(row, field, operatorByEntryKey, { subDepartment, reportType }).replace(/"/g, '""')}"`)
+    const lines = exportSections.flatMap((section) => {
+      const header = section.fields.map((field) => `"${String(field.label).replace(/"/g, '""')}"`).join(",");
+      const body = section.rows.map((row) =>
+        section.fields
+          .map((field) => `"${getCellValue(row, field, operatorByEntryKey, { subDepartment, reportType: section.typeName }).replace(/"/g, '""')}"`)
           .join(",")
-      )
-      .join("\n");
-    return `${header}\n${body}`;
+      );
+      return isAllTypeSelected
+        ? [`"${section.typeName.replace(/"/g, '""')}"`, header, ...(body.length ? body : ['"No report details found."']), ""]
+        : [header, ...body];
+    });
+    return lines.join("\n");
   };
 
   const handleExportCsv = () => {
@@ -5284,8 +5438,7 @@ function ReportsPage() {
       const ExcelJS = await loadExcelJS();
       const workbook = new ExcelJS.Workbook();
       workbook.creator = "Spintelligence";
-      const sheet = workbook.addWorksheet("Report");
-      const fields = selectedFields.length ? selectedFields : [{ key: "__report_data", label: "Report Data" }];
+      const usedSheetNames = new Set();
       const currentDateLabel = new Intl.DateTimeFormat("en-GB", {
         year: "numeric",
         month: "2-digit",
@@ -5299,51 +5452,58 @@ function ReportsPage() {
       }).format(new Date());
       const reportDateLabel = `${startDate || "-"}${endDate && endDate !== startDate ? ` - ${endDate}` : ""}`;
 
-      sheet.addRow([
-        "Department :",
-        activeReportDisplay.department || "-",
-        "",
-        "Selected Date :",
-        reportDateLabel || "-",
-      ]);
-      sheet.addRow([
-        "Sub-department :",
-        activeReportDisplay.subDepartment || "-",
-        "",
-        "Current Date :",
-        currentDateLabel || "-",
-      ]);
-      sheet.addRow([
-        "Notebook Type :",
-        activeReportDisplay.reportType || "-",
-        "",
-        "Current Time :",
-        currentTimeLabel || "-",
-      ]);
-      sheet.addRow([]);
-      sheet.addRow(fields.map((field) => field.label));
-      if (exportRows.length && selectedFields.length) {
-        exportRows.forEach((row) => {
-          sheet.addRow(fields.map((field) => getCellValue(row, field, operatorByEntryKey, { subDepartment, reportType })));
-        });
-      } else {
-        sheet.addRow(["No report details found."]);
-      }
+      exportSections.forEach((section, index) => {
+        const fields = section.fields.length ? section.fields : [{ key: "__report_data", label: "Report Data" }];
+        const sheet = isAllTypeSelected
+          ? workbook.addWorksheet(getWorksheetName(section.typeName, index, usedSheetNames))
+          : workbook.addWorksheet("Report");
 
-      [1, 2, 3, 5].forEach((rowNumber) => {
-        sheet.getRow(rowNumber).font = { bold: true };
+        sheet.addRow([
+          "Department :",
+          activeReportDisplay.department || "-",
+          "",
+          "Selected Date :",
+          reportDateLabel || "-",
+        ]);
+        sheet.addRow([
+          "Sub-department :",
+          activeReportDisplay.subDepartment || "-",
+          "",
+          "Current Date :",
+          currentDateLabel || "-",
+        ]);
+        sheet.addRow([
+          "Notebook Type :",
+          section.typeName || "-",
+          "",
+          "Current Time :",
+          currentTimeLabel || "-",
+        ]);
+        sheet.addRow([]);
+        sheet.addRow(fields.map((field) => field.label));
+        if (section.rows.length && section.fields.length) {
+          section.rows.forEach((row) => {
+            sheet.addRow(fields.map((field) => getCellValue(row, field, operatorByEntryKey, { subDepartment, reportType: section.typeName })));
+          });
+        } else {
+          sheet.addRow(["No report details found."]);
+        }
+
+        [1, 2, 3, 5].forEach((rowNumber) => {
+          sheet.getRow(rowNumber).font = { bold: true };
+        });
+        sheet.getRow(4).height = 4;
+        sheet.columns = [
+          { width: 18 },
+          { width: 28 },
+          { width: 6 },
+          { width: 18 },
+          { width: 28 },
+          ...fields.map((field) => ({
+            width: Math.min(Math.max(String(field.label).length + 4, 16), 36),
+          })),
+        ];
       });
-      sheet.getRow(4).height = 4;
-      sheet.columns = [
-        { width: 18 },
-        { width: 28 },
-        { width: 6 },
-        { width: 18 },
-        { width: 28 },
-        ...fields.map((field) => ({
-          width: Math.min(Math.max(String(field.label).length + 4, 16), 36),
-        })),
-      ];
 
       const buffer = await workbook.xlsx.writeBuffer();
       downloadFile("report.xlsx", buffer, XLSX_MIME);
@@ -5377,6 +5537,8 @@ function ReportsPage() {
             * { box-sizing: border-box; }
             body { font-family: Arial, sans-serif; margin: 0; padding: 24px; color: #14213d; }
             h1 { font-size: 20px; margin: 0 0 16px; }
+            h2 { font-size: 13px; margin: 16px 0 8px; break-after: avoid; }
+            table { margin-bottom: 10px; }
             .meta {
               display: grid;
               grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5425,15 +5587,21 @@ function ReportsPage() {
               <div><strong>Current Time:</strong> ${escapeHtmlText(currentTimeLabel)}</div>
             </div>
           </section>
-          <table>
-            <thead><tr>${selectedFields.map((field) => `<th>${escapeHtmlText(field.label)}</th>`).join("")}</tr></thead>
-            <tbody>${exportRows
-              .map(
-                (row) =>
-                  `<tr>${selectedFields.map((field) => `<td>${escapeHtmlText(getCellValue(row, field, operatorByEntryKey, { subDepartment, reportType }))}</td>`).join("")}</tr>`
-              )
-              .join("")}</tbody>
-          </table>
+          ${exportSections
+            .map((section) => {
+              const headerCells = section.fields.map((field) => `<th>${escapeHtmlText(field.label)}</th>`).join("");
+              const bodyRows = section.rows.length
+                ? section.rows
+                    .map(
+                      (row) =>
+                        `<tr>${section.fields.map((field) => `<td>${escapeHtmlText(getCellValue(row, field, operatorByEntryKey, { subDepartment, reportType: section.typeName }))}</td>`).join("")}</tr>`
+                    )
+                    .join("")
+                : `<tr><td colspan="${Math.max(section.fields.length, 1)}">No report details found.</td></tr>`;
+              const sectionHeading = isAllTypeSelected ? `<h2>${escapeHtmlText(section.typeName)}</h2>` : "";
+              return `${sectionHeading}<table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>`;
+            })
+            .join("")}
         </body>
       </html>
     `);
@@ -5513,11 +5681,16 @@ function ReportsPage() {
                   value={subDepartment}
                   onChange={(event) => {
                     const nextSubDepartment = event.target.value;
+                    const nextReportTypes = isTeamPerformanceReport
+                      ? [TEAM_PERFORMANCE_REPORT_TYPE]
+                      : Object.keys(accessibleReportSources[department]?.[nextSubDepartment] || {});
                     setSubDepartment(nextSubDepartment);
                     setReportType(
                       isTeamPerformanceReport
                         ? TEAM_PERFORMANCE_REPORT_TYPE
-                        : Object.keys(accessibleReportSources[department]?.[nextSubDepartment] || {})[0] || ""
+                        : reportType === ALL_TYPES_VALUE && nextReportTypes.length
+                          ? ALL_TYPES_VALUE
+                          : nextReportTypes[0] || ""
                     );
                   }}
                 >
@@ -5530,9 +5703,11 @@ function ReportsPage() {
               <label className={styles.fieldGroup}>
                 <span>Type</span>
                 <select value={reportType} onChange={(event) => setReportType(event.target.value)}>
-                  {reportTypes.length ? (
-                    reportTypes.map((option) => (
-                      <option key={option}>{option}</option>
+                  {reportTypeOptions.length ? (
+                    reportTypeOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option === ALL_TYPES_VALUE ? "All Type" : option}
+                      </option>
                     ))
                   ) : (
                     <option value="">No type available</option>
@@ -5617,9 +5792,23 @@ function ReportsPage() {
                 </div>
               </>
             </div>
+            {!isTeamPerformanceReport ? (
+              <div className={styles.sendToBlock} style={{ margin: "0 18px 22px" }}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={isGeneralReportFlow}
+                    disabled={isAllTypeSelected}
+                    onChange={(event) => setUseAllFields(event.target.checked)}
+                  />
+                  Include all fields{isAllTypeSelected ? " (always on for All Type)" : ""}
+                </label>
+              </div>
+            ) : null}
           </section>
 
           <section className={styles.contentGrid}>
+            {!isGeneralReportFlow ? (
             <aside className={styles.availableCard}>
               <h2>
                 <strong>{activeReportDisplay.subDepartment}</strong> - {activeReportDisplay.reportType}
@@ -5642,97 +5831,136 @@ function ReportsPage() {
                 ))}
               </div>
             </aside>
+            ) : null}
 
-            <section className={styles.previewCard}>
+            <section className={`${styles.previewCard} ${isGeneralReportFlow ? styles.previewCardFull : ""}`}>
               <h2>Report Preview</h2>
-              <p>
-                Drag to reorder, click X to remove · {filteredRows.length}{" "}
-                {filteredRows.length === 1 ? "entry" : "entries"} loaded
-              </p>
-              <div
-                className={styles.selectedFields}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={handleSelectedAreaDrop}
-              >
-                {selectedFields.map((field) => (
-                  <div
-                    key={field.key}
-                    className={styles.selectedField}
-                    draggable
-                    onDragStart={() => setDraggingField(field)}
-                    onDragEnd={() => setDraggingField(null)}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={(event) => {
-                      event.stopPropagation();
-                      handleSelectedDrop(field.key);
-                    }}
-                  >
-                    <SixDotGrip />
-                    <span>{field.label}</span>
-                    <button
-                      type="button"
-                      aria-label={`Remove ${field.label}`}
-                      onClick={() => removeField(field.key)}
+              {!isGeneralReportFlow ? (
+                <p>
+                  Drag to reorder, click X to remove · {filteredRows.length}{" "}
+                  {filteredRows.length === 1 ? "entry" : "entries"} loaded
+                </p>
+              ) : (
+                <p>
+                  {isAllTypeSelected
+                    ? exportSections.reduce((total, section) => total + section.rows.length, 0)
+                    : exportSections[0].rows.length}{" "}
+                  entries loaded
+                </p>
+              )}
+              {!isGeneralReportFlow ? (
+                <div
+                  className={styles.selectedFields}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={handleSelectedAreaDrop}
+                >
+                  {selectedFields.map((field) => (
+                    <div
+                      key={field.key}
+                      className={styles.selectedField}
+                      draggable
+                      onDragStart={() => setDraggingField(field)}
+                      onDragEnd={() => setDraggingField(null)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => {
+                        event.stopPropagation();
+                        handleSelectedDrop(field.key);
+                      }}
                     >
-                      <FiX />
-                    </button>
-                  </div>
-                ))}
-              </div>
+                      <SixDotGrip />
+                      <span>{field.label}</span>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${field.label}`}
+                        onClick={() => removeField(field.key)}
+                      >
+                        <FiX />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
 
-              <div className={styles.tableWrap}>
-                <table>
-                  <thead>
-                    <tr>
-                      {selectedFields.map((field) => (
-                        <th key={field.key}>{field.label}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {!loading && selectedFields.length === 0 ? (
+              {exportSections.map((section, sectionIndex) => (
+                <div key={section.typeName} style={sectionIndex > 0 ? { marginTop: 24 } : undefined}>
+                  {isAllTypeSelected ? <h3 className={styles.reportSectionTitle}>{section.typeName}</h3> : null}
+                  <div className={styles.tableWrap}>
+                  <table>
+                    <thead>
                       <tr>
-                        <td colSpan={1}>Drag fields from Available Fields to preview the report.</td>
+                        {section.fields.map((field) => (
+                          <th key={field.key}>{field.label}</th>
+                        ))}
                       </tr>
-                    ) : null}
-                    {selectedFields.length > 0
-                      ? filteredRows.map((row, rowIndex) => (
-                          // rowIndex must always be part of the key, not just a fallback — rows
-                          // exploded from a nested array (expandNestedRows, e.g. Blow Room Sync's
-                          // per-entry Run/Idle/Sub Total Time or BR Waste Study's per-type_row
-                          // readings) all inherit the SAME parent id/qc_id/param_id, so keying on
-                          // those alone collapsed every exploded row from one submission onto a
-                          // single React key and only the last one ever rendered.
-                          <tr key={`${row?.id || row?.qc_id || row?.param_id || "row"}-${rowIndex}`}>
-                            {selectedFields.map((field) => (
-                              <td key={field.key}>{getCellValue(row, field, operatorByEntryKey, { subDepartment, reportType })}</td>
-                            ))}
-                          </tr>
-                        ))
-                      : null}
-                    {!loading && selectedFields.length > 0 && filteredRows.length === 0 ? (
-                      <tr>
-                        <td colSpan={selectedFields.length || 1}>{error || "No report details found."}</td>
-                      </tr>
-                    ) : null}
-                    {loading ? (
-                      <tr>
-                        <td colSpan={selectedFields.length || 1}>Loading report details...</td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {!loading && section.fields.length === 0 ? (
+                        <tr>
+                          <td colSpan={1}>Drag fields from Available Fields to preview the report.</td>
+                        </tr>
+                      ) : null}
+                      {section.fields.length > 0
+                        ? section.rows.map((row, rowIndex) => (
+                            // rowIndex must always be part of the key, not just a fallback — rows
+                            // exploded from a nested array (expandNestedRows, e.g. Blow Room Sync's
+                            // per-entry Run/Idle/Sub Total Time or BR Waste Study's per-type_row
+                            // readings) all inherit the SAME parent id/qc_id/param_id, so keying on
+                            // those alone collapsed every exploded row from one submission onto a
+                            // single React key and only the last one ever rendered.
+                            <tr key={`${row?.id || row?.qc_id || row?.param_id || "row"}-${rowIndex}`}>
+                              {section.fields.map((field) => (
+                                <td key={field.key}>{getCellValue(row, field, operatorByEntryKey, { subDepartment, reportType: section.typeName })}</td>
+                              ))}
+                            </tr>
+                          ))
+                        : null}
+                      {!loading && section.fields.length > 0 && section.rows.length === 0 ? (
+                        <tr>
+                          <td colSpan={section.fields.length || 1}>{error || "No report details found."}</td>
+                        </tr>
+                      ) : null}
+                      {loading ? (
+                        <tr>
+                          <td colSpan={section.fields.length || 1}>
+                            <div className={styles.tableLoader}>
+                              <span className={styles.tableLoaderSpinner} aria-hidden="true">
+                                <i className={styles.tableLoaderDot} />
+                                <i className={styles.tableLoaderDot} />
+                                <i className={styles.tableLoaderDot} />
+                                <i className={styles.tableLoaderDot} />
+                              </span>
+                              <span>Loading report details...</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                  </div>
+                </div>
+              ))}
             </section>
           </section>
 
           <section className={styles.exportBar}>
-            <p>
-              Ready to export Report with <strong>{selectedFields.length}</strong>{" "}
-              {selectedFields.length === 1 ? "column" : "columns"}
-            </p>
+            {isAllTypeSelected ? (
+              <p>
+                Ready to export Report for <strong>{exportSections.length}</strong>{" "}
+                {exportSections.length === 1 ? "notebook type" : "notebook types"}
+              </p>
+            ) : (
+              <p>
+                Ready to export Report with <strong>{exportSections[0].fields.length}</strong>{" "}
+                {exportSections[0].fields.length === 1 ? "column" : "columns"}
+              </p>
+            )}
             <div className={styles.exportActions}>
-              <button type="button" onClick={() => openScheduleModal()}>
+              <button
+                type="button"
+                onClick={() => openScheduleModal()}
+                disabled={isGeneralReportFlow}
+                title={isGeneralReportFlow ? "Scheduling isn't available for All Type / all-fields reports yet." : undefined}
+              >
                 <FiCalendar /> Schedule Report
               </button>
               <button type="button" onClick={handleExportCsv}>
