@@ -679,37 +679,11 @@ const ensureSubmittedNotebookTables = async () => {
 
 const ensureScreenFrequencyTable = async () => {
   await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.screen_submission_frequency (
-      id BIGSERIAL PRIMARY KEY,
-      screen_name TEXT NOT NULL,
-      department TEXT NULL,
-      sub_department TEXT NULL,
-      frequency INTEGER NOT NULL,
-      occurrences INTEGER NULL,
-      is_active BOOLEAN NOT NULL DEFAULT true,
-      approval_l1 TEXT NULL,
-      approval_l1_name TEXT NULL,
-      approval_l2 TEXT NULL,
-      approval_l2_name TEXT NULL,
-      approval_l3 TEXT NULL,
-      approval_l3_name TEXT NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      UNIQUE (screen_name, department, sub_department)
-    )
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-      ADD COLUMN IF NOT EXISTS occurrences INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS approval_l1 TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l1_name TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l2 TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l2_name TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l3 TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l3_name TEXT NULL,
-      ADD COLUMN IF NOT EXISTS l1_tat_hours INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS l2_tat_hours INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS l3_tat_hours INTEGER NULL
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'ticketing_system'
+      AND table_name = 'screen_submission_frequency'
+    LIMIT 1
   `);
   await client.query(`
     DELETE FROM ticketing_system.screen_submission_frequency f
@@ -746,24 +720,6 @@ const ensureAcknowledgementThresholdTable = async () => {
       UNIQUE (screen_name, department, sub_department)
     )
   `);
-
-  await client.query(`
-    ALTER TABLE ticketing_system.notebook_acknowledgement_threshold
-      ADD COLUMN IF NOT EXISTS acknowledge_within_hours INTEGER NOT NULL DEFAULT 24,
-      ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true,
-      ADD COLUMN IF NOT EXISTS approval_l2 TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l2_name TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l3 TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l3_name TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l4 TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l4_name TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l5 TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l5_name TEXT NULL,
-      ADD COLUMN IF NOT EXISTS l3_tat_hours INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS l4_tat_hours INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS l5_tat_hours INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS criticality TEXT NOT NULL DEFAULT 'High'
-  `);
   await client.query(`
     DELETE FROM ticketing_system.notebook_acknowledgement_threshold t
     USING (
@@ -792,8 +748,8 @@ const ensureAcknowledgementThresholdTable = async () => {
 const getSubmissionFrequencyConfigForNotebook = async (submission) => {
   await ensureScreenFrequencyTable();
   const result = await client.query(
-    `SELECT id, screen_name, department, sub_department, frequency, occurrences,
-            approval_l2, approval_l2_name, approval_l3, approval_l3_name, l1_tat_hours, l2_tat_hours, l3_tat_hours
+    `SELECT id, screen_name, department, sub_department, "range", frequency,
+            approval_l1, criticality
      FROM ticketing_system.screen_submission_frequency
      WHERE is_active = true
        AND LOWER(TRIM(screen_name)) = LOWER(TRIM($1))
@@ -816,8 +772,8 @@ const getSubmissionFrequencyConfigForNotebook = async (submission) => {
 const getSubmissionFrequencyConfigForThreshold = async ({ screenName, department, subDepartment }) => {
   await ensureScreenFrequencyTable();
   const result = await client.query(
-    `SELECT id, screen_name, department, sub_department, frequency, occurrences,
-            approval_l2, approval_l2_name, approval_l3, approval_l3_name, l1_tat_hours, l2_tat_hours, l3_tat_hours
+    `SELECT id, screen_name, department, sub_department, "range", frequency,
+            approval_l1, criticality
      FROM ticketing_system.screen_submission_frequency
      WHERE is_active = true
        AND (

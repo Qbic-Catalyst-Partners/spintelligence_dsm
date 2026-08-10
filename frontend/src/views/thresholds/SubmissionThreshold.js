@@ -14,28 +14,17 @@ import {
 import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
-import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
 import styles from "@/styles/SubmissionThreshold.module.css";
 
 const createRule = () => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  approvalL1: [],
-  approvalL2: [],
-  approvalL1Tat: "08:00",
-  approvalL2Tat: "08:00",
+  l1User: "",
+  frequency: "1",
   everyDays: "1",
   isActive: true,
-  fieldName: "",
   criticality: "",
-  actualValue: "",
-  valueMode: "number",
-  positiveTolerance: "",
-  negativeTolerance: "",
 });
-
-const hourOptions = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
-const minuteOptions = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
 
 const buildExistingFilters = () => ({
   department: "",
@@ -154,70 +143,10 @@ const parseTatParts = (value) => {
 
 const formatTatValue = (hour, minute) => `${hour}:${minute}`;
 
-const formatTatHours = (value) => {
-  const hours = Number(value);
-  if (!Number.isInteger(hours) || hours <= 0) return "08:00";
-
-  const normalizedHour = Math.min(Math.max(hours, 0), 23);
-  return `${String(normalizedHour).padStart(2, "0")}:00`;
-};
-
-const tatValueToHours = (value) => {
-  const { hour, minute } = parseTatParts(value);
-  const hourNumber = Number(hour);
-  const minuteNumber = Number(minute);
-  return Math.max(1, hourNumber + (minuteNumber > 0 ? 1 : 0));
-};
-
 const resolveUsers = (users, values) =>
   normalizeNameList(values)
     .map((value) => resolveUser(users, value))
     .filter(Boolean);
-
-const getScreenFieldOptions = (screenName, configs = []) => {
-  const catalogFields = getThresholdFieldsForScreen(screenName);
-
-  if (catalogFields.length) {
-    return catalogFields;
-  }
-
-  const inferredFields = configs
-    .filter((item) => item?.screen_name === screenName)
-    .map((item) => item?.input_field)
-    .filter(Boolean);
-
-  return Array.from(new Set(inferredFields)).sort();
-};
-
-const getCriticalityLabel = (item) => {
-  const directValue = String(item?.criticality || "").trim();
-
-  if (directValue) {
-    const normalized = directValue.toLowerCase();
-    if (normalized === "high" || normalized === "medium" || normalized === "low") {
-      return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-    }
-  }
-
-  const plusValue = Number(item?.plus_threshold);
-  const minusValue = Number(item?.minus_threshold);
-  const tolerance = Math.max(
-    Number.isFinite(plusValue) ? Math.abs(plusValue) : 0,
-    Number.isFinite(minusValue) ? Math.abs(minusValue) : 0
-  );
-
-  if (tolerance >= 2) return "High";
-  if (tolerance >= 1) return "Medium";
-  return "Low";
-};
-
-const formatToleranceDisplay = (item, absoluteValue, percentValue) => {
-  if (item?.value_mode === "percent" && percentValue !== undefined && percentValue !== null && percentValue !== "") {
-    return `${percentValue} (%)`;
-  }
-
-  return absoluteValue ?? "-";
-};
 
 function ExpandableCell({ values = [], fallback = "-" }) {
   const normalizedValues = Array.from(
@@ -350,78 +279,6 @@ function SingleSelectDropdown({
   );
 }
 
-function TatTimePicker({ value, onChange, label }) {
-  const containerRef = useRef(null);
-  const [isOpen, setIsOpen] = useState(false);
-  const { hour, minute } = parseTatParts(value);
-
-  useEffect(() => {
-    const handleOutsideClick = (event) => {
-      if (!containerRef.current?.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-    };
-  }, []);
-
-  const syncTime = (nextHour, nextMinute) => {
-    onChange?.(formatTatValue(nextHour, nextMinute));
-  };
-
-  const handleTextChange = (nextValue) => {
-    onChange?.(nextValue);
-  };
-
-  return (
-    <div className={styles.tatTimeWrap} ref={containerRef}>
-      <input
-        type="text"
-        value={value}
-        placeholder="08:00"
-        onFocus={() => setIsOpen(true)}
-        onClick={() => setIsOpen(true)}
-        onChange={(event) => handleTextChange(event.target.value)}
-      />
-      <button
-        type="button"
-        className={styles.tatTimeButton}
-        onClick={() => setIsOpen((current) => !current)}
-        aria-label={`Select ${label} turn around time`}
-      >
-        <FiClock />
-      </button>
-      {isOpen ? (
-        <div className={styles.tatTimeMenu}>
-          <label>
-            <span>Hrs</span>
-            <select value={hour} onChange={(event) => syncTime(event.target.value, minute)}>
-              {hourOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Mins</span>
-            <select value={minute} onChange={(event) => syncTime(hour, event.target.value)}>
-              {minuteOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export default function SubmissionThreshold({ standalone = true, editItem = null, onEditItemHandled } = {}) {
   const dispatch = useDispatch();
   const router = useRouter();
@@ -445,6 +302,7 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
   const [editingConfigId, setEditingConfigId] = useState("");
   const [statusUpdatingId, setStatusUpdatingId] = useState("");
   const [deletingId, setDeletingId] = useState("");
+  const [previewPayload, setPreviewPayload] = useState(null);
 
   const availableDepartments = departmentDirectory.filter((item) => item.enabled);
   const selectedDepartment =
@@ -464,7 +322,6 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
   );
 
   const l1Options = useMemo(() => buildUserOptions(users, "L1"), [users]);
-  const l2Options = useMemo(() => buildUserOptions(users, "L2"), [users]);
 
   const totalThresholds = configs.length;
   const activeThresholds = configs.filter((item) => item?.is_active).length;
@@ -672,30 +529,21 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
         .find((department) => department.slug === departmentSlug)
         ?.subDepartments?.find((subDepartment) => subDepartment.name === item?.sub_department)?.slug ||
       "";
+    const resolvedL1Name =
+      getUserDisplayName(resolveUsers(users, item?.approval_l1_name || item?.approval_l1)[0]) ||
+      getUserDisplayName(resolveUser(users, item?.approval_l1_name || item?.approval_l1)) ||
+      String(item?.approval_l1_name || item?.approval_l1 || "").trim();
     setSelectedDepartmentSlug(departmentSlug);
     setSelectedSubDepartmentSlug(subDepartmentSlug);
     setSelectedScreenName(item?.screen_name || "");
     setRules([
       {
         id: `${Date.now()}-edit`,
-        approvalL1: normalizeNameList(item?.approval_l1_name || item?.approval_l1),
-        approvalL2: normalizeNameList(item?.approval_l2_name || item?.approval_l2),
-        approvalL1Tat: formatTatHours(item?.l1_tat_hours),
-        approvalL2Tat: formatTatHours(item?.l2_tat_hours),
+        l1User: resolvedL1Name,
+        frequency: String(item?.frequency ?? "1"),
         everyDays: String(item?.range ?? "1"),
         isActive: Boolean(item?.is_active),
-        fieldName: item?.input_field || "",
-        criticality: getCriticalityLabel(item),
-        actualValue: String(item?.actual_value ?? ""),
-        valueMode: item?.value_mode === "percent" ? "percent" : "number",
-        positiveTolerance:
-          item?.value_mode === "percent"
-            ? String(item?.positive_tolerance_percent ?? "")
-            : String(item?.plus_threshold ?? ""),
-        negativeTolerance:
-          item?.value_mode === "percent"
-            ? String(item?.negative_tolerance_percent ?? "")
-            : String(item?.minus_threshold ?? ""),
+        criticality: item?.criticality || "",
       },
     ]);
     setEditingConfigId(String(item?.id || ""));
@@ -768,7 +616,6 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
 
   const handleSave = async (event) => {
     event.preventDefault();
-    setSaving(true);
     setMessage("");
     setError("");
 
@@ -792,94 +639,59 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
         if (!Number.isInteger(everyDaysValue) || everyDaysValue < 1) {
           throw new Error("Please enter a valid number of days for the frequency condition.");
         }
-        const selectedL1 = normalizeNameList(rule.approvalL1);
-        const selectedL2 = normalizeNameList(rule.approvalL2);
-        const l1Users = resolveUsers(users, selectedL1);
-        const l2Users = resolveUsers(users, selectedL2);
-
-        if (!selectedL1.length) {
+        const selectedL1 = String(rule.l1User || "").trim();
+        if (!selectedL1) {
           throw new Error("Please select an L1 user for each row.");
         }
 
-        if (!selectedL2.length) {
-          throw new Error("Please select an L2 user for each row.");
-        }
-
-        const l1Ids = l1Users.map((item) => item.id).filter(Boolean);
-        const l2Ids = l2Users.map((item) => item.id).filter(Boolean);
-        const l1Names = l1Users.map((item) => getUserDisplayName(item)).filter(Boolean);
-        const l2Names = l2Users.map((item) => getUserDisplayName(item)).filter(Boolean);
-
-        // Value-threshold fields are optional per row — only input_field is the
-        // gate; when it's blank the rest are left null so the frequency check
-        // keeps behaving exactly as before for that config.
-        const inputField = String(rule.fieldName || "").trim();
-        const rawActualValue = String(rule.actualValue || "").trim();
-        const rawPositiveTolerance = String(rule.positiveTolerance || "").trim();
-        const rawNegativeTolerance = String(rule.negativeTolerance || "").trim();
         const criticality = String(rule.criticality || "").trim();
-
-        if (inputField && (!rawActualValue || !criticality || (!rawPositiveTolerance && !rawNegativeTolerance))) {
-          throw new Error(
-            "Please provide typical value, criticality, and at least one of plus/minus for the input field."
-          );
+        const frequencyValue = Number(rule.frequency);
+        if (!Number.isInteger(frequencyValue) || frequencyValue < 1) {
+          throw new Error("Please enter a valid frequency value.");
         }
-
-        const numericActualValue = Number(rawActualValue);
-        const numericPositiveTolerance = Number(rawPositiveTolerance);
-        const numericNegativeTolerance = Number(rawNegativeTolerance);
 
         return {
           screen_name: selectedScreenName,
           department: selectedDepartment.name,
           sub_department: subDepartmentName,
           range: everyDaysValue,
-          frequency: null,
+          frequency: frequencyValue,
           is_active: rule.isActive,
-          approval_l1: l1Ids.length ? l1Ids.join(", ") : selectedL1.join(", "),
-          approval_l1_name: l1Names.length ? l1Names.join(", ") : selectedL1.join(", "),
-          tracked_l1_user_ids: l1Ids,
-          l1_tat_hours: tatValueToHours(rule.approvalL1Tat),
-          approval_l2: l2Ids.length ? l2Ids.join(", ") : selectedL2.join(", "),
-          approval_l2_name: l2Names.length ? l2Names.join(", ") : selectedL2.join(", "),
-          l2_tat_hours: tatValueToHours(rule.approvalL2Tat),
-          input_field: inputField || null,
-          criticality: inputField ? criticality || null : null,
-          actual_value:
-            inputField && rawActualValue !== "" && Number.isFinite(numericActualValue)
-              ? numericActualValue
-              : inputField
-                ? rawActualValue || null
-                : null,
-          value_mode: inputField ? rule.valueMode || "number" : null,
-          plus_threshold:
-            inputField && rawPositiveTolerance !== "" && Number.isFinite(numericPositiveTolerance)
-              ? numericPositiveTolerance
-              : inputField
-                ? rawPositiveTolerance || null
-                : null,
-          minus_threshold:
-            inputField && rawNegativeTolerance !== "" && Number.isFinite(numericNegativeTolerance)
-              ? numericNegativeTolerance
-              : inputField
-                ? rawNegativeTolerance || null
-                : null,
-          positive_tolerance_percent:
-            inputField && rule.valueMode === "percent" ? rawPositiveTolerance || null : null,
-          negative_tolerance_percent:
-            inputField && rule.valueMode === "percent" ? rawNegativeTolerance || null : null,
+          approval_l1: selectedL1,
+          approval_l1_name: selectedL1,
+          criticality: criticality || null,
         };
       });
 
+      setPreviewPayload({
+        department: selectedDepartment.name,
+        subDepartment: subDepartmentName,
+        notebook: selectedScreenName,
+        rows: payloads,
+      });
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || "Failed to save submission threshold.");
+    }
+  };
+
+  const confirmSave = async () => {
+    if (!previewPayload?.rows?.length) return;
+
+    setSaving(true);
+    setMessage("");
+    setError("");
+
+    try {
       if (editingConfigId) {
-        const response = await updateSubmissionFrequencyConfigAPI(editingConfigId, payloads[0]);
+        const response = await updateSubmissionFrequencyConfigAPI(editingConfigId, previewPayload.rows[0]);
         setMessage(response?.message || "Submission threshold updated successfully.");
       } else {
-        await Promise.all(payloads.map((payload) => saveSubmissionFrequencyConfigAPI(payload)));
+        await Promise.all(previewPayload.rows.map((payload) => saveSubmissionFrequencyConfigAPI(payload)));
         setMessage("Submission threshold saved successfully.");
       }
       setActiveTab("existing");
       resetForm({ preserveFeedback: true });
+      setPreviewPayload(null);
       await loadConfigs();
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || "Failed to save submission threshold.");
@@ -887,6 +699,15 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
       setSaving(false);
     }
   };
+
+  const cancelPreview = () => {
+    if (saving) return;
+    setPreviewPayload(null);
+  };
+
+  const previewFrequency = previewPayload?.rows?.[0]?.frequency || 1;
+  const previewDays = previewPayload?.rows?.[0]?.range || 1;
+  const previewDaysLabel = Number(previewDays) === 1 ? "day" : "days";
 
   if (!isHydrated || !canAccessPage) {
     return null;
@@ -1019,42 +840,22 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                       </label>
 
                       <label className={styles.field}>
-                        <span>L1</span>
-                        <SingleSelectDropdown
-                          value={rule.approvalL1}
-                          options={l1Options}
-                          onChange={(nextValue) => handleRuleChange(rule.id, "approvalL1", nextValue)}
-                          placeholder={l1Options.length ? "Select" : "No L1 users available"}
-                          emptyLabel="No L1 users available"
-                        />
-                      </label>
-
-                      <label className={styles.field}>
-                        <span>L2</span>
-                        <SingleSelectDropdown
-                          value={rule.approvalL2}
-                          options={l2Options}
-                          onChange={(nextValue) => handleRuleChange(rule.id, "approvalL2", nextValue)}
-                          placeholder={l2Options.length ? "Select" : "No L2 users available"}
-                          emptyLabel="No L2 users available"
-                        />
-                      </label>
-
-                      <label className={styles.field}>
-                        <span>Input Field Name (optional)</span>
+                        <span>Assigned to</span>
                         <select
-                          value={rule.fieldName}
-                          onChange={(event) =>
-                            handleRuleChange(rule.id, "fieldName", event.target.value)
-                          }
-                          disabled={!selectedScreenName}
+                          value={rule.l1User}
+                          onChange={(event) => handleRuleChange(rule.id, "l1User", event.target.value)}
+                          disabled={!l1Options.length}
                         >
-                          <option value="">Select Field</option>
-                          {getScreenFieldOptions(selectedScreenName, configs).map((fieldOption) => (
-                            <option key={fieldOption} value={fieldOption}>
-                              {fieldOption}
-                            </option>
-                          ))}
+                          <option value="">{l1Options.length ? "Selected L1 Users" : "No L1 users available"}</option>
+                          {l1Options.map((user) => {
+                            const displayName = getUserDisplayName(user);
+        const value = displayName;
+                            return (
+                              <option key={value} value={value}>
+                                {displayName}
+                              </option>
+                            );
+                          })}
                         </select>
                       </label>
 
@@ -1074,62 +875,16 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                       </label>
 
                       <label className={styles.field}>
-                        <span>Typical Value</span>
-                        <span className={styles.actualValueRow}>
-                          <input
-                            className={styles.actualValueInput}
-                            value={rule.actualValue}
-                            onChange={(event) =>
-                              handleRuleChange(rule.id, "actualValue", event.target.value)
-                            }
-                            placeholder="Enter value"
-                          />
-                          <span className={styles.valueModeGroup} role="radiogroup" aria-label="Value type">
-                            <label className={styles.valueModeOption}>
-                              <input
-                                type="radio"
-                                name={`value-mode-${rule.id}`}
-                                checked={(rule.valueMode || "number") === "number"}
-                                onChange={() => handleRuleChange(rule.id, "valueMode", "number")}
-                              />
-                              Numbers
-                            </label>
-                            <label className={styles.valueModeOption}>
-                              <input
-                                type="radio"
-                                name={`value-mode-${rule.id}`}
-                                checked={rule.valueMode === "percent"}
-                                onChange={() => handleRuleChange(rule.id, "valueMode", "percent")}
-                              />
-                              Percentage
-                            </label>
-                          </span>
-                        </span>
-                      </label>
-
-                      <label className={styles.field}>
-                        <span>Plus (+){rule.valueMode === "percent" ? " %" : ""}</span>
+                        <span>Frequency</span>
                         <input
-                          value={rule.positiveTolerance}
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={rule.frequency}
                           onChange={(event) =>
-                            handleRuleChange(rule.id, "positiveTolerance", event.target.value)
+                            handleRuleChange(rule.id, "frequency", event.target.value)
                           }
-                          placeholder={
-                            rule.valueMode === "percent" ? "Enter + % (e.g. 5)" : "Enter + tolerance"
-                          }
-                        />
-                      </label>
-
-                      <label className={styles.field}>
-                        <span>Minus (-){rule.valueMode === "percent" ? " %" : ""} (optional)</span>
-                        <input
-                          value={rule.negativeTolerance}
-                          onChange={(event) =>
-                            handleRuleChange(rule.id, "negativeTolerance", event.target.value)
-                          }
-                          placeholder={
-                            rule.valueMode === "percent" ? "Enter - % (e.g. 5)" : "Enter - tolerance"
-                          }
+                          placeholder="Enter frequency"
                         />
                       </label>
 
@@ -1171,7 +926,7 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                     Clear
                   </button>
                   <button type="submit" className={styles.saveButton} disabled={saving}>
-                    {saving ? "Saving..." : "Save"}
+                    {saving ? "Saving..." : editingConfigId ? "Preview Update" : "Preview Save"}
                   </button>
                 </div>
               </div>
@@ -1273,16 +1028,12 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                   <thead>
                     <tr>
                       <th>Department</th>
-                      <th>Sub-Deprt.</th>
+                      <th>Sub Department</th>
                       <th>Notebook</th>
                       <th>L1</th>
-                      <th>L2</th>
-                      <th>In Every (Days)</th>
-                      <th>Input Field</th>
                       <th>Criticality</th>
-                      <th>Typical Value</th>
-                      <th>Plus (+)</th>
-                      <th>Minus (-)</th>
+                      <th>Frequency</th>
+                      <th>In Every (Days)</th>
                       <th>Status</th>
                       <th>Created At</th>
                       <th>Action</th>
@@ -1291,11 +1042,11 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={14}>Loading...</td>
+                        <td colSpan={9}>Loading...</td>
                       </tr>
                     ) : filteredConfigs.length === 0 ? (
                       <tr>
-                        <td colSpan={14}>No submission thresholds found.</td>
+                        <td colSpan={9}>No submission thresholds found.</td>
                       </tr>
                     ) : (
                       filteredConfigs.map((item, index) => {
@@ -1306,8 +1057,7 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                         const isMenuOpen = openActionMenuId === String(rowKey);
                         const isStatusUpdating = statusUpdatingId === String(item?.id || "");
                         const isDeleting = deletingId === String(item?.id || "");
-                        const hasInputField = Boolean(item?.input_field);
-                        const criticalityLabel = hasInputField ? getCriticalityLabel(item) : "";
+                        const criticalityLabel = String(item?.criticality || "-").trim() || "-";
 
                         return (
                         <tr key={rowKey}>
@@ -1320,38 +1070,20 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                             <ExpandableCell values={item.approval_l1_name || item.approval_l1} />
                           </td>
                           <td>
-                            <ExpandableCell values={item.approval_l2_name || item.approval_l2} />
+                            <span
+                              className={`${styles.criticalityBadge} ${
+                                criticalityLabel === "High"
+                                  ? styles.criticalityHigh
+                                  : criticalityLabel === "Medium"
+                                    ? styles.criticalityMedium
+                                    : styles.criticalityLow
+                              }`}
+                            >
+                              {criticalityLabel}
+                            </span>
                           </td>
+                          <td>{item.frequency ?? "-"}</td>
                           <td>{item.range ?? "-"}</td>
-                          <td>{item.input_field || "-"}</td>
-                          <td>
-                            {hasInputField ? (
-                              <span
-                                className={`${styles.criticalityBadge} ${
-                                  criticalityLabel === "High"
-                                    ? styles.criticalityHigh
-                                    : criticalityLabel === "Medium"
-                                      ? styles.criticalityMedium
-                                      : styles.criticalityLow
-                                }`}
-                              >
-                                {criticalityLabel}
-                              </span>
-                            ) : (
-                              "-"
-                            )}
-                          </td>
-                          <td>{hasInputField ? item.actual_value ?? "-" : "-"}</td>
-                          <td className={styles.positiveValue}>
-                            {hasInputField
-                              ? formatToleranceDisplay(item, item.plus_threshold, item.positive_tolerance_percent)
-                              : "-"}
-                          </td>
-                          <td className={styles.negativeValue}>
-                            {hasInputField
-                              ? formatToleranceDisplay(item, item.minus_threshold, item.negative_tolerance_percent)
-                              : "-"}
-                          </td>
                           <td>
                             <span
                               className={`${styles.statusBadge} ${
@@ -1425,19 +1157,92 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
     </>
   );
 
-  if (!standalone) {
-    return content;
-  }
-
   return (
-    <div className={styles.page}>
-      <div className={styles.shell}>
-        <div className={styles.intro}>
-          <h1>Submission Threshold</h1>
-          <p>Add and edit the threshold Submission</p>
+    <div className={standalone ? styles.page : undefined}>
+      {standalone ? (
+        <div className={styles.shell}>
+          <div className={styles.intro}>
+            <h1>Submission Threshold</h1>
+            <p>Add and edit the threshold Submission</p>
+          </div>
+          {content}
         </div>
-        {content}
-      </div>
+      ) : (
+        content
+      )}
+
+      {previewPayload ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.72)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 50,
+            padding: 20,
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Submission threshold preview"
+        >
+          <div
+            style={{
+          width: "min(440px, calc(100vw - 40px))",
+              background: "#fff",
+              borderRadius: 20,
+              padding: 24,
+              boxShadow: "0 24px 70px rgba(0,0,0,0.28)",
+              color: "#0f172a",
+            }}
+          >
+            <div style={{ display: "grid", placeItems: "center", marginBottom: 12 }}>
+              <div
+                aria-hidden="true"
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: "999px",
+                  display: "grid",
+                  placeItems: "center",
+                  background: "#dbeafe",
+                  color: "#2563eb",
+                  fontSize: 22,
+                  fontWeight: 700,
+                }}
+              >
+                !
+              </div>
+            </div>
+            <p style={{ marginTop: 0, color: "#0f172a", textAlign: "center", lineHeight: 1.7, fontWeight: 700 }}>
+              You have selected submission frequency of{" "}
+              <span style={{ whiteSpace: "nowrap" }}>
+                {previewFrequency} times {previewDays} {previewDaysLabel}
+              </span>{" "}
+              to{" "}
+              <span style={{ fontWeight: 800, color: "#2563eb" }}>
+                {previewPayload.rows[0]?.approval_l1_name || "L1 user"}
+              </span>{" "}
+              {previewPayload.department} &gt; {previewPayload.subDepartment} &gt; {previewPayload.notebook}
+            </p>
+
+            <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 24 }}>
+              <button type="button" className={styles.clearButton} onClick={cancelPreview} disabled={saving}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.saveButton}
+                onClick={confirmSave}
+                disabled={saving}
+                style={{ background: "#2563eb", color: "#fff", borderColor: "#2563eb" }}
+              >
+                {saving ? "Saving..." : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

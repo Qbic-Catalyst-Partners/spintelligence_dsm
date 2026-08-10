@@ -1112,115 +1112,35 @@ const ensureScreenFrequencyTable = async () => {
       frequency INTEGER NULL,
       is_active BOOLEAN NOT NULL DEFAULT true,
       approval_l1 TEXT NULL,
-      approval_l1_name TEXT NULL,
-      approval_l2 TEXT NULL,
-      approval_l2_name TEXT NULL,
-      approval_l3 TEXT NULL,
-      approval_l3_name TEXT NULL,
+      criticality TEXT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
       UNIQUE (screen_name, department, sub_department)
     )
   `);
+};
 
+const ensureTicketResolutionSlaTable = async () => {
   await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS frequency INTEGER NULL
+    CREATE TABLE IF NOT EXISTS ticketing_system.ticket_resolution_sla (
+      level text PRIMARY KEY,
+      resolution_hours integer NOT NULL DEFAULT 24,
+      is_active boolean NOT NULL DEFAULT true,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
   `);
+};
 
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS approval_l1 TEXT NULL
-  `);
+const normalizeSlaLevel = (value) => {
+  const level = String(value || "").trim().toUpperCase();
+  return ["L1", "L2", "L3", "L4"].includes(level) ? level : null;
+};
 
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS approval_l1_name TEXT NULL
-  `);
-
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS approval_l2 TEXT NULL
-  `);
-
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS approval_l2_name TEXT NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS approval_l3 TEXT NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS approval_l3_name TEXT NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS l1_tat_hours INTEGER NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS l2_tat_hours INTEGER NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS l3_tat_hours INTEGER NULL
-  `);
-  // Employee-Hierarchy-and-Workflow-System_V2.pdf: Submission Threshold
-  // escalates all the way to L5, not just L2/L3 - this table previously had
-  // no L4/L5 TAT columns at all, capping escalation at L3.
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS l4_tat_hours INTEGER NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS l5_tat_hours INTEGER NULL
-  `);
-  // PDF's Submission Threshold config: "L1 User: Select the specific L1
-  // user(s) to whom this threshold applies" - who is being tracked, not who
-  // approves anything (there is no L1 "approver" concept for this threshold
-  // type). Previously nothing recorded this, so there was no way to know
-  // which L1 user(s) a given screen's frequency requirement applies to.
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS tracked_l1_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]
-  `);
-  // Value-range breach check alongside the existing frequency check - optional per
-  // row (input_field left blank keeps a config frequency-only, as before).
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS input_field TEXT NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS criticality TEXT NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS actual_value NUMERIC NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS value_mode TEXT NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS plus_threshold NUMERIC NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS minus_threshold NUMERIC NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS positive_tolerance_percent NUMERIC NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS negative_tolerance_percent NUMERIC NULL
-  `);
+const normalizeSlaHours = (value) => {
+  const hours = Number(value);
+  if (!Number.isInteger(hours) || hours < 1 || hours > 100) return null;
+  return hours;
 };
 
 // Employee-Hierarchy-and-Workflow-System_V2.pdf: "If an L1 user fails to
@@ -1600,6 +1520,72 @@ router.post('/submission-frequency/check', async (req, res, next) => {
       created_count: created.length,
       created_tickets: created
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/ticket-resolution-sla', async (req, res, next) => {
+  try {
+    await ensureTicketResolutionSlaTable();
+    const result = await client.query(
+      `SELECT level, resolution_hours, is_active, created_at, updated_at
+       FROM ticketing_system.ticket_resolution_sla
+       ORDER BY CASE level WHEN 'L1' THEN 1 WHEN 'L2' THEN 2 WHEN 'L3' THEN 3 WHEN 'L4' THEN 4 ELSE 5 END`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/ticket-resolution-sla', async (req, res, next) => {
+  try {
+    await ensureTicketResolutionSlaTable();
+    const level = normalizeSlaLevel(req.body?.level);
+    const hours = normalizeSlaHours(req.body?.resolution_hours ?? req.body?.hours);
+    const isActive = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
+    if (!level) return res.status(400).json({ message: 'level must be L1, L2, L3, or L4' });
+    if (!hours) return res.status(400).json({ message: 'resolution_hours must be between 1 and 100' });
+
+    const result = await client.query(
+      `INSERT INTO ticketing_system.ticket_resolution_sla (level, resolution_hours, is_active, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (level)
+       DO UPDATE SET resolution_hours = EXCLUDED.resolution_hours, is_active = EXCLUDED.is_active, updated_at = NOW()
+       RETURNING level, resolution_hours, is_active, created_at, updated_at`,
+      [level, hours, isActive]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/ticket-resolution-sla/:level/status', async (req, res, next) => {
+  try {
+    await ensureTicketResolutionSlaTable();
+    const level = normalizeSlaLevel(req.params.level);
+    const isActive = req.body?.is_active;
+    if (!level) return res.status(400).json({ message: 'level must be L1, L2, L3, or L4' });
+    if (typeof isActive !== 'boolean') return res.status(400).json({ message: 'is_active must be boolean' });
+
+    const result = await client.query(
+      `UPDATE ticketing_system.ticket_resolution_sla
+       SET is_active = $1, updated_at = NOW()
+       WHERE level = $2
+       RETURNING level, resolution_hours, is_active, created_at, updated_at`,
+      [isActive, level]
+    );
+    if (result.rows[0]) return res.json(result.rows[0]);
+
+    const inserted = await client.query(
+      `INSERT INTO ticketing_system.ticket_resolution_sla (level, resolution_hours, is_active, updated_at)
+       VALUES ($1, 24, $2, NOW())
+       RETURNING level, resolution_hours, is_active, created_at, updated_at`,
+      [level, isActive]
+    );
+    return res.json(inserted.rows[0]);
   } catch (err) {
     next(err);
   }
