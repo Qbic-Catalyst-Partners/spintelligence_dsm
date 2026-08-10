@@ -1116,7 +1116,13 @@ const normalizeBetweenWithinCardRows = (inspectionType) => (response) =>
 // original machine name/label can be reconstructed later purely from the column key — see
 // machineSlugToLabel below.
 const slugifyMachineName = (machine) => String(machine ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
-const machineSlugToLabel = (slug) => String(slug ?? "").toUpperCase().replace(/_/g, "-");
+const machineSlugToLabel = (slug) => {
+  const normalized = String(slug ?? "").toLowerCase();
+  if (normalized === "cdg_03" || normalized === "cdg_06") {
+    return "B/R Line 11(CDG 03 &06)";
+  }
+  return String(slug ?? "").toUpperCase().replace(/_/g, "-");
+};
 
 const normalizeCardThickPlaceRows = (response) =>
   extractResponseRows(response).map((row) => {
@@ -1198,21 +1204,26 @@ const normalizeDrawFrameYarnCvRows = (response) =>
 
 // Spinning's "Count Change" collects however many individual readings the user enters (N, not
 // fixed) — the GET route already joins them into a `readings` array per submission (each shaped
-// { reading_no, reading_value, count, cv_percent, strength, mean, cv_percent_2, csp }), but
+// { reading_no, reading_value, count, cv_percent, strength, cv_percent_2, csp }), but
 // Custom Report never had a normalizer to expose them as numbered columns, so they always fell
 // through to the generic fallback. A submission with zero matching child rows comes back from
 // the LEFT JOIN as a single `{ reading_no: null, ... }` placeholder — filter that out.
 const SPINNING_COUNT_CHANGE_METRIC_KEYS = [
-  "reading_no", "reading_value", "count", "cv_percent", "strength", "mean", "cv_percent_2", "csp",
+  "reading_no",
+  "reading_value",
+  "count",
+  "cv_percent",
+  "strength",
+  "cv_percent_2",
+  "csp",
 ];
 const SPINNING_COUNT_CHANGE_METRIC_LABELS = {
   reading_no: "Reading No.",
   reading_value: "Reading Value",
   count: "Count",
-  cv_percent: "CV%",
+  cv_percent: "Count CV %",
   strength: "Strength",
-  mean: "Mean",
-  cv_percent_2: "CV% 2",
+  cv_percent_2: "Strength CV %",
   csp: "CSP",
 };
 
@@ -2331,6 +2342,8 @@ const reportFieldAliases = {
   // Mixing's AFIS-6 Cotton/MMF notebooks use scientific notation in their own field labels
   // (SCF vs the column's "sfc", %/units embedded in the label) that the generic canonical-key
   // matcher can't bridge on its own — each of these needed an explicit alias to its real column.
+  "B/R Line 11(CDG 03 &06) - Card Thick Place Value": ["card_thick_place_cdg_03", "card_thick_place_cdg_06"],
+  "B/R Line 11(CDG 03 &06) - 5m CV": ["five_m_cv_cdg_03", "five_m_cv_cdg_06"],
   "L(W)": ["l_w_mm"],
   "SCF(W)<12.70mm": ["sfc_w_percent"],
   "UQL(w)": ["uql_w_mm"],
@@ -3876,6 +3889,15 @@ function ReportsPage() {
                 : globallyExcludedReportFields),
               "Creation Date",
             ]
+          : subDepartment === "Carding" && reportType === "WheelChange"
+            ? [
+                ...globallyExcludedReportFields,
+                "Type",
+              ]
+          : subDepartment === "Comber" && reportType === "Nati Data Entry"
+            ? [...globallyExcludedReportFields, "Entry Date"]
+          : subDepartment === "Comber" && reportType === "U% Data Entry"
+            ? [...globallyExcludedReportFields, "Department"]
           : subDepartment === "Spinning"
             ? [
                 ...globallyExcludedReportFields.filter((label) => label !== "Date"),
@@ -3915,6 +3937,16 @@ function ReportsPage() {
       if (!isCardingDfkScreen) return false;
       return CARD_DFK_EXCLUDED_KEYS.has(getCanonicalReportFieldKey(field));
     };
+    const isRawSpinningCountChangeField = (field) => {
+      if (subDepartment !== "Spinning" || reportType !== "Count Change") return false;
+      const key = String(field?.key || "");
+      const label = String(field?.label || "");
+      return (
+        (key.startsWith("count_change_reading_") &&
+        (key.endsWith("_cv_percent") || key.endsWith("_mean") || key.endsWith("_cv_percent_2"))) ||
+        ["Count CV %", "Strength CV %"].includes(label)
+      );
+    };
     const definedFields = [...backendFields, ...catalogFields].filter(
       (field, index, list) =>
         field?.key &&
@@ -3923,13 +3955,19 @@ function ReportsPage() {
         !isEntryIdLikeField(field) &&
         !isRawCardThickPlaceField(field) &&
         !isRawCardDfkField(field) &&
+        !isRawSpinningCountChangeField(field) &&
         index === list.findIndex((item) => getCanonicalReportFieldKey(item) === getCanonicalReportFieldKey(field))
     );
     // When this notebook type has a defined field set, show only those fields — no extra
     // columns pulled in from the raw row shape (ids, internal/meta keys, etc). Only fall back
     // to inferring fields from the rows when nothing is defined for this screen at all.
     const sourceFields = (definedFields.length ? definedFields : inferredFields).filter(
-      (field) => !isOperatorLikeField(field) && !isEntryIdLikeField(field) && !isRawCardThickPlaceField(field) && !isRawCardDfkField(field)
+      (field) =>
+        !isOperatorLikeField(field) &&
+        !isEntryIdLikeField(field) &&
+        !isRawCardThickPlaceField(field) &&
+        !isRawCardDfkField(field) &&
+        !isRawSpinningCountChangeField(field)
     );
     // Every notebook type has an entry id, whether or not the catalog for that
     // screen happens to list it — surface it everywhere unless already present.
@@ -4408,11 +4446,17 @@ function ReportsPage() {
     const isAutoconerDrumWiseAppearanceReport = subDepartment === "Autoconer" && reportType === "Drum wise Appearance";
     const drumWiseAppearanceCount = isAutoconerDrumWiseAppearanceReport
       ? rows.reduce((max, row) => {
-          let count = 0;
-          while (Object.prototype.hasOwnProperty.call(row || {}, `drum_inspection_${count + 1}_drum_no`)) {
-            count += 1;
+          const drumFrom = Number(row?.drum_from);
+          const drumTo = Number(row?.drum_to);
+          const rangeCount =
+            Number.isInteger(drumFrom) && Number.isInteger(drumTo) && drumFrom > 0 && drumTo >= drumFrom
+              ? (drumTo - drumFrom + 1)
+              : 0;
+          let rowKeyCount = 0;
+          while (Object.prototype.hasOwnProperty.call(row || {}, `drum_inspection_${rowKeyCount + 1}_drum_no`)) {
+            rowKeyCount += 1;
           }
-          return Math.max(max, count);
+          return Math.max(max, rangeCount, rowKeyCount);
         }, 0)
       : 0;
     const drumWiseAppearanceFields = Array.from({ length: drumWiseAppearanceCount }, (_, index) => {

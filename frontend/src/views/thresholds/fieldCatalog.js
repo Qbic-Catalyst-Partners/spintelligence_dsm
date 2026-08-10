@@ -112,6 +112,8 @@ export const thresholdFieldCatalog = {
         "L(w)CV",
         "UQL(w)",
         "L(n)",
+        "L(n)CV",
+        "SCF(W)<12.70mm",
         "SCF(n)<12.70mm",
         "5%L(n)",
         "Fitness Index",
@@ -432,6 +434,8 @@ export const thresholdFieldCatalog = {
     // directly from the row (e.g. "Card Thick Place Cdg01") alongside the properly-labeled
     // per-machine columns generated dynamically in ReportsPage.jsx's availableFields.
     "Thick place & CV": ["Entry ID"],
+    "Thick place & CV - B/R Line 11(CDG 03 &06) - Card Thick Place Value": ["card_thick_place_cdg_03", "card_thick_place_cdg_06"],
+    "Thick place & CV - B/R Line 11(CDG 03 &06) - 5m CV": ["five_m_cv_cdg_03", "five_m_cv_cdg_06"],
     "Carding NRE%": [
         "Entry ID",
         "Machine Model",
@@ -533,13 +537,11 @@ export const thresholdFieldCatalog = {
     ],
     "Carding::Nati Data Entry": [
         "Entry ID",
-        "Entry Date",
         "Variety",
         "Number of Neps Entries",
     ],
     "Comber::Nati Data Entry": [
         "Entry ID",
-        "Entry Date",
         "Variety",
         "Number of Neps Entries",
     ],
@@ -628,7 +630,6 @@ export const thresholdFieldCatalog = {
         "Entry ID",
         "RF No.",
         "Lycra Draft",
-        "Count Change Type",
         "Count Name (From)",
         "Count Name (To)",
         "No. of Readings",
@@ -636,7 +637,9 @@ export const thresholdFieldCatalog = {
         "Avg Count",
         "Avg Strength",
         "Overall CSP",
-        // Per-reading "Reading N - Reading No./Reading Value/Count/CV%/Strength/Mean/CV% 2/CSP"
+        "Count CV %",
+        "Strength CV %",
+        // Per-reading "Reading N - Reading No./Reading Value/Count/Count CV %/Strength/Strength CV%/CSP"
         // columns (as many as the highest reading count seen across loaded rows) are generated
         // dynamically in ReportsPage.jsx, same pattern as BR Waste Study/Drop Test's per-row columns.
     ],
@@ -1012,7 +1015,6 @@ export const thresholdFieldCatalog = {
         "Trumpet",
     ],
     "Wheel Change": [
-        "Wheel Change Type",
         "Test No",
         "R/F No.",
         "Count From - Existing",
@@ -1524,6 +1526,8 @@ export const thresholdFieldCatalog = {
         "Drum From",
         "Drum To",
         "Remarks",
+        "Drum No.",
+        "Appearance",
         // Per-drum "Drum N No." / "Drum N Appearance" columns (as many as the highest drum
         // count seen across loaded rows) are generated dynamically in ReportsPage.jsx, same
         // pattern as BR Waste Study/Card DFK Data/Thick place & CV's per-row columns.
