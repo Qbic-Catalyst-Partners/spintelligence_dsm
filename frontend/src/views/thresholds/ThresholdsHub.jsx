@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchUsers } from "@/store/slices/userSlice";
 import { FiMoreVertical, FiX } from "react-icons/fi";
@@ -1261,11 +1262,19 @@ function ResolutionTimeTab({ onEditRow }) {
 }
 
 export default function ThresholdsHub() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("value");
   const [editItems, setEditItems] = useState({});
   const user = useSelector((state) => state.auth?.user);
   const canAccessAcknowledgement = isSubmittedNotebookManagerUser(user);
   const canAccessOthers = isFullAccessUser(user);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (String(router.query.tab || "").trim() === "existing") {
+      setActiveTab("existing");
+    }
+  }, [router.isReady, router.query.tab]);
 
   const handleEditRow = (type, rawItem) => {
     setEditItems((current) => ({ ...current, [type]: rawItem }));
@@ -1288,7 +1297,6 @@ export default function ThresholdsHub() {
     { value: "acknowledgement", label: "Acknowledgement Threshold" },
     { value: "wheel-change-approval", label: "WC Threshold" },
     { value: "existing", label: "Existing Thresholds" },
-    // { value: "resolutionTime", label: "Resolution Time" },
   ];
 
   return (
@@ -1349,7 +1357,6 @@ export default function ThresholdsHub() {
           />
         ) : null}
         {activeTab === "existing" ? <ExistingThresholdsTab onEditRow={handleEditRow} /> : null}
-        {activeTab === "resolutionTime" ? <ResolutionTimeTab onEditRow={handleEditRow} /> : null}
       </div>
     </div>
   );

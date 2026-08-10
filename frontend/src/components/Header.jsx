@@ -86,6 +86,7 @@ const departmentLinks = [
 
 const settingsLinks = [
     { href: "/settings", label: "Dash Builder" },
+    { href: "/ticket-resolution-sla", label: "Ticket Resolution SLA" },
 ];
 const ticketingLinks = [
     { href: "__ticketingHome__", label: "Ticket System" },
@@ -334,6 +335,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
 
         if (href === "/settings") {
             return currentPath === "/settings" || currentPath.startsWith("/settings/");
+        }
+
+        if (href === "/ticket-resolution-sla") {
+            return currentPath === "/ticket-resolution-sla";
         }
 
         return currentPath === href || currentPath.startsWith(`${href}/`);
