@@ -3285,8 +3285,8 @@ router.post('/count-change', async (req, res) => {
       const resolvedCsp = toNumberOrNull(row.csp) ?? calculateCsp(row.count, row.strength);
       await client.query(`
         INSERT INTO spinning.count_change_readings
-        (inspection_id, reading_no, reading_value, count, cv_percent, strength, mean, cv_percent_2, csp)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        (inspection_id, reading_no, reading_value, count, cv_percent, strength, strength_cv_percent, mean, cv_percent_2, csp)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       `, [
         inspection_id,
         row.reading_no,
@@ -3294,6 +3294,7 @@ router.post('/count-change', async (req, res) => {
         row.count,
         row.cv_percent,
         row.strength,
+        row.strength_cv_percent,
         row.mean,
         row.cv_percent_2,
         resolvedCsp
@@ -3356,6 +3357,7 @@ router.get('/count-change', async (req, res) => {
             'count', r.count,
             'cv_percent', r.cv_percent,
             'strength', r.strength,
+            'strength_cv_percent', r.strength_cv_percent,
             'mean', r.mean,
             'cv_percent_2', r.cv_percent_2,
             'csp', r.csp
