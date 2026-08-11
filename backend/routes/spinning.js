@@ -39,6 +39,8 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
   const entry_id = formatScreenEntryId(screenKey, record[idField]);
   return entry_id ? { ...record, entry_id } : { ...record };
 };
+const getAuthenticatedOperatorName = (req) =>
+  String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null;
 
 const withoutTestNumber = (record = {}) => {
   const { test_no, test_number, ...rest } = record;
@@ -497,6 +499,21 @@ const ensureSpinningEntryIdColumnsImpl = async () => {
       ADD COLUMN IF NOT EXISTS total_draft_existing NUMERIC,
       ADD COLUMN IF NOT EXISTS total_draft_proposed NUMERIC;
   `);
+
+  for (const tableName of [
+    'spinning.speed_checking',
+    'spinning.cots_checking',
+    'spinning.lycra_missing',
+    'spinning.bottom_apron_checking',
+    'spinning.lycra_centering',
+    'spinning.RSM_and_lycrasensor_cheking_online',
+    'spinning.RSM_and_lycrasensor_cheking_offline'
+  ]) {
+    await client.query(`
+      ALTER TABLE ${tableName}
+        ADD COLUMN IF NOT EXISTS operator TEXT;
+    `);
+  }
 
   await client.query(`DROP TABLE IF EXISTS spinning.wheel_change_type4`);
 
@@ -1662,6 +1679,7 @@ router.post('/speed-checking', async (req, res, next) => {
     // Difference is computed on the frontend from Display/Spindle Speed
     // (LHS/RHS is a free-form spindle list, not a pair of numbers to subtract).
     const difference = payloadDifference ?? null;
+    const operatorName = getAuthenticatedOperatorName(req);
 
     await client.query('BEGIN');
 
@@ -1671,9 +1689,9 @@ router.post('/speed-checking', async (req, res, next) => {
        Display_Speed, Spindle_Speed,
        Difference,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
-       LHS_TextRemarks, LHS_Audio,
+       LHS_TextRemarks, LHS_Audio, operator,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
       RETURNING *;
     `, [
       entry_id,
@@ -1689,6 +1707,7 @@ router.post('/speed-checking', async (req, res, next) => {
       hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
+      operatorName,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
@@ -1844,6 +1863,8 @@ router.post('/cots-checking', async (req, res, next) =>{
     const hasLhsValues = Array.isArray(lhs_values);
     const hasRhsValues = Array.isArray(rhs_values);
 
+    const operatorName = getAuthenticatedOperatorName(req);
+
     // Each spindle reading in the comma-separated list is range-checked individually.
     const measurementErrors = [];
 
@@ -1874,9 +1895,9 @@ router.post('/cots-checking', async (req, res, next) =>{
       INSERT INTO spinning.cots_checking
       (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
-       LHS_TextRemarks, LHS_Audio,
+       LHS_TextRemarks, LHS_Audio, operator,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *;
     `, [
       entry_id,
@@ -1889,6 +1910,7 @@ router.post('/cots-checking', async (req, res, next) =>{
       hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
+      operatorName,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
@@ -2021,14 +2043,15 @@ router.post('/lycra-missing', async (req, res, next) => {
     if (!entry_id) {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
+    const operatorName = getAuthenticatedOperatorName(req);
 
     const result = await client.query(`
       INSERT INTO spinning.lycra_missing
       (entry_id, InspectionDate, MachineNo,
        LHS_Value, RHS_Value,
-       LHS_TextRemarks, LHS_Audio,
+       LHS_TextRemarks, LHS_Audio, operator,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       RETURNING *;
     `, [
       entry_id,
@@ -2038,6 +2061,7 @@ router.post('/lycra-missing', async (req, res, next) => {
       rhs_value,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
+      operatorName,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
@@ -2168,6 +2192,7 @@ router.post('/bottom-apron-checking', async (req, res, next) => {
 
     const hasLhsValues = Array.isArray(lhs_values);
     const hasRhsValues = Array.isArray(rhs_values);
+    const operatorName = getAuthenticatedOperatorName(req);
 
     await client.query('BEGIN');
 
@@ -2175,9 +2200,9 @@ router.post('/bottom-apron-checking', async (req, res, next) => {
       INSERT INTO spinning.bottom_apron_checking
       (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
-       LHS_TextRemarks, LHS_Audio,
+       LHS_TextRemarks, LHS_Audio, operator,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *;
     `, [
       entry_id,
@@ -2190,6 +2215,7 @@ router.post('/bottom-apron-checking', async (req, res, next) => {
       hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
+      operatorName,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
@@ -2331,6 +2357,7 @@ router.post('/lycra-centering', async (req, res, next) => {
 
     const hasLhsValues = Array.isArray(lhs_values);
     const hasRhsValues = Array.isArray(rhs_values);
+    const operatorName = getAuthenticatedOperatorName(req);
 
     await client.query('BEGIN');
 
@@ -2338,9 +2365,9 @@ router.post('/lycra-centering', async (req, res, next) => {
       INSERT INTO spinning.lycra_centering
       (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
-       LHS_TextRemarks, LHS_Audio,
+       LHS_TextRemarks, LHS_Audio, operator,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *;
     `, [
       entry_id,
@@ -2353,6 +2380,7 @@ router.post('/lycra-centering', async (req, res, next) => {
       hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
+      operatorName,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
@@ -2494,6 +2522,7 @@ router.post('/rsm-lycra-online', async (req, res, next) => {
 
     const hasLhsValues = Array.isArray(lhs_values);
     const hasRhsValues = Array.isArray(rhs_values);
+    const operatorName = getAuthenticatedOperatorName(req);
 
     await client.query('BEGIN');
 
@@ -2501,9 +2530,9 @@ router.post('/rsm-lycra-online', async (req, res, next) => {
       INSERT INTO spinning.RSM_and_lycrasensor_cheking_online
       (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
-       LHS_TextRemarks, LHS_Audio,
+       LHS_TextRemarks, LHS_Audio, operator,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *;
     `, [
       entry_id,
@@ -2516,6 +2545,7 @@ router.post('/rsm-lycra-online', async (req, res, next) => {
       hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
+      operatorName,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
@@ -2657,6 +2687,7 @@ router.post('/rsm-lycra-offline', async (req, res, next) => {
 
     const hasLhsValues = Array.isArray(lhs_values);
     const hasRhsValues = Array.isArray(rhs_values);
+    const operatorName = getAuthenticatedOperatorName(req);
 
     await client.query('BEGIN');
 
@@ -2664,9 +2695,9 @@ router.post('/rsm-lycra-offline', async (req, res, next) => {
       INSERT INTO spinning.RSM_and_lycrasensor_cheking_offline
       (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
-       LHS_TextRemarks, LHS_Audio,
+       LHS_TextRemarks, LHS_Audio, operator,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *;
     `, [
       entry_id,
@@ -2679,6 +2710,7 @@ router.post('/rsm-lycra-offline', async (req, res, next) => {
       hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
+      operatorName,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
