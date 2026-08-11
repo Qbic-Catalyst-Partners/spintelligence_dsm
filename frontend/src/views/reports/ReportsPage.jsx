@@ -124,14 +124,17 @@ const fetchEndpointRows = async (endpoint, params = {}) => {
   return response.data;
 };
 
-const fetchGeneralReportDataRows = async (params = {}) => {
-  const response = await apiConfig.get(
-    "/reports/general-report/data",
-    { page: 1, limit: 500, ...params },
-    { skipGlobalErrorModal: true }
-  );
-  return response.data;
-};
+// Generic general-report SQL fallback — no longer called anywhere in this file. Every report
+// type is fetched through its own dedicated Custom Report source (see reportSources below) so
+// values can never diverge between "custom fields" and "include all fields"/"All Type" modes.
+// const fetchGeneralReportDataRows = async (params = {}) => {
+//   const response = await apiConfig.get(
+//     "/reports/general-report/data",
+//     { page: 1, limit: 500, ...params },
+//     { skipGlobalErrorModal: true }
+//   );
+//   return response.data;
+// };
 
 const ANALYSIS_DEPARTMENT = "Analysis";
 const TEAM_PERFORMANCE_SUB_DEPARTMENT = "Team Performance";
@@ -3808,25 +3811,28 @@ function ReportsPage() {
     if (nextReportType !== reportType) setReportType(nextReportType);
   }, [accessibleReportSources, department, departments, reportType, subDepartment]);
 
-  // Deliberately lightweight field list for the "include all fields"/"All Type" flows — just the
-  // catalog for that notebook type, falling back to whatever columns are actually present on its
-  // rows. Unlike `availableFields` below (which has ~100 screen-specific exclusion/alias rules
-  // tuned for picking a handful of columns for ONE type at a time), these flows show every field
-  // for potentially every type in a sub-department at once, so they intentionally reuse the same
-  // simple composition the old standalone General Report page used rather than that heavier logic.
-  const getAllFieldsForType = (typeName, typeRows) => {
-    const catalogFields = uniqueOptions(getThresholdFieldsForScreen(typeName, subDepartment))
-      .map(toReportField)
-      .filter(Boolean);
-    const fields = catalogFields.length ? catalogFields : inferFields(typeRows);
-    return fields.filter(
-      (field, index, list) =>
-        index === list.findIndex((item) => getCanonicalReportFieldKey(item) === getCanonicalReportFieldKey(field))
+  // Field list for the "include all fields"/"All Type" flows — every field computeCatalogFieldsForType
+  // (below) would resolve for the given type, with no exclusion list, so these flows see exactly the
+  // same screen-tuned columns/values as picking every field manually in the drag-drop picker would.
+  // builderOptions.input_fields is only ever fetched for the currently-selected reportType, so it's
+  // only passed through for that one type — other types (All Type mode) fall back to the catalog +
+  // inferFields tiers, same as the picker does whenever backend-suggested fields aren't available.
+  const getAllFieldsForType = (typeName, typeRows) =>
+    computeCatalogFieldsForType(
+      typeName,
+      typeRows,
+      subDepartment,
+      typeName === reportType ? builderOptions.input_fields : [],
+      isTeamPerformanceReport,
+      []
     );
-  };
 
-  const availableFields = useMemo(() => {
-    const inferredFields = inferFields(rows);
+  // Full field-resolution shared by the drag-drop picker (current type only, minus already-picked
+  // fields) and the "include all fields"/"All Type" flows (any type, no exclusion) - extracted from
+  // the original single-type-only useMemo below so every mode gets the exact same screen-tuned field
+  // list (blend/waste/tuft/sample dynamic columns, exclusions, aliases), not a simplified stand-in.
+  const computeCatalogFieldsForType = (typeName, typeRows, subDepartmentName, builderInputFields, isTeamPerf, excludeFields) => {
+    const inferredFields = inferFields(typeRows);
     const inferredKeys = new Set(inferredFields.map(getCanonicalReportFieldKey));
     // WheelChange-style screens (Draw Frame's 7 sub-types, Simplex's own) store every parameter
     // as one row inside a `parameters: [{ key, label, existing, proposed }]` array rather than as
@@ -3836,24 +3842,24 @@ function ReportsPage() {
     // the catalog down to JUST that handful of matched fields, silently dropping every parameter
     // field from Available Fields even though getCellValue resolves them correctly. Fold each
     // row's parameter labels into inferredKeys too so they're recognized as present.
-    rows.forEach((row) => {
+    typeRows.forEach((row) => {
       if (Array.isArray(row?.parameters)) {
         row.parameters.forEach((parameter) => {
           if (parameter?.label) inferredKeys.add(getCanonicalReportFieldKey({ key: parameter.label }));
         });
       }
     });
-    const backendFields = uniqueOptions(builderOptions.input_fields).map(toReportField).filter(Boolean);
-    const rawCatalogFields = uniqueOptions(getThresholdFieldsForScreen(reportType, subDepartment)).map(toReportField).filter(Boolean);
+    const backendFields = uniqueOptions(builderInputFields).map(toReportField).filter(Boolean);
+    const rawCatalogFields = uniqueOptions(getThresholdFieldsForScreen(typeName, subDepartmentName)).map(toReportField).filter(Boolean);
     // getThresholdFieldsForScreen is keyed by type name only, and a few names (e.g. "Process
     // Parameter") are reused across unrelated departments with different field sets — for those,
-    // only keep catalog fields that actually exist on the rows fetched for this dept/type. Names
-    // unique to one department are trusted outright, so fields still show before any rows load.
-    // If nothing in the catalog matches the fetched rows (no rows loaded yet, or this dept/type's
+    // only keep catalog fields that actually exist on the typeRows fetched for this dept/type. Names
+    // unique to one department are trusted outright, so fields still show before any typeRows load.
+    // If nothing in the catalog matches the fetched typeRows (no typeRows loaded yet, or this dept/type's
     // field set genuinely equals the shared catalog entry), fall back to the full catalog rather
     // than showing no fields at all.
     const matchedCatalogFields = rawCatalogFields.filter((field) => inferredKeys.has(getCanonicalReportFieldKey(field)));
-    const catalogFields = isAmbiguousReportType(reportType) && matchedCatalogFields.length
+    const catalogFields = isAmbiguousReportType(typeName) && matchedCatalogFields.length
       ? matchedCatalogFields
       : rawCatalogFields;
       // "Date" is excluded for every report type under the "Simplex" sub-department, and for
@@ -3870,53 +3876,53 @@ function ReportsPage() {
     // Category" (a phantom field with no real backing data) — "Sider Name" is a real DB field
     // (the employee who ran the study) and is kept, now listed directly in fieldCatalog.js.
       const screenExcludedReportFields =
-        subDepartment === "Wrapping" && ["Carding", "Drawing", "Simplex"].includes(reportType)
+        subDepartmentName === "Wrapping" && ["Carding", "Drawing", "Simplex"].includes(typeName)
           ? [...globallyExcludedReportFields.filter((label) => label !== "Date"), "Test ID", "Report Date"]
-          : subDepartment === "Simplex"
+          : subDepartmentName === "Simplex"
             ? [
                 ...globallyExcludedReportFields,
-              ...(reportType === "SMX Breaks Study Report" ? ["Break Category"] : []),
+              ...(typeName === "SMX Breaks Study Report" ? ["Break Category"] : []),
             ]
-          : subDepartment === "Draw Frame"
+          : subDepartmentName === "Draw Frame"
           ? [
               // A%'s own "Date" (the test date noted on the OCR'd report, stored in `meta.date`) is
               // a genuine, independently meaningful field — unlike the rest of Draw Frame, where
               // "Date" duplicated "Created At" and was hidden for that reason. Keep it visible here.
               // Same reasoning for all 7 Wheel Change sub-types — their "Date" is the operator's own
               // entry_date (a real form field), not a duplicate of Created At.
-              ...(reportType === "A%" || PARAMETERS_ARRAY_WHEEL_CHANGE_REPORT_TYPES["Draw Frame"].has(reportType)
+              ...(typeName === "A%" || PARAMETERS_ARRAY_WHEEL_CHANGE_REPORT_TYPES["Draw Frame"].has(typeName)
                 ? globallyExcludedReportFields.filter((label) => label !== "Date")
                 : globallyExcludedReportFields),
               "Creation Date",
             ]
-          : subDepartment === "Carding" && reportType === "WheelChange"
+          : subDepartmentName === "Carding" && typeName === "WheelChange"
             ? [
                 ...globallyExcludedReportFields,
                 "Type",
               ]
-          : subDepartment === "Comber" && reportType === "Nati Data Entry"
+          : subDepartmentName === "Comber" && typeName === "Nati Data Entry"
             ? [...globallyExcludedReportFields, "Entry Date"]
-          : subDepartment === "Comber" && reportType === "U% Data Entry"
+          : subDepartmentName === "Comber" && typeName === "U% Data Entry"
             ? [...globallyExcludedReportFields, "Department"]
-          : subDepartment === "Spinning"
+          : subDepartmentName === "Spinning"
             ? [
                 ...globallyExcludedReportFields.filter((label) => label !== "Date"),
                 "Inspection Type",
                 "Checking Type",
-                ...(reportType === "Ring Frame Log Book" ? ["Entry Date"] : []),
+                ...(typeName === "Ring Frame Log Book" ? ["Entry Date"] : []),
               ]
             : globallyExcludedReportFields.filter((label) => label !== "Date");
     const excludedFieldKeys = new Set(
       screenExcludedReportFields.map((label) => getCanonicalReportFieldKey({ key: label }))
     );
-    // Thick place & CV's backend-suggested fields (builderOptions.input_fields) include the raw,
+    // Thick place & CV's backend-suggested fields (builderInputFields) include the raw,
     // un-keyed "five_m_cv"/"card_thick_place"/"machine" columns from the child readings table —
     // title-cased into ugly labels like "Five M Cv" — alongside the properly per-machine-labeled
     // columns ("CDG-01 - 5m CV") generated dynamically below. Drop the raw ones for this screen so
     // only the per-machine columns show. Also drop the header's own "Entry Code"/"Entry
     // Date"/"Entry Time"/"Remarks" columns for this screen specifically (per user request) —
     // "Entry ID" is deliberately kept, since Operator matching depends on it.
-    const isCardThickPlaceScreen = subDepartment === "Carding" && reportType === "Thick place & CV";
+    const isCardThickPlaceScreen = subDepartmentName === "Carding" && typeName === "Thick place & CV";
     const CARD_THICK_PLACE_EXCLUDED_KEYS = new Set(["entrycode", "entrydate", "entrytime", "remarks"]);
     const isRawCardThickPlaceField = (field) => {
       if (!isCardThickPlaceScreen) return false;
@@ -3931,14 +3937,14 @@ function ReportsPage() {
     // Card DFK Data's backend-suggested fields include the header's own raw "inspection_type" and
     // "entry_date" columns — drop them for this screen specifically (per user request): Operator
     // and "Created At" (the row's real submission timestamp) are kept instead.
-    const isCardingDfkScreen = subDepartment === "Carding" && reportType === "Card DFK Data";
+    const isCardingDfkScreen = subDepartmentName === "Carding" && typeName === "Card DFK Data";
     const CARD_DFK_EXCLUDED_KEYS = new Set(["inspectiontype", "entrydate"]);
     const isRawCardDfkField = (field) => {
       if (!isCardingDfkScreen) return false;
       return CARD_DFK_EXCLUDED_KEYS.has(getCanonicalReportFieldKey(field));
     };
     const isRawSpinningCountChangeField = (field) => {
-      if (subDepartment !== "Spinning" || reportType !== "Count Change") return false;
+      if (subDepartmentName !== "Spinning" || typeName !== "Count Change") return false;
       const key = String(field?.key || "");
       const label = String(field?.label || "");
       return (
@@ -3960,7 +3966,7 @@ function ReportsPage() {
     );
     // When this notebook type has a defined field set, show only those fields — no extra
     // columns pulled in from the raw row shape (ids, internal/meta keys, etc). Only fall back
-    // to inferring fields from the rows when nothing is defined for this screen at all.
+    // to inferring fields from the typeRows when nothing is defined for this screen at all.
     const sourceFields = (definedFields.length ? definedFields : inferredFields).filter(
       (field) =>
         !isOperatorLikeField(field) &&
@@ -3977,35 +3983,35 @@ function ReportsPage() {
     const withEntryId = hasEntryIdField ? sourceFields : [...sourceFields, ENTRY_ID_FIELD];
     // Every notebook type entry is submitted by someone — surface who, resolved against the
     // submitted-notebooks record for that entry id, regardless of dept/type.
-    const withOperator = isTeamPerformanceReport ? withEntryId : [...withEntryId, OPERATOR_FIELD];
+    const withOperator = isTeamPerf ? withEntryId : [...withEntryId, OPERATOR_FIELD];
     // Blow Room and Carding screens want to see when the form was actually submitted
     // (created_at), in addition to the form's own "inspection/creation date" field.
     const hasCreatedAtField = withOperator.some(
       (field) => getCanonicalReportFieldKey(field) === getCanonicalReportFieldKey(CREATED_AT_FIELD)
     );
       const withCreatedAt =
-        ["Blow Room", "Carding", "Comber", "Draw Frame", "Simplex", "Spinning", "Autoconer", "Mixing", "Wrapping", "Individual Card Performance"].includes(subDepartment) &&
+        ["Blow Room", "Carding", "Comber", "Draw Frame", "Simplex", "Spinning", "Autoconer", "Mixing", "Wrapping", "Individual Card Performance"].includes(subDepartmentName) &&
         !hasCreatedAtField
           ? [...withOperator, CREATED_AT_FIELD]
           : withOperator;
-    // BR Waste Study rows carry however many numbered waste-type readings the user entered on
+    // BR Waste Study typeRows carry however many numbered waste-type readings the user entered on
     // that submission (waste_type_1/waste_kgs_value_1/waste_kgs_1, waste_type_2, ...) — surface
     // exactly as many numbered field sets as the highest count seen across the currently loaded
-    // rows, so e.g. a study with 5 readings offers "Waste Type 1".."5" rather than a fixed cap.
+    // typeRows, so e.g. a study with 5 readings offers "Waste Type 1".."5" rather than a fixed cap.
     const brWasteStudyType =
-      subDepartment === "Blow Room"
-        ? BR_WASTE_STUDY_TYPE_BY_REPORT_TYPE[reportType]
-        : subDepartment === "Carding"
-          ? CARD_WASTE_STUDY_TYPE_BY_REPORT_TYPE[reportType]
+      subDepartmentName === "Blow Room"
+        ? BR_WASTE_STUDY_TYPE_BY_REPORT_TYPE[typeName]
+        : subDepartmentName === "Carding"
+          ? CARD_WASTE_STUDY_TYPE_BY_REPORT_TYPE[typeName]
           : null;
     // BR Waste Study Entry Type 1/2/3 (and their Carding equivalents) already list their own single
     // numbered field set ("Waste Type 1"/"Waste KGs Value 1"/"Waste KGs % 1" for Type 1, "...2" for
     // Type 2, "...3" for Type 3) directly in the field catalog — skip the dynamic expansion for
     // these split report types so the same fields don't appear twice in the column picker.
     const isSplitBrWasteStudyReport =
-      reportType in BR_WASTE_STUDY_TYPE_BY_REPORT_TYPE || reportType in CARD_WASTE_STUDY_TYPE_BY_REPORT_TYPE;
+      typeName in BR_WASTE_STUDY_TYPE_BY_REPORT_TYPE || typeName in CARD_WASTE_STUDY_TYPE_BY_REPORT_TYPE;
     const wasteTypeColumnCount = brWasteStudyType && !isSplitBrWasteStudyReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `waste_type_${count + 1}`)) {
             count += 1;
@@ -4024,12 +4030,12 @@ function ReportsPage() {
     const withWasteTypeColumns = wasteTypeFields.length
       ? [...withCreatedAt, ...wasteTypeFields]
       : withCreatedAt;
-    // Drop Test rows carry however many numbered tuft readings that submission had — same
+    // Drop Test typeRows carry however many numbered tuft readings that submission had — same
     // reasoning as the waste-type columns above: a submission with 1 tuft only offers "Tuft 1"
-    // columns, one with 5 tufts offers "Tuft 1".."5", based on what's actually in the loaded rows.
-    const isDropTestReport = subDepartment === "Blow Room" && reportType === "Drop Test Data Entry";
+    // columns, one with 5 tufts offers "Tuft 1".."5", based on what's actually in the loaded typeRows.
+    const isDropTestReport = subDepartmentName === "Blow Room" && typeName === "Drop Test Data Entry";
     const tuftColumnCount = isDropTestReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `tuft_variety_${count + 1}`)) {
             count += 1;
@@ -4049,15 +4055,15 @@ function ReportsPage() {
       ];
     }).flat();
     const withTuftColumns = tuftFields.length ? [...withWasteTypeColumns, ...tuftFields] : withWasteTypeColumns;
-    // Lap CV rows carry however many numbered samples that submission's own "Number of Sample
+    // Lap CV typeRows carry however many numbered samples that submission's own "Number of Sample
     // Entries" produced — same reasoning as tufts/waste types above.
     const isLapCvReport =
-      subDepartment === "Blow Room" &&
-      ["B/R CV1M Data Entry Within Lap", "B/R Between Lap CV%"].includes(reportType);
+      subDepartmentName === "Blow Room" &&
+      ["B/R CV1M Data Entry Within Lap", "B/R Between Lap CV%"].includes(typeName);
     const isComberLapCvReport =
-      subDepartment === "Comber" && reportType === "Ribbon Lap CV1M Data Entry";
+      subDepartmentName === "Comber" && typeName === "Ribbon Lap CV1M Data Entry";
     const sampleColumnCount = isLapCvReport || isComberLapCvReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `sample_${count + 1}`)) {
             count += 1;
@@ -4070,20 +4076,20 @@ function ReportsPage() {
       return { key: `sample_${n}`, label: `Sample ${n}` };
     });
     const withSampleColumns = sampleFields.length ? [...withTuftColumns, ...sampleFields] : withTuftColumns;
-    // Carding's Between & Within Card rows carry however many numbered Sample Weight/Hank
+    // Carding's Between & Within Card typeRows carry however many numbered Sample Weight/Hank
     // readings that submission's own "Number of Entries (N)" produced — same reasoning as the
     // tuft/waste-type/sample columns above. The form defaults "Number of Entries" to 5
     // (betweenWithinCardEntry.jsx), so always offer at least those 5 slots as selectable fields
-    // rather than only however many happen to appear in currently loaded rows — otherwise
-    // whichever of Within/Between has no rows loaded yet (nothing in range, or the other type's
-    // rows got filtered out for this report) shows none of them, same failure mode fixed for Nati
+    // rather than only however many happen to appear in currently loaded typeRows — otherwise
+    // whichever of Within/Between has no typeRows loaded yet (nothing in range, or the other type's
+    // typeRows got filtered out for this report) shows none of them, same failure mode fixed for Nati
     // Data Entry below.
     const isBetweenWithinCardReport =
-      subDepartment === "Carding" && Boolean(BETWEEN_WITHIN_CARD_TYPE_BY_REPORT_TYPE[reportType]);
+      subDepartmentName === "Carding" && Boolean(BETWEEN_WITHIN_CARD_TYPE_BY_REPORT_TYPE[typeName]);
     const bwcEntryColumnCount = isBetweenWithinCardReport
       ? Math.max(
           5,
-          rows.reduce((max, row) => {
+          typeRows.reduce((max, row) => {
             let count = 0;
             while (Object.prototype.hasOwnProperty.call(row || {}, `sample_weight_${count + 1}`)) {
               count += 1;
@@ -4102,14 +4108,14 @@ function ReportsPage() {
     const withBwcEntryColumns = bwcEntryFields.length
       ? [...withSampleColumns, ...bwcEntryFields]
       : withSampleColumns;
-    // Thick place & CV rows carry one pair of columns per machine actually present in the loaded
+    // Thick place & CV typeRows carry one pair of columns per machine actually present in the loaded
     // data (CDG-01, CDG-02, ... however many the master machine list has) rather than a fixed
     // count — collect every distinct machine slug seen and offer both its columns.
-    const isCardThickPlaceReport = subDepartment === "Carding" && reportType === "Thick place & CV";
+    const isCardThickPlaceReport = subDepartmentName === "Carding" && typeName === "Thick place & CV";
     const machineSlugs = isCardThickPlaceReport
       ? Array.from(
           new Set(
-            rows.flatMap((row) =>
+            typeRows.flatMap((row) =>
               Object.keys(row || {})
                 .filter((key) => key.startsWith("card_thick_place_"))
                 .map((key) => key.slice("card_thick_place_".length))
@@ -4127,17 +4133,17 @@ function ReportsPage() {
     const withMachineColumns = machineFields.length
       ? [...withBwcEntryColumns, ...machineFields]
       : withBwcEntryColumns;
-    // Carding's Nati Data Entry rows carry however many numbered neps entries that submission's
+    // Carding's Nati Data Entry typeRows carry however many numbered neps entries that submission's
     // own "Number of Neps Entries" produced — same reasoning as the tuft/waste-type/sample columns.
     // The form caps "Number of Neps Entries" at 10 (natiDataEntry.jsx), so always offer all 10
     // slots as selectable fields rather than only however many happen to appear in currently
-    // loaded rows — otherwise Available Fields shows none of them until a submission with that
+    // loaded typeRows — otherwise Available Fields shows none of them until a submission with that
     // many entries has actually been made (or is within the current date filter).
-    const isCardingNatiReport = subDepartment === "Carding" && reportType === "Nati Data Entry";
+    const isCardingNatiReport = subDepartmentName === "Carding" && typeName === "Nati Data Entry";
     const natiEntryColumnCount = isCardingNatiReport
       ? Math.max(
           10,
-          rows.reduce((max, row) => {
+          typeRows.reduce((max, row) => {
             let count = 0;
             while (Object.prototype.hasOwnProperty.call(row || {}, `nati_mc_no_${count + 1}`)) {
               count += 1;
@@ -4158,14 +4164,14 @@ function ReportsPage() {
     const withNatiEntryColumns = natiEntryFields.length
       ? [...withMachineColumns, ...natiEntryFields]
       : withMachineColumns;
-    // Comber's Nati Data Entry rows carry the same shape as Carding's above, but keyed under
+    // Comber's Nati Data Entry typeRows carry the same shape as Carding's above, but keyed under
     // `comber_nati_*` so the two report types' dynamic columns never collide. Same "always offer
     // all 10 slots" reasoning as Carding's above (Comber's natiDataEntry.jsx also caps at 10).
-    const isComberNatiReport = subDepartment === "Comber" && reportType === "Nati Data Entry";
+    const isComberNatiReport = subDepartmentName === "Comber" && typeName === "Nati Data Entry";
     const comberNatiEntryColumnCount = isComberNatiReport
       ? Math.max(
           10,
-          rows.reduce((max, row) => {
+          typeRows.reduce((max, row) => {
             let count = 0;
             while (Object.prototype.hasOwnProperty.call(row || {}, `comber_nati_mc_no_${count + 1}`)) {
               count += 1;
@@ -4186,14 +4192,14 @@ function ReportsPage() {
     const withComberNatiEntryColumns = comberNatiEntryFields.length
       ? [...withNatiEntryColumns, ...comberNatiEntryFields]
       : withNatiEntryColumns;
-    // Card DFK Data rows carry one set of 10 metric columns per machine actually present in the
+    // Card DFK Data typeRows carry one set of 10 metric columns per machine actually present in the
     // loaded data (up to CDG-27), same reasoning as Thick place & CV's per-machine columns above.
-    const isCardingDfkReport = subDepartment === "Carding" && reportType === "Card DFK Data";
+    const isCardingDfkReport = subDepartmentName === "Carding" && typeName === "Card DFK Data";
     const dfkMachineSlugs = isCardingDfkReport
       ? Array.from(
           new Set([
             ...CARD_DFK_MACHINE_SLUGS,
-            ...rows.flatMap((row) =>
+            ...typeRows.flatMap((row) =>
               Object.keys(row || {})
                 .filter((key) => key.startsWith("dfk_"))
                 .map((key) => key.slice("dfk_".length))
@@ -4211,13 +4217,13 @@ function ReportsPage() {
     const withDfkColumns = dfkMachineFields.length
       ? [...withComberNatiEntryColumns, ...dfkMachineFields]
       : withComberNatiEntryColumns;
-    // Comber Nolis % rows carry however many numbered Sample readings that submission's own
+    // Comber Nolis % typeRows carry however many numbered Sample readings that submission's own
     // "Number of Entries (N)" produced, plus a fixed 6-label Summary section (Average Weight,
     // Weight (Max), Weight (Min), Range, SD, CV) — same reasoning as the tuft/waste-type/sample
     // columns above.
-    const isComberNoilReport = subDepartment === "Comber" && reportType === "Comber Nolis %";
+    const isComberNoilReport = subDepartmentName === "Comber" && typeName === "Comber Nolis %";
     const comberNoilSampleColumnCount = isComberNoilReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `sample_${count + 1}_sliver_wt`)) {
             count += 1;
@@ -4247,12 +4253,12 @@ function ReportsPage() {
       comberNoilSampleFields.length || comberNoilSummaryFields.length
         ? [...withDfkColumns, ...comberNoilSampleFields, ...comberNoilSummaryFields]
         : withDfkColumns;
-    // Draw Frame Cots Data Entry rows carry one set of metric columns per machine actually
+    // Draw Frame Cots Data Entry typeRows carry one set of metric columns per machine actually
     // present in the loaded data (however many the user filled in — no fixed machine list, unlike
     // Card DFK Data), same reasoning as Thick place & CV's per-machine columns. Metrics offered
     // are restricted to whichever ones this report type's own Process Type form actually has.
     const drawFrameCotsSubTypeForFields =
-      subDepartment === "Draw Frame" ? DRAWFRAME_COTS_SUB_TYPE_BY_REPORT_TYPE[reportType] : null;
+      subDepartmentName === "Draw Frame" ? DRAWFRAME_COTS_SUB_TYPE_BY_REPORT_TYPE[typeName] : null;
     const isDrawFrameCotsReport = Boolean(drawFrameCotsSubTypeForFields);
     const cotsMetricKeys = drawFrameCotsSubTypeForFields
       ? DRAWFRAME_COTS_METRIC_KEYS_BY_SUB_TYPE[drawFrameCotsSubTypeForFields]
@@ -4260,7 +4266,7 @@ function ReportsPage() {
     const cotsMachineSlugs = isDrawFrameCotsReport
       ? Array.from(
           new Set(
-            rows.flatMap((row) =>
+            typeRows.flatMap((row) =>
               Object.keys(row || {})
                 .filter((key) => key.startsWith("cots_"))
                 .map((key) => {
@@ -4282,11 +4288,11 @@ function ReportsPage() {
     const withCotsColumns = cotsMachineFields.length
       ? [...withComberNoilColumns, ...cotsMachineFields]
       : withComberNoilColumns;
-    // 1 Yard / Half Yard CV Entry rows carry however many numbered readings the user actually
+    // 1 Yard / Half Yard CV Entry typeRows carry however many numbered readings the user actually
     // entered, same reasoning as the sample/waste-type columns above.
-    const isDrawFrameYarnCvReport = subDepartment === "Draw Frame" && reportType === "1 Yard / Half Yard CV Entry";
+    const isDrawFrameYarnCvReport = subDepartmentName === "Draw Frame" && typeName === "1 Yard / Half Yard CV Entry";
     const yarnCvReadingColumnCount = isDrawFrameYarnCvReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `yarn_cv_reading_${count + 1}_one_yard`)) {
             count += 1;
@@ -4304,11 +4310,11 @@ function ReportsPage() {
     const withYarnCvColumns = yarnCvReadingFields.length
       ? [...withCotsColumns, ...yarnCvReadingFields]
       : withCotsColumns;
-    // Spinning's Count Change rows carry however many numbered readings the user actually
+    // Spinning's Count Change typeRows carry however many numbered readings the user actually
     // entered, same reasoning as Yarn CV's readings above.
-    const isSpinningCountChangeReport = subDepartment === "Spinning" && reportType === "Count Change";
+    const isSpinningCountChangeReport = subDepartmentName === "Spinning" && typeName === "Count Change";
     const countChangeReadingCount = isSpinningCountChangeReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `count_change_reading_${count + 1}_reading_value`)) {
             count += 1;
@@ -4328,15 +4334,15 @@ function ReportsPage() {
       : withYarnCvColumns;
     // Unlike Count Change/Yarn CV (genuinely variable N), Ring Frame Log Book's grid is a fixed
     // 24-row table every time (spinning.js's createRingFrameRows() always builds RING_FRAME_RF_TOTAL
-    // = 24 rows, machine numbers 1-24, and the backend always inserts all 24 regardless of which
+    // = 24 typeRows, machine numbers 1-24, and the backend always inserts all 24 regardless of which
     // ones the user actually filled in) — so these fields must always be offered, not only once a
-    // submission happens to be loaded. Deriving the count from `rows` (like the truly-variable
+    // submission happens to be loaded. Deriving the count from `typeRows` (like the truly-variable
     // screens do) meant Available Fields showed nothing for these columns until a report with data
     // in the selected date range had actually loaded. Take the max of the fixed 24 and whatever's
     // actually on a loaded row, so a future row with more than 24 still isn't clipped.
-    const isRingFrameLogBookReport = subDepartment === "Spinning" && reportType === "Ring Frame Log Book";
+    const isRingFrameLogBookReport = subDepartmentName === "Spinning" && typeName === "Ring Frame Log Book";
     const ringFrameRowCount = isRingFrameLogBookReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `ring_frame_row_${count + 1}_mc_no`)) {
             count += 1;
@@ -4354,11 +4360,11 @@ function ReportsPage() {
     const withRingFrameColumns = ringFrameRowFields.length
       ? [...withCountChangeColumns, ...ringFrameRowFields]
       : withCountChangeColumns;
-    // Autoconer's Rewinding Study rows carry however many drum readings the user actually added,
+    // Autoconer's Rewinding Study typeRows carry however many drum readings the user actually added,
     // same reasoning as Count Change's readings above.
-    const isAutoconerRewindingStudyReport = subDepartment === "Autoconer" && reportType === "Rewinding Study";
+    const isAutoconerRewindingStudyReport = subDepartmentName === "Autoconer" && typeName === "Rewinding Study";
     const rewindingStudyReadingCount = isAutoconerRewindingStudyReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `rewinding_study_reading_${count + 1}_drum_no`)) {
             count += 1;
@@ -4376,11 +4382,11 @@ function ReportsPage() {
     const withRewindingStudyColumns = rewindingStudyReadingFields.length
       ? [...withRingFrameColumns, ...rewindingStudyReadingFields]
       : withRingFrameColumns;
-    // Autoconer's Cone Density rows carry however many drums the user's Drum From/To range
+    // Autoconer's Cone Density typeRows carry however many drums the user's Drum From/To range
     // covered, same reasoning as Rewinding Study's readings above.
-    const isAutoconerConeDensityReport = subDepartment === "Autoconer" && reportType === "Cone Density";
+    const isAutoconerConeDensityReport = subDepartmentName === "Autoconer" && typeName === "Cone Density";
     const coneDensityDrumCount = isAutoconerConeDensityReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `cone_density_drum_${count + 1}_drum_no`)) {
             count += 1;
@@ -4398,11 +4404,11 @@ function ReportsPage() {
     const withConeDensityColumns = coneDensityDrumFields.length
       ? [...withRewindingStudyColumns, ...coneDensityDrumFields]
       : withRewindingStudyColumns;
-    // Autoconer's Lycra % Checking rows carry however many readings the user generated, same
+    // Autoconer's Lycra % Checking typeRows carry however many readings the user generated, same
     // reasoning as Rewinding Study/Cone Density above.
-    const isAutoconerLycraCheckingReport = subDepartment === "Autoconer" && reportType === "Lycra % Checking";
+    const isAutoconerLycraCheckingReport = subDepartmentName === "Autoconer" && typeName === "Lycra % Checking";
     const lycraCheckingReadingCount = isAutoconerLycraCheckingReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `lycra_checking_reading_${count + 1}_length_mm`)) {
             count += 1;
@@ -4417,11 +4423,11 @@ function ReportsPage() {
     const withLycraCheckingColumns = lycraCheckingReadingFields.length
       ? [...withConeDensityColumns, ...lycraCheckingReadingFields]
       : withConeDensityColumns;
-    // Autoconer's Splice Strength rows carry however many readings the user generated, same
+    // Autoconer's Splice Strength typeRows carry however many readings the user generated, same
     // reasoning as Lycra % Checking/Cone Density above.
-    const isAutoconerSpliceStrengthReport = subDepartment === "Autoconer" && reportType === "Splice Strength";
+    const isAutoconerSpliceStrengthReport = subDepartmentName === "Autoconer" && typeName === "Splice Strength";
     const spliceStrengthReadingCount = isAutoconerSpliceStrengthReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `splice_strength_reading_${count + 1}_reading_number`)) {
             count += 1;
@@ -4439,13 +4445,13 @@ function ReportsPage() {
     const withSpliceStrengthColumns = spliceStrengthReadingFields.length
       ? [...withLycraCheckingColumns, ...spliceStrengthReadingFields]
       : withLycraCheckingColumns;
-    // Autoconer's "Drum wise Appearance" rows carry however many drums the user's Drum From/To
+    // Autoconer's "Drum wise Appearance" typeRows carry however many drums the user's Drum From/To
     // range covered, same reasoning as Splice Strength/Cone Density above — per user request,
     // each drum's own No. and Appearance (Yes/No) show as separate numbered columns rather than
     // one aggregated value for the whole entry.
-    const isAutoconerDrumWiseAppearanceReport = subDepartment === "Autoconer" && reportType === "Drum wise Appearance";
+    const isAutoconerDrumWiseAppearanceReport = subDepartmentName === "Autoconer" && typeName === "Drum wise Appearance";
     const drumWiseAppearanceCount = isAutoconerDrumWiseAppearanceReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           const drumFrom = Number(row?.drum_from);
           const drumTo = Number(row?.drum_to);
           const rangeCount =
@@ -4469,11 +4475,11 @@ function ReportsPage() {
     const withDrumWiseAppearanceColumns = drumWiseAppearanceFields.length
       ? [...withSpliceStrengthColumns, ...drumWiseAppearanceFields]
       : withSpliceStrengthColumns;
-    // Mixing's Openness Data Entry rows carry however many entries the user's "No. of Entries (N)"
+    // Mixing's Openness Data Entry typeRows carry however many entries the user's "No. of Entries (N)"
     // generated, same reasoning as Splice Strength/Cone Density above.
-    const isMixingOpennessReport = subDepartment === "Mixing" && reportType === "Openness Data Entry";
+    const isMixingOpennessReport = subDepartmentName === "Mixing" && typeName === "Openness Data Entry";
     const opennessEntryCount = isMixingOpennessReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `openness_entry_${count + 1}_weight`)) {
             count += 1;
@@ -4491,7 +4497,7 @@ function ReportsPage() {
     // Openness % is per-stage, not per-entry (see normalizeOpennessRows) — its own numbered
     // column set, keyed by stage_no rather than entry_no.
     const opennessStageCount = isMixingOpennessReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `openness_stage_${count + 1}_percentage`)) {
             count += 1;
@@ -4509,11 +4515,11 @@ function ReportsPage() {
     const withOpennessColumns = opennessStageFields.length
       ? [...withOpennessEntryColumns, ...opennessStageFields]
       : withOpennessEntryColumns;
-    // Mixing's Process Parameter rows carry however many "blend" rows the user added, same
+    // Mixing's Process Parameter typeRows carry however many "blend" typeRows the user added, same
     // reasoning as Openness above.
-    const isMixingProcessParameterReport = subDepartment === "Mixing" && reportType === "Process Parameter";
+    const isMixingProcessParameterReport = subDepartmentName === "Mixing" && typeName === "Process Parameter";
     const mixingBlendCount = isMixingProcessParameterReport
-      ? rows.reduce((max, row) => {
+      ? typeRows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `blend_${count + 1}_lot_no`)) {
             count += 1;
@@ -4531,9 +4537,22 @@ function ReportsPage() {
     const withBlendColumns = mixingBlendFields.length
       ? [...withOpennessColumns, ...mixingBlendFields]
       : withOpennessColumns;
-    const selectedKeys = new Set(selectedFields.map((field) => field.key));
+    const selectedKeys = new Set(excludeFields.map((field) => field.key));
     return withBlendColumns.filter((field) => !selectedKeys.has(field.key));
-  }, [builderOptions.input_fields, isTeamPerformanceReport, reportType, rows, selectedFields, subDepartment]);
+  };
+
+  const availableFields = useMemo(
+    () =>
+      computeCatalogFieldsForType(
+        reportType,
+        rows,
+        subDepartment,
+        builderOptions.input_fields,
+        isTeamPerformanceReport,
+        selectedFields
+      ),
+    [builderOptions.input_fields, isTeamPerformanceReport, reportType, rows, selectedFields, subDepartment]
+  );
 
   const filteredRows = useMemo(() => {
     if (isInvoiceDataReport) return rows;
@@ -4834,7 +4853,11 @@ function ReportsPage() {
         input_screen: canonicalReport.reportType,
         ...(isTeamPerformanceReport ? { level: analysisLevel, user_id: analysisUserId } : {}),
       };
-      const generalReportFetcher = (params = {}) => fetchGeneralReportDataRows({ ...baseReportParams, ...params });
+      // Generic /reports/general-report/data fallback — disabled per requirement: every report
+      // type used here must be fetched through its own dedicated Custom Report source (fetcher/
+      // endpoint below), never the generic general-report SQL path, so values can never diverge
+      // between "custom fields" and "include all fields"/"All Type" modes.
+      // const generalReportFetcher = (params = {}) => fetchGeneralReportDataRows({ ...baseReportParams, ...params });
       // Draw Frame's "A%" notebook and Simplex's "SMXCots Checking Data Entry"/"SMX Breaks Study
       // Report"/"Stretch %" all store one entry's per-item breakdown as a nested array
       // (rows/manual_json/ocr_json, `items`, or `tables`) describing a single record, not
@@ -4925,14 +4948,10 @@ function ReportsPage() {
                                                 ? extractResponseRows
                                                 : normalizeRows;
 
-      if (reportFetcher) {
-        try {
-          return await fetchAllReportRows(reportFetcher, baseReportParams, extractRows);
-        } catch (directError) {
-          return await fetchAllReportRows(generalReportFetcher, baseReportParams, extractRows);
-        }
+      if (!reportFetcher) {
+        throw new Error(`No Custom Report data source is registered for "${typeName}".`);
       }
-      return await fetchAllReportRows(generalReportFetcher, baseReportParams, extractRows);
+      return await fetchAllReportRows(reportFetcher, baseReportParams, extractRows);
     };
 
     const loadReport = async () => {
@@ -5179,18 +5198,14 @@ function ReportsPage() {
       report_type: normalizedSchedule.reportType,
       input_screen: normalizedSchedule.reportType,
     };
-    const generalReportFetcher = (params = {}) => fetchGeneralReportDataRows({ ...baseScheduleParams, ...params });
-    let scheduleRows = [];
-
-    if (reportFetcher) {
-      try {
-        scheduleRows = await fetchAllReportRows(reportFetcher, baseScheduleParams);
-      } catch (directError) {
-        scheduleRows = await fetchAllReportRows(generalReportFetcher, baseScheduleParams);
-      }
-    } else {
-      scheduleRows = await fetchAllReportRows(generalReportFetcher, baseScheduleParams);
+    // Generic /reports/general-report/data fallback disabled here too — scheduled report emails
+    // must be built from the same dedicated Custom Report source as the on-screen report, never
+    // the generic general-report SQL path.
+    // const generalReportFetcher = (params = {}) => fetchGeneralReportDataRows({ ...baseScheduleParams, ...params });
+    if (!reportFetcher) {
+      throw new Error(`No Custom Report data source is registered for "${normalizedSchedule.reportType}".`);
     }
+    const scheduleRows = await fetchAllReportRows(reportFetcher, baseScheduleParams);
 
     return filterRowsByScheduleDate(normalizedSchedule, scheduleRows);
   };
