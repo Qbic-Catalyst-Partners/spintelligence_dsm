@@ -188,6 +188,7 @@ const ensureWrappingComberNoilPercentTable = async () => {
       id BIGSERIAL PRIMARY KEY,
       entry_id TEXT,
       entry_type TEXT,
+      operator TEXT,
       schema_name TEXT,
       table_name TEXT,
       pdf_file TEXT,
@@ -204,6 +205,7 @@ const ensureWrappingComberNoilPercentTable = async () => {
     ALTER TABLE wrapping.comber_noil_percent
       ADD COLUMN IF NOT EXISTS entry_id TEXT,
       ADD COLUMN IF NOT EXISTS entry_type TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT,
       ADD COLUMN IF NOT EXISTS schema_name TEXT,
       ADD COLUMN IF NOT EXISTS table_name TEXT,
       ADD COLUMN IF NOT EXISTS pdf_file TEXT,
@@ -289,7 +291,8 @@ const ensureDrawframeEntryIdColumns = async () => {
 
   await client.query(`
     ALTER TABLE drawframe.cots_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
   await client.query(`
     ALTER TABLE drawframe.cots_breaker_data
@@ -625,14 +628,15 @@ const saveWrappingComberNoilPercent = async (req, res, next) => {
 
     const result = await client.query(
       `INSERT INTO wrapping.comber_noil_percent (
-        entry_id, entry_type, schema_name, table_name, pdf_file,
+        entry_id, entry_type, operator, schema_name, table_name, pdf_file,
         meta, sample_rows, summary_rows, rows, raw_ocr_rows
       )
-      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb)
+      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb)
       RETURNING *`,
       [
         payload.entry_id ?? null,
         payload.entry_type ?? 'Comber Noil Percent',
+        String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null,
         payload.schema_name ?? 'wrapping',
         payload.table_name ?? 'comber_noil_percent',
         payload.pdf_file ?? payload.pdfFile ?? null,
@@ -1632,14 +1636,15 @@ router.post('/cots', async (req, res) => {
             return res.status(400).json({ message: "entry_id is required and must be unique" });
         }
 
+        const operatorName = getAuthenticatedOperatorName(req);
         await client.query('BEGIN');
 
         const entry = await client.query(
             `INSERT INTO drawframe.cots_data_entry
-            (entry_id, entry_date, shift, sub_type)
-            VALUES ($1,$2,$3,$4)
+            (entry_id, entry_date, shift, sub_type, operator)
+            VALUES ($1,$2,$3,$4,$5)
             RETURNING id`,
-            [entry_id, entry_date, shift, sub_type]
+            [entry_id, entry_date, shift, sub_type, operatorName]
         );
 
         const createdEntryId = entry.rows[0].id;

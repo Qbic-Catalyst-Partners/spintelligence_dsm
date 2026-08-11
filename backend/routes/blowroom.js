@@ -390,7 +390,8 @@ const ensureBlowroomEntryIdColumns = async () => {
   await client.query(`
     ALTER TABLE blowroom.drop_test
       ADD COLUMN IF NOT EXISTS entry_id varchar(80),
-      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
+      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW(),
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
   // "Average Wt." is entered per-tuft on the form (DropTestDataEntry's actDisplay field, used to
   // compute Ratio %) but was never sent to the backend or given a column — Custom Report had
@@ -477,6 +478,7 @@ const ensureBrWasteStudyTables = async () => {
       date date NOT NULL,
       variety varchar(120),
       study_type varchar(20) NOT NULL CHECK (study_type IN ('Type 1', 'Type 2', 'Type 3')),
+      operator TEXT,
       carding_production_kg numeric(12,2),
       type_entries integer,
       waste_type varchar(120),
@@ -842,6 +844,7 @@ router.post('/sync', async (req, res, next) => {
       total_sync_percentage,
       entries
     } = req.body;
+    const operatorName = String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null;
     if (!entry_id) {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
@@ -857,12 +860,13 @@ router.post('/sync', async (req, res, next) => {
     const syncRes = await client.query(
       `INSERT INTO blowroom.blow_room_sync
       (entry_id, inspection_date, line_no, variety, checked_by, beater, total_time, number_of_entries,
-       total_run_time, total_idle_time, total_sub_total_time, total_sync_percentage)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       total_run_time, total_idle_time, total_sub_total_time, total_sync_percentage, operator)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING id`,
       [
         entry_id, inspection_date, line_no, variety, checked_by, beater, total_time, entries.length,
-        total_run_time ?? null, total_idle_time ?? null, total_sub_total_time ?? null, total_sync_percentage ?? null
+        total_run_time ?? null, total_idle_time ?? null, total_sub_total_time ?? null, total_sync_percentage ?? null,
+        operatorName
       ]
     );
 
@@ -1044,11 +1048,11 @@ router.post('/drop-test', async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO blowroom.drop_test (
         drop_id, entry_id, date, variety, blend,
-        tuft_no, tuft_variety,
+        tuft_no, tuft_variety, operator,
         display_weight, actual_weight, average_weight,
         difference, ratio_percent
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *`,
       [
         dropId,
@@ -1058,6 +1062,7 @@ router.post('/drop-test', async (req, res, next) => {
         blend,
         toNumberOrNull(tuft_no),
         tuft_variety,
+        String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null,
         displayWeightValue,
         actualWeightValue,
         averageWeightValue,
@@ -1261,11 +1266,11 @@ router.post('/br-waste-study', async (req, res, next) => {
       `INSERT INTO blowroom.br_waste_study (
         entry_id, waste_study_id, date, variety, entry_type, study_type,
         carding_production_kg, type_entries, waste_type_entries,
-        waste_type, waste_kg, waste_percent, overall_percent,
+        waste_type, waste_kg, waste_percent, overall_percent, operator,
         remarks
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15
       )
       RETURNING *`,
       [
@@ -1278,6 +1283,7 @@ router.post('/br-waste-study', async (req, res, next) => {
         productionValue, Array.isArray(type_entries) ? type_entries.length : toNumberOrNull(type_entries),
         Array.isArray(waste_type_entries) ? waste_type_entries.length : toNumberOrNull(waste_type_entries),
         waste_type, wasteKgValue, wastePercentValue, overallPercentValue,
+        String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null,
         remarks
       ]
     );
