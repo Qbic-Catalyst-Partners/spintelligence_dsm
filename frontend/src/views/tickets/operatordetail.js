@@ -108,7 +108,7 @@ export default function TicketDetails() {
 
       setIsPopupOpen(false);
       setComment("");
-      emitGlobalSuccessModal({ message: "Data Submitted" });
+      emitGlobalSuccessModal({ message: "Submitted for L2 approval" });
       dispatch(fetchOperatorTicketById(submitTicketId));
     } catch (error) {
       const errorMessage =

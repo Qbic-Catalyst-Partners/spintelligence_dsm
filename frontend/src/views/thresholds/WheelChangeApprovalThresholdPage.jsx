@@ -27,6 +27,13 @@ const SUB_DEPARTMENT_NAME_TO_WHEEL_CHANGE_DEPARTMENT = {
   Simplex: "Simplex",
 };
 
+const WHEEL_CHANGE_DEPARTMENT_TO_SUB_DEPARTMENT = {
+  Spinning: "Spinning",
+  Drawframe: "Draw Frame",
+  Carding: "Carding",
+  Simplex: "Simplex",
+};
+
 const createRule = () => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   departmentSlug: "",
@@ -224,8 +231,9 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
   };
 
   const openEditDepartment = (item) => {
+    const wheelChangeDepartment = item.wheel_change_department || item.config_key || item.department;
     const matchedSubDepartmentName = Object.keys(SUB_DEPARTMENT_NAME_TO_WHEEL_CHANGE_DEPARTMENT).find(
-      (name) => SUB_DEPARTMENT_NAME_TO_WHEEL_CHANGE_DEPARTMENT[name] === item.department
+      (name) => SUB_DEPARTMENT_NAME_TO_WHEEL_CHANGE_DEPARTMENT[name] === wheelChangeDepartment
     );
     const matchedDepartment = availableDepartments.find((department) =>
       department.subDepartments?.some((subDepartment) => subDepartment.name === matchedSubDepartmentName)
@@ -242,7 +250,7 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
       l4UserIds: normalizeIdList(item.l4_user_ids),
       tatHours: String(item.tat_hours ?? "24"),
     }]);
-    setEditingDepartment(item.department || "");
+    setEditingDepartment(wheelChangeDepartment || "");
     setMessage("Edit mode loaded from Existing Thresholds.");
     setError("");
   };
@@ -284,8 +292,9 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
           throw new Error("Please enter Approve Within Hours greater than 0 for every row.");
         }
 
-        return {
-          department: wheelChangeDepartment,
+      return {
+          department: 'Quality Control',
+          wheel_change_department: wheelChangeDepartment,
           severity: rule.severity,
           l4_user_ids: rule.l4UserIds.map((id) => Number(id)),
           tat_hours: hours,
@@ -438,8 +447,8 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
 
           <p style={{ color: "#7b89a0", fontSize: "12px" }}>
             Once an L1 user submits a Wheel Change, it goes to L4 and the Approve Within timer starts. If L4 doesn&apos;t
-            act within that time, a ticket is raised and escalates to L5 Executive Leadership. If no specific L4 user is
-            selected, the approval task is raised on every current L4 user.
+            act within that time, a ticket is raised. If no specific L4 user is selected, the approval task is raised on
+            every current L4 user.
           </p>
 
           <div className={styles.formFooter}>
@@ -477,7 +486,7 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
       <div className={styles.shell}>
         <div className={styles.intro}>
           <h1>WC Threshold</h1>
-          <p>Set the L4 approver(s), severity and Approve Within time for each department&apos;s Wheel Change approvals.</p>
+          <p>Set the department, sub-department, severity, L4 approver(s), and Approve Within time for each Wheel Change approval.</p>
         </div>
         {content}
       </div>

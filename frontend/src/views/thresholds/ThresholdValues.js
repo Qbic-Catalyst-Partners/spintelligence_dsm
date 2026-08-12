@@ -33,9 +33,7 @@ const createRule = () => ({
     negativeTolerance: "",
     criticality: "",
     approvalL1: [],
-    approvalL2: [],
     approvalL1Tat: "08:00",
-    approvalL2Tat: "08:00",
 });
 
 // TAT (turn-around time) helpers — 24-hour, hours-and-minutes only, no AM/PM.
@@ -308,24 +306,7 @@ const getApprovalValues = (item, users, level) => {
         item?.approvalL1,
     ];
 
-    const l2Candidates = [
-        item?.approval_l2_names,
-        item?.approvalL2Names,
-        item?.approval_l2_name,
-        item?.approvalL2Name,
-        item?.approved_by_name,
-        item?.approvedByName,
-        item?.approval_l2,
-        item?.approved_by,
-        item?.created_by_name,
-        item?.createdByName,
-        item?.updated_by_name,
-        item?.updatedByName,
-        item?.created_by,
-        item?.updated_by,
-    ];
-
-    return resolveDisplayValues(users, level === "l1" ? l1Candidates : l2Candidates);
+    return resolveDisplayValues(users, l1Candidates);
 };
 
 function ExpandableCell({ values = [], fallback = "-" }) {
@@ -620,17 +601,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
         [users]
     );
 
-    const l2Options = useMemo(
-        () =>
-            buildUserOptions(
-                users,
-                (item) =>
-                    normalizeLookupValue(item?.level) === "l2" ||
-                    String(item?.role || "").trim().toLowerCase().includes("supervisor")
-            ),
-        [users]
-    );
-
     useEffect(() => {
         setExistingFilters((current) => {
             const nextDepartmentSlug = availableDepartments.some(
@@ -791,11 +761,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                 approvalL1: normalizeNameList(
                     item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1
                 ),
-                approvalL2: normalizeNameList(
-                    item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2
-                ),
                 approvalL1Tat: formatTatHours(item?.l1_tat_hours),
-                approvalL2Tat: formatTatHours(item?.l2_tat_hours),
             },
         ]);
         setEditingThresholdId(getThresholdIdentifier(item));
@@ -921,24 +887,14 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
             const rawNegativeTolerance = rule.negativeTolerance.trim();
             const criticality = String(rule.criticality || "").trim();
             const approvalL1Names = normalizeNameList(rule.approvalL1);
-            const approvalL2Names = normalizeNameList(rule.approvalL2);
             const approvalL1Users = resolveSelectedUsers(users, approvalL1Names);
-            const approvalL2Users = resolveSelectedUsers(users, approvalL2Names);
             const approvalL1Ids = approvalL1Users
                 .map((userItem) => String(userItem?.employeeId || userItem?.id || "").trim())
                 .filter(Boolean);
-            const approvalL2Ids = approvalL2Users
-                .map((userItem) => String(userItem?.employeeId || userItem?.id || "").trim())
-                .filter(Boolean);
             const primaryApprovalL1Name = approvalL1Names[0] || "";
-            const primaryApprovalL2Name = approvalL2Names[0] || "";
             const primaryApprovalL1Id = approvalL1Ids[0] || "";
-            const primaryApprovalL2Id = approvalL2Ids[0] || "";
 
             const staleApprovalL1Names = approvalL1Names.filter(
-                (name) => !resolveSelectedUsers(users, [name]).length
-            );
-            const staleApprovalL2Names = approvalL2Names.filter(
                 (name) => !resolveSelectedUsers(users, [name]).length
             );
 
@@ -948,9 +904,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                 (!rawPositiveTolerance && !rawNegativeTolerance) ||
                 !criticality ||
                 !approvalL1Names.length ||
-                !approvalL2Names.length ||
-                staleApprovalL1Names.length ||
-                staleApprovalL2Names.length
+                staleApprovalL1Names.length
             ) {
                 const missingFields = [];
 
@@ -975,14 +929,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                 } else if (staleApprovalL1Names.length) {
                     missingFields.push(
                         `approval_l1 (${staleApprovalL1Names.join(", ")} no longer exists — please re-select)`
-                    );
-                }
-
-                if (!approvalL2Names.length) {
-                    missingFields.push("approval_l2");
-                } else if (staleApprovalL2Names.length) {
-                    missingFields.push(
-                        `approval_l2 (${staleApprovalL2Names.join(", ")} no longer exists — please re-select)`
                     );
                 }
 
@@ -1054,13 +1000,8 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                 approval_l1_user_id: primaryApprovalL1Id || null,
                 approval_l1_names: approvalL1Names,
                 approval_l1_ids: approvalL1Ids,
+                approval_l1_user_ids: approvalL1Ids,
                 l1_tat_hours: tatValueToHours(rule.approvalL1Tat),
-                approval_l2: primaryApprovalL2Id || primaryApprovalL2Name,
-                approval_l2_name: primaryApprovalL2Name,
-                approval_l2_user_id: primaryApprovalL2Id || null,
-                approval_l2_names: approvalL2Names,
-                approval_l2_ids: approvalL2Ids,
-                l2_tat_hours: tatValueToHours(rule.approvalL2Tat),
                 comparison_operator: rule.comparison,
                 condition_level: rule.comparison,
                 actual_value:
@@ -1345,19 +1286,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                             />
                                                         </label>
 
-                                                        <label className={styles.field}>
-                                                            <span>L2</span>
-                                                            <MultiSelectDropdown
-                                                                values={rule.approvalL2}
-                                                                options={l2Options}
-                                                                disabled={!l2Options.length}
-                                                                placeholder={l2Options.length ? "Select" : "No L2 users available"}
-                                                                onChange={(nextValues) =>
-                                                                    handleRuleChange(rule.id, "approvalL2", nextValues)
-                                                                }
-                                                                emptyLabel="No L2 users available"
-                                                            />
-                                                        </label>
                                                     </div>
 
                                                     <div className={styles.ruleBottomGrid}>
@@ -1618,7 +1546,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                 <th>Input Field</th>
                                                 <th>Notebook Type</th>
                                                 <th>L1</th>
-                                                <th>L2</th>
                                                 <th>Criticality</th>
                                                 <th>Typical Value</th>
                                                 <th>Plus (+)</th>
@@ -1641,9 +1568,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                 const approvalL1Names = normalizeNameList(
                                                     item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1
                                                 );
-                                                const approvalL2Names = normalizeNameList(
-                                                    item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2
-                                                );
                                                 return (
                                                 <tr key={rowKey}>
                                                     <td>{item.sub_department || item.erp_product_code || "-"}</td>
@@ -1653,9 +1577,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                     </td>
                                                     <td>
                                                         <ExpandableCell values={approvalL1Names} />
-                                                    </td>
-                                                    <td>
-                                                        <ExpandableCell values={approvalL2Names} />
                                                     </td>
                                                     <td>
                                                         <span
