@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -505,12 +506,12 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
     const [formError, setFormError] = useState("");
     const [existingFilters, setExistingFilters] = useState(buildInitialFilters);
     const [existingPage, setExistingPage] = useState(1);
-    const [openActionMenuId, setOpenActionMenuId] = useState("");
     const [editingThresholdId, setEditingThresholdId] = useState("");
     const [statusUpdatingRowKey, setStatusUpdatingRowKey] = useState("");
     const [deletingRowKey, setDeletingRowKey] = useState("");
     const [existingMessage, setExistingMessage] = useState("");
     const [existingError, setExistingError] = useState("");
+    const [openActionMenu, setOpenActionMenu] = useState(null);
 
     const percentModeCacheRef = useRef(null);
     if (percentModeCacheRef.current === null) {
@@ -590,9 +591,9 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
 
     useEffect(() => {
         const handlePointerDown = (event) => {
-            const actionMenu = event.target.closest("[data-threshold-menu]");
-            if (!actionMenu) {
-                setOpenActionMenuId("");
+        const actionMenu = event.target.closest("[data-threshold-menu]");
+        if (!actionMenu) {
+                setOpenActionMenu(null);
             }
         };
 
@@ -800,7 +801,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
         ]);
         setEditingThresholdId(getThresholdIdentifier(item));
         setActiveTab("new");
-        setOpenActionMenuId("");
+        setOpenActionMenu(null);
         setFormMessage("Edit mode loaded from Existing Thresholds.");
         setFormError("");
         setExistingMessage("");
@@ -829,7 +830,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
         setStatusUpdatingRowKey(rowKey);
         setExistingMessage("");
         setExistingError("");
-        setOpenActionMenuId("");
+        setOpenActionMenu(null);
         setThresholds((current) =>
             current.map((item, index) =>
                 getThresholdRowKey(item, index) === rowKey
@@ -872,7 +873,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
         setDeletingRowKey(rowKey);
         setExistingMessage("");
         setExistingError("");
-        setOpenActionMenuId("");
+        setOpenActionMenu(null);
         setThresholds((current) => current.filter((item, index) => getThresholdRowKey(item, index) !== rowKey));
 
         try {
@@ -1631,7 +1632,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                         <tbody>
                                             {visibleThresholdRows.map((item, index) => {
                                                 const rowKey = getThresholdRowKey(item, existingPageStart + index);
-                                                const isMenuOpen = openActionMenuId === rowKey;
+                                                const isMenuOpen = openActionMenu?.rowKey === rowKey;
                                                 const isStatusUpdating = statusUpdatingRowKey === rowKey;
                                                 const isDeleting = deletingRowKey === rowKey;
                                                 const criticalityLabel = getCriticalityLabel(item);
@@ -1699,47 +1700,64 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                                 type="button"
                                                                 className={styles.actionMenuButton}
                                                                 aria-label="Open threshold actions"
-                                                                onClick={() =>
-                                                                    setOpenActionMenuId((current) =>
-                                                                        current === rowKey ? "" : rowKey
-                                                                    )
-                                                                }
+                                                                onClick={(event) => {
+                                                                    const rect = event.currentTarget.getBoundingClientRect();
+                                                                    const estimatedMenuHeight = 128;
+                                                                    setOpenActionMenu((current) =>
+                                                                        current?.rowKey === rowKey
+                                                                            ? null
+                                                                            : {
+                                                                                rowKey,
+                                                                                bottom: Math.max(12, window.innerHeight - rect.top + 6),
+                                                                                right: Math.max(12, window.innerWidth - rect.right),
+                                                                            }
+                                                                    );
+                                                                }}
                                                             >
                                                                 <FiMoreVertical />
                                                             </button>
-                                                            {isMenuOpen ? (
-                                                                <div className={styles.actionMenu}>
-                                                                    <button
-                                                                        type="button"
-                                                                        className={styles.actionMenuItem}
-                                                                        onClick={() => openEditThreshold(item)}
-                                                                        disabled={isDeleting || isStatusUpdating}
-                                                                    >
-                                                                        Edit
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        className={styles.actionMenuItem}
-                                                                        onClick={() => toggleThresholdStatus(rowKey)}
-                                                                        disabled={isStatusUpdating}
-                                                                    >
-                                                                        {isStatusUpdating
-                                                                            ? "Updating..."
-                                                                            : item?.is_active
-                                                                                ? "Inactive"
-                                                                                : "Active"}
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        className={`${styles.actionMenuItem} ${styles.actionMenuDelete}`}
-                                                                        onClick={() => deleteThresholdRow(rowKey)}
-                                                                        disabled={isDeleting || isStatusUpdating}
-                                                                    >
-                                                                        {isDeleting ? "Deleting..." : "Delete"}
-                                                                    </button>
-                                                                </div>
-                                                            ) : null}
                                                         </div>
+                                                        {isMenuOpen && typeof document !== "undefined" ? createPortal(
+                                                            <div
+                                                                className={styles.actionMenu}
+                                                                style={{
+                                                                    position: "fixed",
+                                                                    top: "auto",
+                                                                    bottom: openActionMenu.bottom,
+                                                                    right: openActionMenu.right,
+                                                                }}
+                                                            >
+                                                                <button
+                                                                    type="button"
+                                                                    className={styles.actionMenuItem}
+                                                                    onClick={() => openEditThreshold(item)}
+                                                                    disabled={isDeleting || isStatusUpdating}
+                                                                >
+                                                                    Edit
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className={styles.actionMenuItem}
+                                                                    onClick={() => toggleThresholdStatus(rowKey)}
+                                                                    disabled={isStatusUpdating}
+                                                                >
+                                                                    {isStatusUpdating
+                                                                        ? "Updating..."
+                                                                        : item?.is_active
+                                                                            ? "Inactive"
+                                                                            : "Active"}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className={`${styles.actionMenuItem} ${styles.actionMenuDelete}`}
+                                                                    onClick={() => deleteThresholdRow(rowKey)}
+                                                                    disabled={isDeleting || isStatusUpdating}
+                                                                >
+                                                                    {isDeleting ? "Deleting..." : "Delete"}
+                                                                </button>
+                                                            </div>,
+                                                            document.body
+                                                        ) : null}
                                                     </td>
                                                 </tr>
                                             )})}
