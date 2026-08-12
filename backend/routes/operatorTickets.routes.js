@@ -3,7 +3,7 @@ const router = express.Router();
 const client = require('../connection');
 const { createNotificationsForUsers, ensureNotificationMetadataColumns } = require('../utils/notifications');
 const { ensureDelegationsTable } = require('./delegations.routes');
-const { getManagerChain } = require('./user.routes');
+const { getManagerChain, ensureReportsToColumn } = require('./user.routes');
 const sendEmail = require('../email');
 const multer = require('multer');
 const csvParser = require('csv-parser');
@@ -393,6 +393,20 @@ const ensureTicketApprovalsTable = async () => {
 };
 
 const ensureOperatorTicketApprovalColumns = async () => {
+  // ticket_type / ticket_kind are written by several ticket-creation routes
+  // (processParameters, spinning, submittedNotebooks) and read by the
+  // supervisor-tickets query, but no migration ever created them - on a DB
+  // provisioned from an older schema they are missing and the supervisor
+  // dashboard query fails with "column ot.ticket_kind does not exist",
+  // returning no tickets. Self-heal here so every environment has them.
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+    ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+    ADD COLUMN IF NOT EXISTS ticket_kind varchar(50) NULL
+  `);
   await client.query(`
     ALTER TABLE ticketing_system.operator_tickets
     ADD COLUMN IF NOT EXISTS approval_l1_user_ids integer[] NULL
@@ -1958,9 +1972,12 @@ router.get('/', async (req, res, next) => {
     await ensureOperatorTicketApprovalColumns();
     await ensureNotificationRecipientColumn();
     await ensureDelegationsTable();
+    // Reporting-hierarchy visibility (below) walks reports_to_user_id, so make
+    // sure the column exists before the recursive scope subquery references it.
+    await ensureReportsToColumn();
 
     const page = parseInt(req.query.page) || 1;
-    const limit = 6; 
+    const limit = 6;
     const offset = (page - 1) * limit;
     const { status, severity, machine, start_date, end_date } = req.query;
 
@@ -2016,6 +2033,14 @@ router.get('/', async (req, res, next) => {
     const viewerUserId = canViewAllTickets ? null : parsePositiveInt(req.user?.id);
     if (viewerUserId) {
       values.push(viewerUserId);
+      // A supervisor must see every ticket owned by anyone below them in the
+      // reporting hierarchy (Owned/Mapped tabs), regardless of the ticket's
+      // status (Open/In Progress/Submit) and regardless of whether its
+      // approval_lN_user_ids arrays were ever populated. The reports_to_user_id
+      // chain is the source of truth: this recursive subquery collects every
+      // descendant of the viewer, so any ticket whose owner (the L1 operator)
+      // rolls up to this viewer is visible. The approval-array and delegation
+      // checks are kept as additional inclusion paths.
       where.push(`(
         ot.user_id = $${values.length}
         OR $${values.length} = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
@@ -2023,6 +2048,15 @@ router.get('/', async (req, res, next) => {
         OR $${values.length} = ANY(COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[]))
         OR $${values.length} = ANY(COALESCE(ot.approval_l4_user_ids, ARRAY[]::int[]))
         OR $${values.length} = ANY(COALESCE(ot.approval_l5_user_ids, ARRAY[]::int[]))
+        OR ot.user_id IN (
+          WITH RECURSIVE reportees AS (
+            SELECT id FROM users.user_details WHERE reports_to_user_id = $${values.length}
+            UNION
+            SELECT u.id FROM users.user_details u
+            JOIN reportees r ON u.reports_to_user_id = r.id
+          )
+          SELECT id FROM reportees
+        )
         OR ot.user_id IN (
           SELECT owner_user_id FROM users.delegations
           WHERE delegate_user_id = $${values.length}
@@ -3692,6 +3726,18 @@ router.put('/submit/:id', async (req, res, next) => {
     const fallbackL2Ids = Array.isArray(ticket.approval_l2_user_ids) ? ticket.approval_l2_user_ids : [];
     const hierarchyL2Ids = ticket.user_id ? (await getManagerChain(ticket.user_id)).filter((manager) => String(manager.level || '').trim().toUpperCase() === 'L2').map((manager) => manager.id) : [];
     const notifyL2Ids = Array.from(new Set([...fallbackL2Ids, ...hierarchyL2Ids].map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)));
+    // Persist the freshly-resolved L2 approver(s) onto the ticket so the L2
+    // approval queue (getApprovalQueue) scopes to exactly this reporting
+    // manager, even if the ticket was created before its reporting chain was
+    // set. Notification recipients and queue visibility stay in sync.
+    if (notifyL2Ids.length) {
+      await client.query(
+        `UPDATE ticketing_system.operator_tickets
+         SET approval_l2_user_ids = $1::int[]
+         WHERE ticket_id = $2`,
+        [notifyL2Ids, ticketId]
+      );
+    }
     if (notifyL2Ids.length) {
       await createNotificationsForUsers(notifyL2Ids, {
         ticketId,
@@ -3776,6 +3822,33 @@ const getApprovalQueue = async (req, res, next) => {
     if (machineFilter && machineFilter.toLowerCase() !== 'all') {
       values.push(machineFilter);
       where.push(`ot.machine_name = $${values.length}`);
+    }
+
+    // Scope the queue to the reporting-manager approver for this level. Each
+    // ticket's approval_lN_user_ids is resolved from the L1 user's reporting
+    // chain (getManagerChain) at creation/escalation time, so a plain L2/L3/L4
+    // approver must only see the tickets whose matching-level approver list
+    // includes them - otherwise every L2 sees every L2 ticket. Admin / full
+    // access users (and L5, the top authority) keep the unscoped view.
+    const requesterEmployeeId = String(req.user?.employee_id || '').trim().toUpperCase();
+    const requesterRole = String(req.user?.role || '').trim().toLowerCase();
+    const requesterLevel = String(req.user?.level || '').trim().toUpperCase();
+    const canViewAllApprovals =
+      requesterEmployeeId === 'ADMIN001' ||
+      /^ADMIN\s*0*\d+$/.test(requesterEmployeeId) ||
+      ['admin', 'super admin', 'superadmin'].includes(requesterRole) ||
+      requesterLevel === 'L5';
+    const approverColumnByLevel = {
+      L2: 'approval_l2_user_ids',
+      L3: 'approval_l3_user_ids',
+      L4: 'approval_l4_user_ids',
+      L5: 'approval_l5_user_ids'
+    };
+    const approverColumn = approverColumnByLevel[levelFilter];
+    const requesterUserId = parsePositiveInt(req.user?.id);
+    if (!canViewAllApprovals && approverColumn && requesterUserId) {
+      values.push(requesterUserId);
+      where.push(`$${values.length} = ANY(COALESCE(ot.${approverColumn}, ARRAY[]::int[]))`);
     }
 
     values.push(limit);

@@ -120,7 +120,13 @@ const supervisorSlice = createSlice({
       })
       .addCase(fetchTicketDetails.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.ticket = action.payload;
+        // The /supervisor-tickets/tickets/:id endpoint wraps the row as
+        // { ticket: {...} }. Unwrap it so the detail view can read fields
+        // (threshold_value, actual_value, created_at) directly off state.ticket
+        // instead of a doubly-nested state.ticket.ticket - otherwise Standard,
+        // Threshold and Created At all render blank.
+        const payload = action.payload;
+        state.ticket = payload && payload.ticket ? payload.ticket : payload;
       })
       .addCase(fetchTicketDetails.rejected, (state, action) => {
         state.isLoading = false;

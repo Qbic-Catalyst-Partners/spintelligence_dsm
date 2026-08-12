@@ -1,0 +1,196 @@
+From c19038822caa659b42600e7fb88d270b3d358526 Mon Sep 17 00:00:00 2001
+From: UmaJ56 <uma.jaganathan@qbiccatalyst.com>
+Date: Wed, 12 Aug 2026 16:05:36 +0530
+Subject: [PATCH] Fix L2/L5 ticket visibility, notification 404, and L1
+ resubmit persistence
+
+- operatorTickets /tickets: scope supervisor visibility by the reports_to_user_id reporting chain (recursive), so an L2/L3/L4 sees every ticket owned by anyone below them regardless of status or whether approval_lN_user_ids was populated. Ensures reports_to_user_id column exists first.
+- operatorTickets approval queue: scope by the logged-in approver so each level only sees its own tickets; persist resolved L2 approvers on resubmit.
+- Header: rewrite broken /operator-tickets and /supervisor-tickets notification links (404) to the real /operatordetail and /supervisordetails routes by viewer level.
+- SupervisorDashboard: keep L1 resubmitted ticket visible with Submit status instead of vanishing; let L5 and admin see every status under Mapped.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+---
+ backend/routes/operatorTickets.routes.js      | 63 ++++++++++++++++++-
+ frontend/src/components/Header.jsx            | 22 ++++++-
+ .../src/views/tickets/SupervisorDashboard.js  | 13 +++-
+ 3 files changed, 94 insertions(+), 4 deletions(-)
+
+diff --git a/backend/routes/operatorTickets.routes.js b/backend/routes/operatorTickets.routes.js
+index 0e9d0d1c..8c9b9002 100644
+--- a/backend/routes/operatorTickets.routes.js
++++ b/backend/routes/operatorTickets.routes.js
+@@ -3,7 +3,7 @@ const router = express.Router();
+ const client = require('../connection');
+ const { createNotificationsForUsers, ensureNotificationMetadataColumns } = require('../utils/notifications');
+ const { ensureDelegationsTable } = require('./delegations.routes');
+-const { getManagerChain } = require('./user.routes');
++const { getManagerChain, ensureReportsToColumn } = require('./user.routes');
+ const sendEmail = require('../email');
+ const multer = require('multer');
+ const csvParser = require('csv-parser');
+@@ -1958,9 +1958,12 @@ router.get('/', async (req, res, next) => {
+     await ensureOperatorTicketApprovalColumns();
+     await ensureNotificationRecipientColumn();
+     await ensureDelegationsTable();
++    // Reporting-hierarchy visibility (below) walks reports_to_user_id, so make
++    // sure the column exists before the recursive scope subquery references it.
++    await ensureReportsToColumn();
+ 
+     const page = parseInt(req.query.page) || 1;
+-    const limit = 6; 
++    const limit = 6;
+     const offset = (page - 1) * limit;
+     const { status, severity, machine, start_date, end_date } = req.query;
+ 
+@@ -2016,6 +2019,14 @@ router.get('/', async (req, res, next) => {
+     const viewerUserId = canViewAllTickets ? null : parsePositiveInt(req.user?.id);
+     if (viewerUserId) {
+       values.push(viewerUserId);
++      // A supervisor must see every ticket owned by anyone below them in the
++      // reporting hierarchy (Owned/Mapped tabs), regardless of the ticket's
++      // status (Open/In Progress/Submit) and regardless of whether its
++      // approval_lN_user_ids arrays were ever populated. The reports_to_user_id
++      // chain is the source of truth: this recursive subquery collects every
++      // descendant of the viewer, so any ticket whose owner (the L1 operator)
++      // rolls up to this viewer is visible. The approval-array and delegation
++      // checks are kept as additional inclusion paths.
+       where.push(`(
+         ot.user_id = $${values.length}
+         OR $${values.length} = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
+@@ -2023,6 +2034,15 @@ router.get('/', async (req, res, next) => {
+         OR $${values.length} = ANY(COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[]))
+         OR $${values.length} = ANY(COALESCE(ot.approval_l4_user_ids, ARRAY[]::int[]))
+         OR $${values.length} = ANY(COALESCE(ot.approval_l5_user_ids, ARRAY[]::int[]))
++        OR ot.user_id IN (
++          WITH RECURSIVE reportees AS (
++            SELECT id FROM users.user_details WHERE reports_to_user_id = $${values.length}
++            UNION
++            SELECT u.id FROM users.user_details u
++            JOIN reportees r ON u.reports_to_user_id = r.id
++          )
++          SELECT id FROM reportees
++        )
+         OR ot.user_id IN (
+           SELECT owner_user_id FROM users.delegations
+           WHERE delegate_user_id = $${values.length}
+@@ -3692,6 +3712,18 @@ router.put('/submit/:id', async (req, res, next) => {
+     const fallbackL2Ids = Array.isArray(ticket.approval_l2_user_ids) ? ticket.approval_l2_user_ids : [];
+     const hierarchyL2Ids = ticket.user_id ? (await getManagerChain(ticket.user_id)).filter((manager) => String(manager.level || '').trim().toUpperCase() === 'L2').map((manager) => manager.id) : [];
+     const notifyL2Ids = Array.from(new Set([...fallbackL2Ids, ...hierarchyL2Ids].map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)));
++    // Persist the freshly-resolved L2 approver(s) onto the ticket so the L2
++    // approval queue (getApprovalQueue) scopes to exactly this reporting
++    // manager, even if the ticket was created before its reporting chain was
++    // set. Notification recipients and queue visibility stay in sync.
++    if (notifyL2Ids.length) {
++      await client.query(
++        `UPDATE ticketing_system.operator_tickets
++         SET approval_l2_user_ids = $1::int[]
++         WHERE ticket_id = $2`,
++        [notifyL2Ids, ticketId]
++      );
++    }
+     if (notifyL2Ids.length) {
+       await createNotificationsForUsers(notifyL2Ids, {
+         ticketId,
+@@ -3778,6 +3810,33 @@ const getApprovalQueue = async (req, res, next) => {
+       where.push(`ot.machine_name = $${values.length}`);
+     }
+ 
++    // Scope the queue to the reporting-manager approver for this level. Each
++    // ticket's approval_lN_user_ids is resolved from the L1 user's reporting
++    // chain (getManagerChain) at creation/escalation time, so a plain L2/L3/L4
++    // approver must only see the tickets whose matching-level approver list
++    // includes them - otherwise every L2 sees every L2 ticket. Admin / full
++    // access users (and L5, the top authority) keep the unscoped view.
++    const requesterEmployeeId = String(req.user?.employee_id || '').trim().toUpperCase();
++    const requesterRole = String(req.user?.role || '').trim().toLowerCase();
++    const requesterLevel = String(req.user?.level || '').trim().toUpperCase();
++    const canViewAllApprovals =
++      requesterEmployeeId === 'ADMIN001' ||
++      /^ADMIN\s*0*\d+$/.test(requesterEmployeeId) ||
++      ['admin', 'super admin', 'superadmin'].includes(requesterRole) ||
++      requesterLevel === 'L5';
++    const approverColumnByLevel = {
++      L2: 'approval_l2_user_ids',
++      L3: 'approval_l3_user_ids',
++      L4: 'approval_l4_user_ids',
++      L5: 'approval_l5_user_ids'
++    };
++    const approverColumn = approverColumnByLevel[levelFilter];
++    const requesterUserId = parsePositiveInt(req.user?.id);
++    if (!canViewAllApprovals && approverColumn && requesterUserId) {
++      values.push(requesterUserId);
++      where.push(`$${values.length} = ANY(COALESCE(ot.${approverColumn}, ARRAY[]::int[]))`);
++    }
++
+     values.push(limit);
+     const limitIndex = values.length;
+     values.push(offset);
+diff --git a/frontend/src/components/Header.jsx b/frontend/src/components/Header.jsx
+index 9842030e..1205a0e9 100644
+--- a/frontend/src/components/Header.jsx
++++ b/frontend/src/components/Header.jsx
+@@ -56,6 +56,26 @@ import styles from "../styles/header.module.css";
+ 
+ const defaultNavLinks = [];
+ 
++// Notification link_url values are written by the backend as
++// /operator-tickets/<id> or /supervisor-tickets/<id>, but no such Next.js
++// pages exist - clicking them 404s. Map those to the real ticket detail
++// pages (/operatordetail for L1, /supervisordetails for L2+), matching the
++// ?ticketId= shape handleTicketClick uses elsewhere. Any other link_url
++// (already a valid app route) is passed through untouched.
++const resolveNotificationTarget = (linkUrl, user) => {
++    const raw = String(linkUrl || "").trim();
++    if (!raw) return "/activity-log";
++
++    const match = raw.match(/^\/(?:operator|supervisor)-tickets\/(.+)$/);
++    if (!match) return raw;
++
++    const ticketId = decodeURIComponent(match[1]);
++    const normalizedId = ticketId.startsWith("#") ? ticketId : `#${ticketId}`;
++    const level = String(user?.level ?? user?.user_details?.level ?? "").trim().toUpperCase();
++    const detailRoute = level === "L1" ? "/operatordetail" : "/supervisordetails";
++    return `${detailRoute}?ticketId=${encodeURIComponent(normalizedId)}&ticketType=Value`;
++};
++
+ const sidebarLinks = [
+     { href: "/", label: "Dashboard", icon: FiHome },
+     { href: "/departments", label: "Department", icon: FiGrid },
+@@ -459,7 +479,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
+ 
+     const handleMarkNotificationRead = async (notification) => {
+         if (!notification?.id || !notification?.source) return;
+-        const targetUrl = notification?.link_url || "/activity-log";
++        const targetUrl = resolveNotificationTarget(notification?.link_url, user);
+         try {
+             await markNotificationReadApi({ source: notification.source, id: notification.id });
+             setNotifications((current) =>
+diff --git a/frontend/src/views/tickets/SupervisorDashboard.js b/frontend/src/views/tickets/SupervisorDashboard.js
+index 65ea0ffc..f8b2fdb4 100644
+--- a/frontend/src/views/tickets/SupervisorDashboard.js
++++ b/frontend/src/views/tickets/SupervisorDashboard.js
+@@ -496,7 +496,18 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
+       .filter((ticket) => {
+         if (getTicketTypeLabel(ticket) !== "Value") return true;
+         const normalizedStatus = String(ticket?.status || "").trim().toLowerCase();
+-        return ["open", "in progress", "reopened"].includes(normalizedStatus);
++        // L5 (Executive Leadership) and admin see every activity at every
++        // status under Mapped - nothing is hidden from the top of the chain.
++        if (mode === "L5" || isAdminUser) return true;
++        // L1 keeps its own submitted ticket visible (status shows "Submit")
++        // after Fix & Resubmit instead of it vanishing - the operator can see
++        // it's now awaiting L2 review. For L2-L4 the submitted ticket comes
++        // from the approval queue (queueTickets below) instead, so exclude the
++        // "Submit" record here to avoid showing it twice at those levels.
++        const visibleStatuses = mode === "L1"
++          ? ["open", "in progress", "reopened", "submit"]
++          : ["open", "in progress", "reopened"];
++        return visibleStatuses.includes(normalizedStatus);
+       })
+       .map((ticket) => applyTicketOverdueStatus({
+         ...ticket,
+-- 
+2.53.0.windows.2
+
