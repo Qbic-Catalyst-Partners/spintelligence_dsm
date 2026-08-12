@@ -496,7 +496,18 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
       .filter((ticket) => {
         if (getTicketTypeLabel(ticket) !== "Value") return true;
         const normalizedStatus = String(ticket?.status || "").trim().toLowerCase();
-        return ["open", "in progress", "reopened"].includes(normalizedStatus);
+        // L5 (Executive Leadership) and admin see every activity at every
+        // status under Mapped - nothing is hidden from the top of the chain.
+        if (mode === "L5" || isAdminUser) return true;
+        // L1 keeps its own submitted ticket visible (status shows "Submit")
+        // after Fix & Resubmit instead of it vanishing - the operator can see
+        // it's now awaiting L2 review. For L2-L4 the submitted ticket comes
+        // from the approval queue (queueTickets below) instead, so exclude the
+        // "Submit" record here to avoid showing it twice at those levels.
+        const visibleStatuses = mode === "L1"
+          ? ["open", "in progress", "reopened", "submit"]
+          : ["open", "in progress", "reopened"];
+        return visibleStatuses.includes(normalizedStatus);
       })
       .map((ticket) => applyTicketOverdueStatus({
         ...ticket,
