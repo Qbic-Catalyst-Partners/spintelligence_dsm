@@ -393,6 +393,20 @@ const ensureTicketApprovalsTable = async () => {
 };
 
 const ensureOperatorTicketApprovalColumns = async () => {
+  // ticket_type / ticket_kind are written by several ticket-creation routes
+  // (processParameters, spinning, submittedNotebooks) and read by the
+  // supervisor-tickets query, but no migration ever created them - on a DB
+  // provisioned from an older schema they are missing and the supervisor
+  // dashboard query fails with "column ot.ticket_kind does not exist",
+  // returning no tickets. Self-heal here so every environment has them.
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+    ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+    ADD COLUMN IF NOT EXISTS ticket_kind varchar(50) NULL
+  `);
   await client.query(`
     ALTER TABLE ticketing_system.operator_tickets
     ADD COLUMN IF NOT EXISTS approval_l1_user_ids integer[] NULL

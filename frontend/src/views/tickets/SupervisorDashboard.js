@@ -526,7 +526,11 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
         threshold_value: row.threshold_value,
         severity: row.severity,
         status: row.ticket_status,
-        created_at: row.approval_created_at,
+        // Use the ticket's real creation time, not the approval-row insert
+        // time (approval_created_at) - the latter is (nearly) identical across
+        // tickets submitted in the same batch, which made every row show the
+        // same Created At. ticket_created_at is the actual ot.created_at.
+        created_at: row.ticket_created_at || row.approval_created_at,
         tat_current_level: "L2",
       });
       return applyTicketOverdueStatus({
