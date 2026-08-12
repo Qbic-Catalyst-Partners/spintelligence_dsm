@@ -4741,12 +4741,12 @@ router.post('/wheel-change/approval-config', async (req, res, next) => {
     const severity = String(req.body?.severity || '').trim() || 'High';
 
     const result = await client.query(
-      `INSERT INTO ticketing_system.wheel_change_approval_config (config_key, l4_user_id, l4_user_ids, tat_hours, is_active, severity, updated_at)
-       VALUES ($1, $2, $3::int[], $4, $5, $6, NOW())
+      `INSERT INTO ticketing_system.wheel_change_approval_config (config_key, l4_user_ids, tat_hours, is_active, severity, updated_at)
+       VALUES ($1, $2::int[], $3, $4, $5, NOW())
        ON CONFLICT (config_key)
-       DO UPDATE SET l4_user_id = EXCLUDED.l4_user_id, l4_user_ids = EXCLUDED.l4_user_ids, tat_hours = EXCLUDED.tat_hours, is_active = EXCLUDED.is_active, severity = EXCLUDED.severity, updated_at = NOW()
+       DO UPDATE SET l4_user_ids = EXCLUDED.l4_user_ids, tat_hours = EXCLUDED.tat_hours, is_active = EXCLUDED.is_active, severity = EXCLUDED.severity, updated_at = NOW()
        RETURNING *`,
-      [department, l4UserIds[0] || null, l4UserIds, tatHours, isActive, severity]
+      [department, l4UserIds, tatHours, isActive, severity]
     );
 
     return res.status(200).json({ message: `Wheel Change Approval configuration for ${department} saved successfully`, config: { department, ...result.rows[0] } });
@@ -4953,20 +4953,45 @@ const getWheelChangeApprovalConfig = async (department = 'Spinning') => {
     row = fallback.rows[0];
   }
   if (!row) {
-    return { config_key: department, l4_user_ids: [], tat_hours: WHEEL_CHANGE_APPROVAL_TAT_HOURS, is_active: true, severity: 'High', updated_at: null };
+    return {
+      department: 'Quality Control',
+      config_key: department,
+      wheel_change_department: department,
+      l4_user_ids: [],
+      tat_hours: WHEEL_CHANGE_APPROVAL_TAT_HOURS,
+      is_active: true,
+      severity: 'High',
+      updated_at: null
+    };
   }
   const l4UserIds = Array.isArray(row.l4_user_ids) && row.l4_user_ids.length
     ? row.l4_user_ids
     : (row.l4_user_id ? [row.l4_user_id] : []);
-  return { ...row, l4_user_ids: l4UserIds };
+  return {
+    ...row,
+    department: 'Quality Control',
+    wheel_change_department: row.config_key,
+    l4_user_ids: l4UserIds
+  };
 };
 
 const getAllWheelChangeApprovalConfigs = async () => {
   await ensureWheelChangeApprovalConfigTable();
-  const configs = await Promise.all(
-    WHEEL_CHANGE_DEPARTMENTS.map((department) => getWheelChangeApprovalConfig(department))
+  const result = await client.query(
+    `SELECT *
+     FROM ticketing_system.wheel_change_approval_config
+     WHERE config_key = ANY($1::text[])
+     ORDER BY config_key`,
+    [WHEEL_CHANGE_DEPARTMENTS]
   );
-  return WHEEL_CHANGE_DEPARTMENTS.map((department, index) => ({ department, ...configs[index] }));
+  return result.rows.map((row) => ({
+    department: 'Quality Control',
+    wheel_change_department: row.config_key,
+    ...row,
+    l4_user_ids: Array.isArray(row.l4_user_ids) && row.l4_user_ids.length
+      ? row.l4_user_ids
+      : (row.l4_user_id ? [row.l4_user_id] : [])
+  }));
 };
 
 const ensureWheelChangeApprovalTicketSchema = async () => {

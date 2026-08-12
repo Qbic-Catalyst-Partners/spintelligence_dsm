@@ -609,43 +609,57 @@ export default function SupervisorDetails() {
             // in actual_value/threshold_value, which for a PP Batch ticket
             // are the completed-screens array and a stray
             // completion_threshold_hours key, neither of which is the actual
-            // point of the ticket (the missing department). Each ticket
-            // already represents exactly one missing department (see PDF
-            // Step 3: "tickets are raised per user, not per PP ID"), so this
-            // shows that directly instead of a noisy 10-row table of mostly
-            // blank cells.
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>ENTRY ID</th>
-                    <th>MISSING DEPARTMENT</th>
-                    <th>COMPLETED</th>
-                    <th>COMPLETION THRESHOLD</th>
-                    <th>FIRST SUBMITTED</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>{ticket?.violation_details?.entry_id || ticket.notebook || ticket.machine_name || "-"}</td>
-                    <td style={{ color: "#CA0000" }}>
-                      {ticket?.violation_details?.missing_screen || "-"}
-                    </td>
-                    <td>
-                      {Array.isArray(ticket?.violation_details?.completed_screens)
-                        ? `${ticket.violation_details.completed_screens.length} dept(s): ${ticket.violation_details.completed_screens.join(", ")}`
-                        : "-"}
-                    </td>
-                    <td>
-                      {ticket?.violation_details?.completion_threshold_hours
-                        ? `${ticket.violation_details.completion_threshold_hours} Hrs`
-                        : "-"}
-                    </td>
-                    <td>{formatDateTime(ticket?.violation_details?.first_created_at || ticket.created_at)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            // point of the ticket (the missing departments). One ticket
+            // covers every department still missing for the PP ID (see PDF
+            // Step 3's "one ticket per PP ID"), so this lists them all
+            // instead of a noisy 10-row table of mostly blank cells.
+            // `overdue_screens`/`missing_screens` (plural) is the current
+            // shape; `missing_screen` (singular) is kept as a fallback for
+            // tickets filed while this was briefly one-ticket-per-department.
+            (() => {
+              const details = ticket?.violation_details || {};
+              const missingDepartments = Array.isArray(details.overdue_screens) && details.overdue_screens.length
+                ? details.overdue_screens
+                : Array.isArray(details.missing_screens) && details.missing_screens.length
+                  ? details.missing_screens
+                  : details.missing_screen
+                    ? [details.missing_screen]
+                    : [];
+              const threshold = details.screen_thresholds && typeof details.screen_thresholds === "object"
+                ? Object.values(details.screen_thresholds)[0]
+                : details.completion_threshold_hours;
+
+              return (
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>ENTRY ID</th>
+                        <th>MISSING DEPARTMENTS</th>
+                        <th>COMPLETED</th>
+                        <th>COMPLETION THRESHOLD</th>
+                        <th>FIRST SUBMITTED</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>{details.entry_id || ticket.notebook || ticket.machine_name || "-"}</td>
+                        <td style={{ color: "#CA0000" }}>
+                          {missingDepartments.length ? missingDepartments.join(", ") : "-"}
+                        </td>
+                        <td>
+                          {Array.isArray(details.completed_screens)
+                            ? `${details.completed_screens.length} dept(s): ${details.completed_screens.join(", ")}`
+                            : "-"}
+                        </td>
+                        <td>{threshold ? `${threshold} Hrs` : "-"}</td>
+                        <td>{formatDateTime(details.first_created_at || ticket.created_at)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()
           ) : (
             <>
               <div className={styles.tableWrap}>

@@ -60,20 +60,20 @@ const THRESHOLD_TYPE_COLUMNS = {
   value: [
     { key: "field", label: "Input Field" },
     { key: "l1", label: "L1" },
-    { key: "l2", label: "L2" },
     { key: "typicalValue", label: "Typical Value" },
     { key: "detail", label: "Plus (+) / Minus (-)" },
   ],
   submission: [
     { key: "l1", label: "L1" },
-    { key: "l2", label: "L2" },
-    { key: "detail", label: "Frequency" },
+    { key: "days", label: "Days" },
+    { key: "frequency", label: "Frequency" },
   ],
   pp: [
     { key: "field", label: "Severity" },
     { key: "l1", label: "L1 Proposer" },
     { key: "l2", label: "L4 Approver" },
-    { key: "detail", label: "Entry / Approve Within" },
+    { key: "entryWithin", label: "Entry Within" },
+    { key: "approveWithin", label: "Approve Within" },
   ],
   acknowledgement: [
     { key: "l2", label: "L4" },
@@ -120,22 +120,28 @@ const getRowId = (item) => item?.id || item?._id || item?.threshold_id || item?.
 
 // Normalizes each threshold type's row shape into one common display shape
 // so the merged "Existing Thresholds" tab can render every type in one table.
-const normalizeValueThresholdRow = (item) => ({
+const normalizeValueThresholdRow = (item, users) => {
+  const l1UserNames =
+    resolveUserNames(item?.approval_l1_user_ids, users) ||
+    resolveUserNames(item?.approval_l1_ids, users) ||
+    [];
+
+  return ({
   type: "value",
   typeLabel: "Value Threshold",
   id: getRowId(item),
   raw: item,
   department: item?.department || item?.management_field || "-",
   subDepartment: item?.sub_department || item?.erp_product_code || "-",
-  notebookType: item?.input_screen || item?.machine_name || "-",
-  field: item?.input_field || item?.parameter_name || "-",
-  l1: nameListToText(item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1),
-  l2: nameListToText(item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2),
-  typicalValue: item?.actual_value ?? "-",
-  detail: `${item?.plus_threshold ?? item?.positive_tolerance ?? "-"} / ${item?.minus_threshold ?? item?.negative_tolerance ?? "-"}`,
+  notebookType: item?.notebook || item?.input_screen || item?.machine_name || "-",
+  field: item?.field || item?.input_field || item?.parameter_name || "-",
+  l1: item?.l1_user_name || item?.approval_l1_name || item?.approval_l1_names || l1UserNames.join(", ") || item?.approval_l1 || item?.approval_l1_user_name || "-",
+  typicalValue: item?.typical_value ?? item?.actual_value ?? "-",
+  detail: `${item?.plus_value ?? item?.plus_threshold ?? item?.positive_tolerance ?? "-"} / ${item?.minus_value ?? item?.minus_threshold ?? item?.negative_tolerance ?? "-"}`,
   isActive: getActiveValue(item),
   createdAt: item?.created_at || item?.createdAt,
-});
+  });
+};
 
 const normalizeSubmissionThresholdRow = (item) => ({
   type: "submission",
@@ -147,7 +153,8 @@ const normalizeSubmissionThresholdRow = (item) => ({
   notebookType: item?.screen_name || "-",
   field: "-",
   l1: nameListToText(item?.approval_l1_name || item?.approval_l1),
-  l2: nameListToText(item?.approval_l2_name || item?.approval_l2),
+  days: item?.range ?? "-",
+  frequency: item?.frequency ?? "-",
   detail: `Every ${item?.range ?? "-"}d x ${item?.frequency ?? "-"}`,
   isActive: getActiveValue(item),
   createdAt: item?.created_at || item?.createdAt,
@@ -171,6 +178,8 @@ const normalizePpThresholdRow = (item, users) => ({
   field: item?.severity || "-",
   l1: nameListToText(resolveUserNames(item?.approval_l1_user_ids, users)),
   l2: nameListToText(resolveUserNames(item?.approval_l4_user_ids, users)) || "Any current L4 user",
+  entryWithin: item?.completion_threshold_hours ?? "-",
+  approveWithin: item?.approve_within_hours ?? "-",
   detail: `Entry ${item?.completion_threshold_hours ?? "-"}h / Approve ${item?.approve_within_hours ?? "-"}h`,
   isActive: getActiveValue(item),
   createdAt: item?.updated_at || item?.created_at || item?.createdAt,
@@ -186,7 +195,7 @@ const normalizeAcknowledgementThresholdRow = (item) => ({
   notebookType: item?.screen_name || item?.notebook || item?.notebook_name || "-",
   field: "-",
   l1: "-",
-  l2: nameListToText(item?.approval_l4_name || item?.approval_l4 || item?.approval_l2_name || item?.approval_l2),
+  l2: nameListToText(item?.approval_l4_name || item?.approval_l4),
   detail: `${item?.acknowledge_within_hours ?? item?.acknowledgeWithinHours ?? "-"} Hrs`,
   isActive: getActiveValue(item),
   createdAt: item?.created_at || item?.createdAt,
@@ -197,14 +206,15 @@ const normalizeAcknowledgementThresholdRow = (item) => ({
 // so each gets its own editable row here too.
 const normalizeWheelChangeApprovalRow = (item, users) => {
   const approverNames = resolveUserNames(item?.l4_user_ids, users);
+  const wheelChangeDepartment = item?.wheel_change_department || item?.config_key || item?.department || "-";
   return {
     type: "wheel-change-approval",
     typeLabel: "WC Threshold",
     id: item?.department,
     raw: item,
-    department: item?.department || "-",
+    department: "Quality Control",
     subDepartment: "-",
-    notebookType: item?.department || "All",
+    notebookType: wheelChangeDepartment || "All",
     field: item?.severity || "-",
     l1: approverNames.length ? nameListToText(approverNames) : "Any current L4 user",
     l2: "-",

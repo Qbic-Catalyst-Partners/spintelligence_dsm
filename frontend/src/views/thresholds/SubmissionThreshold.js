@@ -658,7 +658,6 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
           frequency: frequencyValue,
           is_active: rule.isActive,
           approval_l1: selectedL1,
-          approval_l1_name: selectedL1,
           criticality: criticality || null,
         };
       });
@@ -1067,7 +1066,7 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                             <ExpandableCell values={item.screen_name} />
                           </td>
                           <td>
-                            <ExpandableCell values={item.approval_l1_name || item.approval_l1} />
+                            <ExpandableCell values={item.approval_l1} />
                           </td>
                           <td>
                             <span
