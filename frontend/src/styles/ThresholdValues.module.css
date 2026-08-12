@@ -626,7 +626,7 @@
 }
 
 .existingThresholdCard .tableWrap {
-    overflow: hidden;
+    overflow: visible;
 }
 
 .existingThresholdTable {
@@ -864,7 +864,7 @@
     padding: 6px;
     display: grid;
     gap: 4px;
-    z-index: 3;
+    z-index: 50;
 }
 
 .actionMenuItem {
