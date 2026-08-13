@@ -148,6 +148,7 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
                 subDepartment: "Mixing",
                 screenName: selectedTypeName || "Cotton HVI",
                 machineName: selectedTypeName || "Cotton HVI",
+                entryId: linkedEntryId,
                 values: [
                     { label: "SCI", value: formData.sci },
                     { label: "Span Length (2.5%)", value: formData.spanLength },

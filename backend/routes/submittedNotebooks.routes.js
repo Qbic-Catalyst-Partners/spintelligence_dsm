@@ -630,17 +630,26 @@ const runPpBatchCompletionCheck = async () => {
 // manual L1 submit, which already went straight to L4) still ended up
 // sitting at L2 - the same target level as every other ticket type, but
 // wrong for PP specifically.
+// L1's escalation deadline is governed by Ticket Resolution SLA's L1 row
+// (the same config that drives the "Overdue" badge everywhere else), not a
+// separate pp_batch_config.l2_tat_hours field - that field was never
+// actually set through any settings screen, so l1_tat_due_at came out null
+// on every ticket and this check never found anything to escalate. Ticket
+// Resolution SLA is already actively configured (checked live via
+// created_at + resolution_hours, same as isTicketOverdueBySla on the
+// frontend), so it's the one real source of truth for this timing.
 const runPpBatchTatCheck = async () => {
   await ensureTicketApprovalColumnsForBatchCheck();
   const notebookThresholds = await getPpNotebookThresholds();
 
   const dueTickets = await client.query(
-    `SELECT * FROM ticketing_system.operator_tickets
-     WHERE ticket_type = 'PP_BATCH_INCOMPLETE'
-       AND tat_current_level = 'L1'
-       AND l1_tat_due_at IS NOT NULL
-       AND l1_tat_due_at <= NOW()
-       AND status <> 'Closed'`
+    `SELECT ot.* FROM ticketing_system.operator_tickets ot
+     JOIN ticketing_system.ticket_resolution_sla sla
+       ON sla.level = 'L1' AND sla.is_active = true
+     WHERE ot.ticket_type = 'PP_BATCH_INCOMPLETE'
+       AND ot.tat_current_level = 'L1'
+       AND ot.status <> 'Closed'
+       AND ot.created_at + (sla.resolution_hours || ' hours')::interval <= NOW()`
   );
 
   const escalated = [];

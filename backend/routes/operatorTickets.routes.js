@@ -1147,13 +1147,27 @@ const runSubmissionFrequencyCheck = async () => {
       if (valueBreachTicket) created.push(valueBreachTicket);
     }
 
-    const trackedUserIds = Array.isArray(config.tracked_l1_user_ids) ? config.tracked_l1_user_ids : [];
-    if (!trackedUserIds.length) continue; // nobody configured to track for this screen yet
+    // The Submission Threshold settings screen saves one L1 user per screen
+    // as approval_l1 (a display name, chosen from a dropdown - see
+    // SubmissionThreshold.js), not a tracked_l1_user_ids array - that column
+    // was never actually part of this table (see ensureScreenFrequencyTable
+    // above). Resolving by name is what's actually configured; nobody
+    // assigned means nobody to raise a ticket against.
+    const assignedL1Name = String(config.approval_l1 || '').trim();
+    if (!assignedL1Name) continue; // nobody configured to track for this screen yet
+
+    // eslint-disable-next-line no-await-in-loop
+    const l1UserRow = await client.query(
+      `SELECT id, full_name FROM users.user_details WHERE full_name = $1 AND level = 'L1' LIMIT 1`,
+      [assignedL1Name]
+    );
+    const l1UserId = l1UserRow.rows[0]?.id;
+    if (!l1UserId) continue; // configured name doesn't match a real L1 user (renamed/removed) - nothing to assign to
 
     const windowDays = Number(config.range) > 0 ? Number(config.range) : 7;
     const requiredCount = Number(config.frequency) > 0 ? Number(config.frequency) : 1;
 
-    for (const l1UserId of trackedUserIds) {
+    {
       // Only evaluate fully completed days. "Every 1 day" means today's
       // submission is not judged until the day ends.
       // eslint-disable-next-line no-await-in-loop
@@ -1181,8 +1195,10 @@ const runSubmissionFrequencyCheck = async () => {
 
       // eslint-disable-next-line no-await-in-loop
       const userRow = await client.query(`SELECT full_name FROM users.user_details WHERE id = $1`, [l1UserId]);
-      const l1TatHours = Number(config.l1_tat_hours) > 0 ? Number(config.l1_tat_hours) : null;
-      const l1TatDueAt = l1TatHours ? new Date(Date.now() + l1TatHours * 60 * 60 * 1000).toISOString() : null;
+      // No TAT-hours column exists on this config table (unlike the other
+      // threshold types) - there's nothing configured to derive a due date
+      // from, so this stays unset rather than inventing a default.
+      const l1TatDueAt = null;
       const violationDetails = {
         category: 'MISSED_FREQUENCY',
         ticket_type: 'SUBMISSION_FREQUENCY',
@@ -1742,7 +1758,7 @@ const getValueThresholdRuleMap = async ({
   }
 
   const result = await client.query(
-    `SELECT field, typical_value, plus_value, minus_value, value_mode, criticality, l1_user_id, l1_user_name
+    `SELECT field, typical_value, plus_value, minus_value, comparison_mode, value_mode, criticality, l1_user_id, l1_user_name
      FROM ticketing_system.value_threshold_rules
      WHERE department = $1
        AND sub_department = $2
@@ -1751,16 +1767,24 @@ const getValueThresholdRuleMap = async ({
        AND is_active = true
        AND l1_user_id IS NOT NULL
      ORDER BY id DESC`,
-    [department, subDepartment, inputScreen, normalizedParameters, machineName || null]
+    [department, subDepartment, inputScreen, normalizedParameters]
   );
 
   const thresholdMap = {};
   for (const row of result.rows) {
     if (thresholdMap[row.field]) continue;
+    // Keyed to match what evaluateThresholdBreach/analyzeViolations actually
+    // read (condition_level/actual_value/plus_threshold/minus_threshold) -
+    // this used to hand back the raw value_threshold_rules column names
+    // (typical_value/plus_value/minus_value, no condition_level at all), so
+    // evaluateThresholdBreach always read undefined thresholds and every
+    // POST /operator-tickets call reported "No violations found" even for a
+    // genuine breach.
     thresholdMap[row.field] = {
-      typical_value: row.typical_value,
-      plus_value: row.plus_value,
-      minus_value: row.minus_value,
+      actual_value: row.typical_value,
+      plus_threshold: row.plus_value,
+      minus_threshold: row.minus_value,
+      condition_level: row.comparison_mode,
       value_mode: row.value_mode,
       criticality: row.criticality,
       l1_user_id: row.l1_user_id,
@@ -2718,13 +2742,15 @@ router.post('/', async (req, res, next) => {
       sub_department,
       input_screen,
       management_field,
-      erp_product_code
+      erp_product_code,
+      entry_id
     } = req.body;
 
     const normalizedParameterNames = normalizeParameterNames(parameter_name);
     // Backward-compat alias: older runtime snapshots may still reference this identifier.
     const normalizedParameterNamesAll = normalizedParameterNames;
     const normalizedActualValue = parseMaybeJsonObject(actual_value);
+    const normalizedEntryId = String(entry_id || '').trim() || null;
     const normalizedThresholdValue = parseMaybeJsonObject(threshold_value);
 
     if (!machine_name || !parameter_name || !actual_value) {
@@ -2800,12 +2826,36 @@ router.post('/', async (req, res, next) => {
         message: 'No violations found. Ticket requires null actual values or threshold breaches.'
       });
     }
+
+    // Same entry re-triggering the same breach (double submit, retry, accidental
+    // double-click) must not raise a second ticket - only when the caller
+    // actually supplied entry_id, since older callers without it fall back to
+    // no dedupe rather than colliding on machine_name/parameter_name alone
+    // (which would wrongly merge two genuinely different entries).
+    if (normalizedEntryId) {
+      const existingTicket = await client.query(
+        `SELECT ticket_id FROM ticketing_system.operator_tickets
+         WHERE ticket_type = 'VALUE_THRESHOLD'
+           AND machine_name = $1
+           AND (violation_details->>'entry_id') = $2
+           AND status <> 'Closed'
+         LIMIT 1`,
+        [machine_name, normalizedEntryId]
+      );
+      if (existingTicket.rows[0]?.ticket_id) {
+        return res.status(200).json({
+          message: 'Ticket already open for this entry',
+          ticket: { ticket_id: existingTicket.rows[0].ticket_id }
+        });
+      }
+    }
+
     const severity = deriveSeverity(violationDetails);
 
     const insertQuery = `
       INSERT INTO ticketing_system.operator_tickets
-      (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids)
-      VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3, $4, $5, $6, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, $11::jsonb, $12::int[], $13::int[], $14::int[], $15::int[], $16::int[])
+      (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids)
+      VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3, $4, $5, $6, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, 'VALUE_THRESHOLD', 'value_threshold', $11::jsonb, $12::int[], $13::int[], $14::int[], $15::int[], $16::int[])
       RETURNING *;
     `;
 
@@ -2820,7 +2870,7 @@ router.post('/', async (req, res, next) => {
       management_field || null,
       erp_product_code || null,
       ticketReason,
-      JSON.stringify(violationDetails),
+      JSON.stringify({ ...violationDetails, entry_id: normalizedEntryId }),
       approvalL1UserIds,
       approvalL2UserIds,
       approvalL3UserIds,
@@ -2975,8 +3025,8 @@ router.post('/generate', async (req, res, next) => {
 
       const result = await client.query(
         `INSERT INTO ticketing_system.operator_tickets
-         (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids)
-         VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3, $4, $5, $6, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, $11::jsonb, $12::int[], $13::int[], $14::int[], $15::int[], $16::int[])
+         (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids)
+         VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3, $4, $5, $6, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, 'VALUE_THRESHOLD', 'value_threshold', $11::jsonb, $12::int[], $13::int[], $14::int[], $15::int[], $16::int[])
          RETURNING *;`,
         [
           assignedUserId,
@@ -3104,6 +3154,154 @@ router.post('/thresholds', async (req, res, next) => {
     res.status(201).json({
       message: 'Value threshold saved successfully',
       threshold: result
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// The Value Threshold settings screen (ThresholdValues.js) has always called
+// these three for edit/status-toggle/delete, but none of them were ever
+// actually built here - only list/create/bulk-create existed - so every
+// edit, activate/deactivate, or delete action on an existing Value Threshold
+// row has been failing with 404 since the screen was first built. Mirrors
+// the same COALESCE-partial-update pattern already used for Submission
+// Frequency's equivalent three routes below.
+router.patch('/thresholds/:id', async (req, res, next) => {
+  try {
+    await ensureValueThresholdRulesTable();
+    const { id } = req.params;
+    const body = req.body || {};
+    rejectLegacyThresholdL2Fields(body);
+
+    const department = body.department !== undefined ? pickDropdownValue(body.department) : undefined;
+    const subDepartment = body.sub_department !== undefined || body.subDepartment !== undefined
+      ? pickDropdownValue(body.sub_department ?? body.subDepartment)
+      : undefined;
+    const notebook = body.notebook !== undefined ? pickDropdownValue(body.notebook) : undefined;
+    const field = body.field !== undefined ? pickDropdownValue(body.field) : undefined;
+    const criticality = body.criticality !== undefined ? pickDropdownValue(body.criticality) : undefined;
+    const comparisonMode = (body.comparison_operator ?? body.comparisonOperator ?? body.condition_level ?? body.conditionLevel ?? body.comparison) !== undefined
+      ? normalizeComparisonMode(body.comparison_operator ?? body.comparisonOperator ?? body.condition_level ?? body.conditionLevel ?? body.comparison)
+      : undefined;
+    const valueMode = (body.value_mode ?? body.valueMode) !== undefined
+      ? normalizeThresholdMode(body.value_mode ?? body.valueMode)
+      : undefined;
+    const typicalValue = (body.typical_value ?? body.typicalValue) !== undefined
+      ? String(body.typical_value ?? body.typicalValue).trim()
+      : undefined;
+    const plusValue = (body.plus_value ?? body.plusValue) !== undefined
+      ? toNumericIfPossible(body.plus_value ?? body.plusValue)
+      : undefined;
+    const minusValue = (body.minus_value ?? body.minusValue) !== undefined
+      ? toNumericIfPossible(body.minus_value ?? body.minusValue)
+      : undefined;
+    const rawL1UserIds = body.approval_l1_user_ids ?? body.approvalL1UserIds;
+    const l1UserIds = Array.isArray(rawL1UserIds)
+      ? rawL1UserIds.map((value) => parsePositiveInt(value)).filter(Boolean)
+      : undefined;
+    const l1UserId = (body.l1_user_id ?? body.l1UserId) !== undefined
+      ? parsePositiveInt(body.l1_user_id ?? body.l1UserId)
+      : l1UserIds?.[0];
+    let l1UserName = body.l1_user_name !== undefined || body.l1UserName !== undefined
+      ? pickDropdownValue(body.l1_user_name ?? body.l1UserName)
+      : undefined;
+    if (l1UserId && !l1UserName) {
+      const l1User = await getUserById(l1UserId);
+      l1UserName = l1User?.full_name || l1User?.name || l1User?.employee_id || null;
+    }
+    const isActive = typeof body.is_active === 'boolean' ? body.is_active : undefined;
+
+    const result = await client.query(
+      `UPDATE ticketing_system.value_threshold_rules
+       SET department = COALESCE($1, department),
+           sub_department = COALESCE($2, sub_department),
+           notebook = COALESCE($3, notebook),
+           field = COALESCE($4, field),
+           l1_user_id = COALESCE($5, l1_user_id),
+           approval_l1_user_ids = COALESCE($6, approval_l1_user_ids),
+           l1_user_name = COALESCE($7, l1_user_name),
+           criticality = COALESCE($8, criticality),
+           comparison_mode = COALESCE($9, comparison_mode),
+           typical_value = COALESCE($10, typical_value),
+           value_mode = COALESCE($11, value_mode),
+           plus_value = COALESCE($12, plus_value),
+           minus_value = COALESCE($13, minus_value),
+           is_active = COALESCE($14, is_active),
+           updated_at = NOW()
+       WHERE id = $15
+       RETURNING *`,
+      [
+        department, subDepartment, notebook, field,
+        l1UserId, l1UserIds, l1UserName, criticality,
+        comparisonMode, typicalValue, valueMode, plusValue, minusValue,
+        isActive, id
+      ]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'Value threshold not found' });
+    }
+
+    res.status(200).json({
+      message: 'Value threshold updated successfully',
+      threshold: result.rows[0]
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/thresholds/:id/status', async (req, res, next) => {
+  try {
+    await ensureValueThresholdRulesTable();
+    const { id } = req.params;
+    const { is_active } = req.body || {};
+
+    if (typeof is_active !== 'boolean') {
+      return res.status(400).json({ message: 'is_active must be boolean' });
+    }
+
+    const result = await client.query(
+      `UPDATE ticketing_system.value_threshold_rules
+       SET is_active = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [is_active, id]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'Value threshold not found' });
+    }
+
+    res.status(200).json({
+      message: `Value threshold ${is_active ? 'activated' : 'deactivated'} successfully`,
+      threshold: result.rows[0]
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/thresholds/:id', async (req, res, next) => {
+  try {
+    await ensureValueThresholdRulesTable();
+    const { id } = req.params;
+
+    const result = await client.query(
+      `DELETE FROM ticketing_system.value_threshold_rules
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'Value threshold not found' });
+    }
+
+    res.status(200).json({
+      message: 'Value threshold deleted successfully',
+      threshold: result.rows[0]
     });
   } catch (err) {
     next(err);

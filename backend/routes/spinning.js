@@ -4136,7 +4136,9 @@ router.post('/wheel-change/type1', async (req, res, next) => {
       type1Fields,
       d
     );
-    await createWheelChangeApprovalTicket('spinning.wheel_change_inspection', result.rows[0].id);
+    // No ticket raised here anymore - runWheelChangeApprovalOverdueCheck
+    // below raises it once this row's configured TAT window actually
+    // elapses with approval_status still 'pending'.
     res.status(201).json({
       message: 'Type1 created',
       data: result.rows[0]
@@ -4383,7 +4385,9 @@ router.post('/wheel-change/type2', async (req, res, next) => {
       type2Fields,
       d
     );
-    await createWheelChangeApprovalTicket('spinning.wheel_change_v2', result.rows[0].id);
+    // No ticket raised here anymore - runWheelChangeApprovalOverdueCheck
+    // below raises it once this row's configured TAT window actually
+    // elapses with approval_status still 'pending'.
     res.status(201).json({
       message: 'Type2 created',
       data: result.rows[0]
@@ -4609,7 +4613,9 @@ router.post('/wheel-change/type3', async (req, res, next) => {
       type3Fields,
       d
     );
-    await createWheelChangeApprovalTicket('spinning.wheel_change', result.rows[0].id);
+    // No ticket raised here anymore - runWheelChangeApprovalOverdueCheck
+    // below raises it once this row's configured TAT window actually
+    // elapses with approval_status still 'pending'.
     res.status(201).json({
       message: 'Type3 created',
       data: result.rows[0]
@@ -5111,6 +5117,52 @@ const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
   return insertedTicketId;
 };
 
+// A Wheel Change ticket means "L4 missed this," not "this is now pending" -
+// matching Acknowledgement, no ticket is raised at submission time anymore
+// (each department's own save route used to call createWheelChangeApprovalTicket
+// synchronously - that call was removed). This runs periodically instead and
+// raises the ticket only once the department's configured TAT window has
+// actually elapsed since the proposal was submitted, still with
+// approval_status = 'pending'. Uses the exact same config resolution (and
+// "no config, no ticket" rule) createWheelChangeApprovalTicket itself uses.
+const WHEEL_CHANGE_PENDING_TABLES = [
+  'spinning.wheel_change_inspection',
+  'spinning.wheel_change_v2',
+  'spinning.wheel_change',
+  'carding.carding_change_request',
+  'drawframe.wheel_change',
+  'simplex.wheel_change',
+];
+
+const runWheelChangeApprovalOverdueCheck = async () => {
+  const created = [];
+  for (const tableName of WHEEL_CHANGE_PENDING_TABLES) {
+    const department = deriveWheelChangeDepartment(tableName);
+    // eslint-disable-next-line no-await-in-loop
+    const approvalConfig = await getWheelChangeApprovalConfig(department);
+    if (!approvalConfig.l4_user_ids.length) continue; // eslint-disable-line no-continue
+    const useConfig = approvalConfig.is_active !== false;
+    const tatHours = useConfig && Number(approvalConfig.tat_hours) > 0
+      ? Number(approvalConfig.tat_hours)
+      : WHEEL_CHANGE_APPROVAL_TAT_HOURS;
+
+    // eslint-disable-next-line no-await-in-loop
+    const pending = await client.query(
+      `SELECT id, created_at FROM ${tableName}
+       WHERE approval_status = 'pending'
+         AND created_at <= NOW() - ($1 || ' hours')::interval`,
+      [tatHours]
+    );
+
+    for (const row of pending.rows) {
+      // eslint-disable-next-line no-await-in-loop
+      const ticketId = await createWheelChangeApprovalTicket(tableName, row.id);
+      if (ticketId) created.push(ticketId);
+    }
+  }
+  return created;
+};
+
 const closeWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
   await ensureWheelChangeApprovalTicketSchema();
   const wheelChangeRowKey = `${tableName}:${wheelChangeRowId}`;
@@ -5122,50 +5174,16 @@ const closeWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
   );
 };
 
-// L4 -> L5 escalation once the L4 TAT elapses without action.
-const runWheelChangeApprovalTatCheck = async () => {
-  await ensureWheelChangeApprovalTicketSchema();
-
-  const dueTickets = await client.query(
-    `SELECT ticket_id FROM ticketing_system.operator_tickets
-     WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL'
-       AND tat_current_level = 'L4'
-       AND l4_tat_due_at IS NOT NULL
-       AND l4_tat_due_at <= NOW()
-       AND status <> 'Closed'`
-  );
-  if (!dueTickets.rowCount) return [];
-
-  const l5UserIds = await getUsersAtLevelForWheelChange('L5');
-  const escalated = [];
-  for (const row of dueTickets.rows) {
-    // eslint-disable-next-line no-await-in-loop
-    const result = await client.query(
-      `UPDATE ticketing_system.operator_tickets
-       SET tat_current_level = 'L5', approval_l5_user_ids = $1, l5_tat_due_at = NOW()
-       WHERE ticket_id = $2
-       RETURNING *`,
-      [l5UserIds, row.ticket_id]
-    );
-    const escalatedTicket = result.rows[0];
-    if (escalatedTicket) {
-      escalated.push(escalatedTicket);
-      // eslint-disable-next-line no-await-in-loop
-      await createNotificationsForUsers(l5UserIds, {
-        ticketId: escalatedTicket.ticket_id,
-        type: 'WHEEL_CHANGE_APPROVAL',
-        category: 'Tickets',
-        priority: 'High',
-        title: (user) => `Hi ${user.full_name || 'there'} (L5), a Wheel Change escalated to you`,
-        body: (user) =>
-          `${user.full_name || 'You'} (L5) - a Wheel Change proposal was not approved at L4 in time and has escalated to you. Please approve it.`,
-        linkUrl: `/supervisor-tickets/${escalatedTicket.ticket_id}`,
-        payload: { ticket_id: escalatedTicket.ticket_id }
-      });
-    }
-  }
-  return escalated;
-};
+// Wheel Change Approval is owned by L4 fully and directly - there's no
+// configured L5 approver anywhere in Wheel Change Approval Threshold (only
+// L4/TAT), so a missed L4 TAT used to escalate to "any current L5 user"
+// system-wide - the exact blind-notify-everyone pattern removed from every
+// other threshold type this session. A ticket past its TAT just stays at L4
+// and shows Overdue (computed client-side from l4_tat_due_at) - L5 already
+// has full oversight visibility via its Mapped-only view without needing a
+// fake reassignment. Kept as a no-op (rather than removed) so the worker
+// registration in server.js doesn't need touching.
+const runWheelChangeApprovalTatCheck = async () => [];
 
 // Called right after a Wheel Change is approved (type1-4) - consumes the
 // Active PP for its Count + Consignee (flips it to Inactive) and stamps
@@ -5384,6 +5402,7 @@ router.get('/wheel-change/pp-approval-status', async (req, res, next) => {
 
 module.exports = router;
 module.exports.runWheelChangeApprovalTatCheck = runWheelChangeApprovalTatCheck;
+module.exports.runWheelChangeApprovalOverdueCheck = runWheelChangeApprovalOverdueCheck;
 module.exports.createWheelChangeApprovalTicket = createWheelChangeApprovalTicket;
 module.exports.closeWheelChangeApprovalTicket = closeWheelChangeApprovalTicket;
 module.exports.ensureWheelChangeApprovalConfigTable = ensureWheelChangeApprovalConfigTable;

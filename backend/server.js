@@ -651,6 +651,15 @@ const startThresholdTicketWorker = () => {
     }
 
     try {
+      const created = await processParametersRoutes.runPpApprovalOverdueCheck();
+      if (created.length) {
+        console.log(`[pp-approval] raised ${created.length} ticket(s) - TAT window elapsed: ${created.join(', ')}`);
+      }
+    } catch (error) {
+      console.warn('[pp-approval] overdue worker skipped:', error.message);
+    }
+
+    try {
       const escalated = await processParametersRoutes.runPpApprovalTatCheck();
       if (escalated.length) {
         console.log(`[pp-approval] escalated ${escalated.length} ticket(s) to L5`);
@@ -660,12 +669,33 @@ const startThresholdTicketWorker = () => {
     }
 
     try {
+      const created = await spinningRoutes.runWheelChangeApprovalOverdueCheck();
+      if (created.length) {
+        console.log(`[wheel-change-approval] raised ${created.length} ticket(s) - TAT window elapsed: ${created.join(', ')}`);
+      }
+    } catch (error) {
+      console.warn('[wheel-change-approval] overdue worker skipped:', error.message);
+    }
+
+    try {
       const escalated = await spinningRoutes.runWheelChangeApprovalTatCheck();
       if (escalated.length) {
         console.log(`[wheel-change-approval] escalated ${escalated.length} ticket(s) to L5`);
       }
     } catch (error) {
       console.warn('[wheel-change-approval] TAT worker skipped:', error.message);
+    }
+
+    try {
+      const { closed, reopened } = await supervisorTicketRoutes.runL4SelfResolveReconciliationCheck();
+      if (closed.length) {
+        console.log(`[l4-self-resolve] confirmed and closed ${closed.length} ticket(s): ${closed.join(', ')}`);
+      }
+      if (reopened.length) {
+        console.log(`[l4-self-resolve] not actually completed, reopened ${reopened.length} ticket(s): ${reopened.join(', ')}`);
+      }
+    } catch (error) {
+      console.warn('[l4-self-resolve] reconciliation worker skipped:', error.message);
     }
   };
 

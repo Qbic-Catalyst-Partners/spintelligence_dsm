@@ -3,7 +3,7 @@ const router = express.Router();
 const client = require('../connection');
 const sqlServer = require('../config/sqlserver');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
-const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, findExistingPpIdForCombo } = require('../utils/processParameterEntryId');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, findExistingPpIdForCombo, isEntryIdAlreadyClaimed } = require('../utils/processParameterEntryId');
 const SCREEN_ID_PREFIXES = {
   process: 'AP',
   q2: 'A2',
@@ -3626,16 +3626,21 @@ router.post('/q2', async (req, res, next) => {
     // trusting it verbatim - otherwise the sequence never moves and every
     // department keeps previewing/claiming the same "next" PP id.
     //
-    // When no entry_id is supplied at all (a "Create New PP"-style submission),
-    // check first whether an already in-progress PP has this exact count_name +
-    // consignee_name combo elsewhere - otherwise a submission for a batch that's
-    // already underway silently mints a duplicate PP id instead of joining it.
-    // Check for an existing PP match FIRST, before trusting whatever entry_id was sent - the
-    // frontend proactively fills entry_id with a client-guessed "next id" preview even on a
-    // fresh "Create New PP" (not just when the user explicitly continues an existing one), so
-    // data.entry_id is essentially never actually empty and a fallback-only check here would
-    // never run.
-    const requestedEntryId = (await findExistingPpIdForCombo(data.count_name, data.consignee_name)) || data.entry_id;
+    // The combo-based match (same count_name + consignee_name already
+    // in-progress elsewhere) only exists to catch "Create New PP" submissions
+    // that are secretly continuing a batch someone else already started -
+    // it must NOT run when data.entry_id already names a real, previously-
+    // issued PP id, since the same count_name/consignee_name legitimately
+    // recurs across separate PP batches for the same recurring yarn/customer
+    // over time. Previously this always preferred the combo match, so
+    // "Update Existing PP" -> a specific PP id could silently get overridden
+    // by an unrelated older/newer PP that happened to share that combo,
+    // producing "duplicate count name" or "duplicate entry_id" errors that
+    // named the wrong PP entirely.
+    const providedEntryIdIsRealPp = await isEntryIdAlreadyClaimed(data.entry_id);
+    const requestedEntryId = providedEntryIdIsRealPp
+      ? data.entry_id
+      : (await findExistingPpIdForCombo(data.count_name, data.consignee_name)) || data.entry_id;
     const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(requestedEntryId);
 
     const conflictingCountName = await getCountNameConflict(resolvedEntryId, data.count_name);
@@ -4144,16 +4149,21 @@ router.post('/q3', async (req, res, next) => {
     // trusting it verbatim - otherwise the sequence never moves and every
     // department keeps previewing/claiming the same "next" PP id.
     //
-    // When no entry_id is supplied at all (a "Create New PP"-style submission),
-    // check first whether an already in-progress PP has this exact count_name +
-    // consignee_name combo elsewhere - otherwise a submission for a batch that's
-    // already underway silently mints a duplicate PP id instead of joining it.
-    // Check for an existing PP match FIRST, before trusting whatever entry_id was sent - the
-    // frontend proactively fills entry_id with a client-guessed "next id" preview even on a
-    // fresh "Create New PP" (not just when the user explicitly continues an existing one), so
-    // data.entry_id is essentially never actually empty and a fallback-only check here would
-    // never run.
-    const requestedEntryId = (await findExistingPpIdForCombo(data.count_name, data.consignee_name)) || data.entry_id;
+    // The combo-based match (same count_name + consignee_name already
+    // in-progress elsewhere) only exists to catch "Create New PP" submissions
+    // that are secretly continuing a batch someone else already started -
+    // it must NOT run when data.entry_id already names a real, previously-
+    // issued PP id, since the same count_name/consignee_name legitimately
+    // recurs across separate PP batches for the same recurring yarn/customer
+    // over time. Previously this always preferred the combo match, so
+    // "Update Existing PP" -> a specific PP id could silently get overridden
+    // by an unrelated older/newer PP that happened to share that combo,
+    // producing "duplicate count name" or "duplicate entry_id" errors that
+    // named the wrong PP entirely.
+    const providedEntryIdIsRealPp = await isEntryIdAlreadyClaimed(data.entry_id);
+    const requestedEntryId = providedEntryIdIsRealPp
+      ? data.entry_id
+      : (await findExistingPpIdForCombo(data.count_name, data.consignee_name)) || data.entry_id;
     const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(requestedEntryId);
 
     const conflictingCountName = await getCountNameConflict(resolvedEntryId, data.count_name);

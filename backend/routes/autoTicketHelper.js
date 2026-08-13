@@ -105,6 +105,11 @@ async function tryAutoGenerateTicket({
   const reason = missing.length && breaches.length ? 'BOTH' : missing.length ? 'MISSING_VALUE' : 'THRESHOLD_BREACH';
   const approverIds = Array.from(approverIdsSet);
 
+  // parameter_name is what the ticket detail page renders as the alert's
+  // subject - it must only list the field(s) that actually caused this
+  // ticket (missing or breached), not every key on the submitted form.
+  const relevantParamNames = Array.from(new Set([...missing, ...breaches.map((b) => b.field)]));
+
   const violationDetails = {
     category: 'VALUE_THRESHOLD',
     ticket_type: 'VALUE_THRESHOLD',
@@ -129,7 +134,7 @@ async function tryAutoGenerateTicket({
       userId || null,
       userName || 'System',
       machineName || notebook,
-      JSON.stringify(Object.keys(values)),
+      JSON.stringify(relevantParamNames),
       JSON.stringify(values),
       JSON.stringify(Object.fromEntries(rulesResult.rows.map((r) => [r.field, { typical_value: r.typical_value, plus_value: r.plus_value, minus_value: r.minus_value, comparison_mode: r.comparison_mode }]))),
       ticketSeverity,

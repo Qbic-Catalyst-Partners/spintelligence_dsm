@@ -447,7 +447,9 @@ router.post('/wheel-change', async (req, res, next) => {
       ]
     );
 
-    await createWheelChangeApprovalTicket('simplex.wheel_change', result.rows[0].id);
+    // No ticket raised here anymore - see runWheelChangeApprovalOverdueCheck
+    // in spinning.js, which raises it once this row's configured TAT window
+    // actually elapses with approval_status still 'pending'.
 
     res.status(201).json({
       message: 'Simplex wheel change entry created successfully',

@@ -11,7 +11,7 @@ import {
   fetchTicketDetails,
   rejectTicket,
 } from "../../store/slices/supervisorSlice";
-import { fetchL2TicketPreviewApi, fetchTicketTimelineApi } from "../../apis/supervisorApi";
+import { fetchL2TicketPreviewApi, fetchTicketTimelineApi, markAcknowledgeTicketSubmitApi } from "../../apis/supervisorApi";
 import { fetchTicketApprovalsApi, submitOperatorTicket } from "../../apis/operatorApi";
 import {
   formatTicketIdForDisplay,
@@ -146,12 +146,17 @@ export default function SupervisorDetails() {
   const requestedTicketId = Array.isArray(ticketId) ? ticketId[0] : ticketId;
   const normalizedRequestedTicketId = normalizeTicketId(requestedTicketId);
   const requestedTicketType = Array.isArray(ticketType) ? ticketType[0] : ticketType;
-  // The L2 preview endpoint returns raw submitted-notebook fields, not the
-  // actual_value/threshold_value shape review tickets use - fetching/using it for an
-  // Acknowledgement ticket overwrites the correct dashboard record with mismatched data,
-  // which both renders a stray object as a table cell and flips the UI to the Accept/Reject
-  // (non-acknowledgement) action layout a moment after the page first loads correctly.
-  const isKnownAcknowledgementTicket = String(requestedTicketType || "").toLowerCase() === "acknowledgement";
+  // The L2 preview endpoint is built for Value-threshold review tickets - its
+  // response shape has no assigned_user_names/configured_tat_hours/threshold_active
+  // fields at all, and for Acknowledgement it fetches the wrong submitted-notebook
+  // shape entirely. It used to only be skipped for Acknowledgement, so Wheel
+  // Change/PP Approval tickets still fetched it - when that fetch succeeded (it
+  // 200s for some viewer roles), its sparse shape won as the ticket source and
+  // silently blanked out Assigned To/Approval Due/Configured TAT, which the
+  // GET /tickets/:id fetch further down had already gotten right.
+  const skipL2PreviewFetch = ["acknowledgement", "wheel change", "pp approval"].includes(
+    String(requestedTicketType || "").toLowerCase()
+  );
 
   const dashboardTicket = useMemo(() => {
     if (!requestedTicketId || !Array.isArray(tickets)) return null;
@@ -167,29 +172,45 @@ export default function SupervisorDetails() {
     // (ot.*, including violation_details) for both kinds - it's a safe fallback when the
     // dashboard list hasn't been loaded yet (e.g. a hard refresh straight onto this page),
     // which previously left acknowledgement tickets with no notebook id to deep-link to.
-    const previewSource = isKnownAcknowledgementTicket ? null : buildPreviewTicket(l2Preview);
+    const previewSource = skipL2PreviewFetch ? null : buildPreviewTicket(l2Preview);
     const previewMatches =
       previewSource && normalizeTicketId(previewSource?.ticket_id || previewSource?.id) === normalizedRequestedTicketId;
     const detailSource = ticketDetail?.data || ticketDetail?.ticket || ticketDetail;
     const detailMatches =
       detailSource && normalizeTicketId(detailSource?.ticket_id || detailSource?.id) === normalizedRequestedTicketId;
-    const source = previewMatches ? previewSource : dashboardTicket || (detailMatches ? detailSource : null);
+    // detailSource (the single-ticket fetch) wins over dashboardTicket (the
+    // dashboard list row) when both exist - the list endpoint doesn't select
+    // everything this page needs (current-level-aware assigned-to, live
+    // threshold-config fields), so it used to silently shadow the complete
+    // data the moment the dashboard list had already loaded a row for this
+    // ticket. dashboardTicket is spread first purely as a base so any
+    // dashboard-only field survives; detailSource's real values take over.
+    const source = previewMatches
+      ? previewSource
+      : detailMatches
+        ? { ...dashboardTicket, ...detailSource }
+        : dashboardTicket;
     return source ? applyStoredTicketStatus(transformTicketWithDescription(source)) : null;
-  }, [dashboardTicket, isKnownAcknowledgementTicket, l2Preview, normalizedRequestedTicketId, ticketDetail]);
+  }, [dashboardTicket, skipL2PreviewFetch, l2Preview, normalizedRequestedTicketId, ticketDetail]);
 
   useEffect(() => {
     if (!router.isReady || !requestedTicketId) return;
 
-    if (!isKnownAcknowledgementTicket && !l2PreviewLoaded) return;
+    if (!skipL2PreviewFetch && !l2PreviewLoaded) return;
 
+    // Always pull the single-ticket endpoint, even when the dashboard list
+    // already has a row for this id - the list endpoint doesn't carry
+    // everything this page needs (e.g. the current-level-aware assigned-to
+    // name, or the live threshold-config fields on Wheel Change/PP Approval/
+    // Acknowledgement tickets), so relying on the list row alone left those
+    // showing blank/"Unassigned" even though the data genuinely exists.
     if (
       !l2Preview &&
-      !dashboardTicket &&
       normalizeTicketId(ticketDetail?.ticket_id) !== normalizedRequestedTicketId
     ) {
       dispatch(fetchTicketDetails(requestedTicketId));
     }
-  }, [dashboardTicket, dispatch, isKnownAcknowledgementTicket, l2Preview, l2PreviewLoaded, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
+  }, [dispatch, skipL2PreviewFetch, l2Preview, l2PreviewLoaded, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
 
   useEffect(() => {
     let mounted = true;
@@ -250,7 +271,7 @@ export default function SupervisorDetails() {
   useEffect(() => {
     let mounted = true;
     const loadPreview = async () => {
-      if (!requestedTicketId || isKnownAcknowledgementTicket) {
+      if (!requestedTicketId || skipL2PreviewFetch) {
         if (mounted) setL2PreviewLoaded(true);
         return;
       }
@@ -284,7 +305,7 @@ export default function SupervisorDetails() {
     return () => {
       mounted = false;
     };
-  }, [requestedTicketId, isKnownAcknowledgementTicket]);
+  }, [requestedTicketId, skipL2PreviewFetch]);
 
   useEffect(() => {
     if (!showMoreMenu) return undefined;
@@ -357,6 +378,11 @@ export default function SupervisorDetails() {
   // instead of dropping the reviewer on the bare list.
   const handleAcknowledge = () => {
     const notebookId = getTicketNotebookId(ticket);
+    // Marks the ticket Submit so it reads as "in hand" rather than still
+    // Open/In Progress while the real acknowledgement happens on the next
+    // page - best-effort, the reconciliation worker settles Closed/Open
+    // regardless of whether this particular call succeeds.
+    markAcknowledgeTicketSubmitApi(ticket.ticket_id).catch(() => {});
     router.push(
       notebookId
         ? `/submitted-notebooks?openNotebookId=${encodeURIComponent(notebookId)}`
@@ -477,6 +503,16 @@ export default function SupervisorDetails() {
   // final authority) get the same single "Fix and Submit" action as L1,
   // instead of the Accept/Reject pair - see isL4SelfResolveTicket above.
   const isL4SelfResolveOwnedTicket = isL4SelfResolveTicket(ticket) && currentTicketLevel === "L4";
+  // Replaces the "Resolution Submission" comment box for these ticket kinds
+  // - they have no operator/fix-comment concept, so that box only ever read
+  // "No comment submitted during fix and resubmit," which explained nothing.
+  const liveStatusPanel = isL4SelfResolveTicket(ticket) ? (
+    <p style={{ margin: 0, color: "#4b5563", fontSize: "13px", lineHeight: 1.5 }}>
+      {isClosedTicket
+        ? "This ticket is closed - the real record it was raised for has been confirmed done."
+        : "This closes automatically once the real record confirms it's done, or reopens if it turns out not to have gone through."}
+    </p>
+  ) : null;
   const machineName = ticket.notebook || ticket.machine_name || "Unknown machine";
   const machineDetailText =
     ticket.description ||
@@ -758,6 +794,7 @@ export default function SupervisorDetails() {
               const assignedTo = ticket.assigned_user_names || ticket.assignedUserNames || "Unassigned";
               const dueAt = ticket.l4_tat_due_at || ticket.l4TatDueAt || null;
               const isOverdue = dueAt ? new Date(dueAt).getTime() < Date.now() : false;
+              const dueValue = dueAt ? formatDateTime(dueAt) : "-";
               // Live values from the actual Wheel Change/PP Notebook/Acknowledgement
               // Threshold config this ticket was raised under - not the ticket's own
               // frozen-at-creation snapshot, so a reviewer can tell whether the
@@ -785,7 +822,7 @@ export default function SupervisorDetails() {
                   { label: "Department", value: details.department || "-" },
                   { label: "Proposal", value: proposalRef },
                   { label: "Assigned To", value: assignedTo },
-                  { label: "Approval Due", value: dueAt ? formatDateTime(dueAt) : "-", overdue: isOverdue },
+                  { label: "Approval Due", value: dueValue, overdue: isOverdue },
                   configuredTatField,
                   { label: "Created At", value: formatDateTime(ticket.created_at) },
                 ];
@@ -796,7 +833,7 @@ export default function SupervisorDetails() {
                   { label: "Entry ID", value: details.entry_id || "-" },
                   { label: "Last Completed", value: details.notebook_label || "-" },
                   { label: "Assigned To", value: assignedTo },
-                  { label: "Approval Due", value: dueAt ? formatDateTime(dueAt) : "-", overdue: isOverdue },
+                  { label: "Approval Due", value: dueValue, overdue: isOverdue },
                   configuredTatField,
                   { label: "Created At", value: formatDateTime(ticket.created_at) },
                 ];
@@ -805,11 +842,13 @@ export default function SupervisorDetails() {
                 Icon = FaBell;
                 const entryRef = ticket?.actual_value?.entry_id || details.notebook_submission_id || "-";
                 const ackBy = details.ack_due_at || ticket?.threshold_value?.acknowledge_by || null;
+                const ackByOverdue = ackBy ? new Date(ackBy).getTime() < Date.now() : false;
+                const ackByValue = ackBy ? formatDateTime(ackBy) : "-";
                 fields = [
                   { label: "Notebook / Screen", value: ticket.notebook || ticket.machine_name || "-" },
                   { label: "Submitted By", value: ticket.user_name || "-" },
                   { label: "Entry Reference", value: entryRef },
-                  { label: "Acknowledge By", value: ackBy ? formatDateTime(ackBy) : "-", overdue: ackBy ? new Date(ackBy).getTime() < Date.now() : false },
+                  { label: "Acknowledge By", value: ackByValue, overdue: ackByOverdue },
                   { label: "Assigned To", value: assignedTo },
                   configuredTatField,
                 ];
@@ -1003,12 +1042,20 @@ export default function SupervisorDetails() {
           </div>
 
           <div className={styles.resolution}>
-            <h3>Resolution Submission</h3>
-
-            <label>{resolutionCommentLabel}</label>
-            <div className={styles.comment}>
-              {resolutionComment}
-            </div>
+            {liveStatusPanel ? (
+              <>
+                <h3>Live Status</h3>
+                {liveStatusPanel}
+              </>
+            ) : (
+              <>
+                <h3>Resolution Submission</h3>
+                <label>{resolutionCommentLabel}</label>
+                <div className={styles.comment}>
+                  {resolutionComment}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1134,15 +1181,22 @@ export default function SupervisorDetails() {
         </div>
 
         <div className={styles.resolutionCard}>
-          <h4>Resolution Submission</h4>
-
-          <span className={styles.commentLabel}>
-            {resolutionCommentLabel}
-          </span>
-
-          <div className={styles.commentBox}>
-            {resolutionComment}
-          </div>
+          {liveStatusPanel ? (
+            <>
+              <h4>Live Status</h4>
+              {liveStatusPanel}
+            </>
+          ) : (
+            <>
+              <h4>Resolution Submission</h4>
+              <span className={styles.commentLabel}>
+                {resolutionCommentLabel}
+              </span>
+              <div className={styles.commentBox}>
+                {resolutionComment}
+              </div>
+            </>
+          )}
         </div>
 
         {!isClosedTicket && (

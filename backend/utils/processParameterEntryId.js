@@ -157,6 +157,26 @@ const resolveOrCreateProcessParameterEntryId = async (providedValue, options = {
   return createProcessParameterEntryId();
 };
 
+// True when `value` is already a real, previously-issued PP id (its numeric
+// part falls within the sequence already handed out) - as opposed to blank,
+// garbage, or a not-yet-claimed "next id" preview. Callers use this to tell
+// "the user explicitly picked an existing PP to continue" apart from "the
+// frontend is just carrying a guessed preview id," which otherwise look
+// identical (entry_id is non-empty either way).
+const isEntryIdAlreadyClaimed = async (value) => {
+  const normalized = normalizeProcessParameterEntryId(value);
+  const match = normalized.match(/^PP-(\d+)$/);
+  if (!match) return false;
+  const numericValue = Number(match[1]);
+  await ensureProcessParameterSequence();
+  const result = await db.query(
+    `SELECT last_number FROM ${SEQUENCE_TABLE} WHERE sequence_key = $1`,
+    [SEQUENCE_KEY]
+  );
+  const lastNumber = Number(result.rows[0]?.last_number) || 0;
+  return numericValue >= 1 && numericValue <= lastNumber;
+};
+
 const advanceProcessParameterEntryIdSequence = async (minimumLastNumber) => {
   await ensureProcessParameterSequence();
   await db.query(
@@ -235,6 +255,7 @@ const getCountNameConflict = async (entry_id, count_name, exclude = null) => {
 module.exports = {
   createProcessParameterEntryId,
   resolveOrCreateProcessParameterEntryId,
+  isEntryIdAlreadyClaimed,
   peekNextProcessParameterEntryId,
   findExistingPpIdForCombo,
   normalizeProcessParameterEntryId,
