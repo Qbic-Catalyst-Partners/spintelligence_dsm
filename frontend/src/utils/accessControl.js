@@ -91,7 +91,7 @@ export const isSubmittedNotebookApproverUser = (user) =>
 export const isDelegationManagerUser = (user) => getUserLevelKey(user) === "L5";
 
 export const isDashboardManagerUser = (user) =>
-  getRoleKeys(user).some((role) => FULL_ACCESS_ROLE_NAMES.includes(role));
+  isFullAccessUser(user) || getRoleKeys(user).some((role) => role.includes("admin"));
 
 // Shared "admin or L5" rule - reused for feature areas restricted to the top
 // of the hierarchy (User Management, ...) without tying each one to the

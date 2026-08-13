@@ -492,7 +492,7 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
                       </select>
                     </label>
 
-                    <label className={styles.field} style={{ gridColumn: "1 / 2", gridRow: "2" }}>
+                    <label className={styles.field} style={{ gridColumn: "5 / 6", gridRow: "1" }}>
                       <span>L1 Proposer</span>
                       <MultiUserSelect
                         value={rule.approvalL1Ids}
@@ -503,9 +503,7 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
                       />
                     </label>
 
-                    <div style={{ gridColumn: "3 / 5", gridRow: "2" }} />
-
-                    <div className={styles.ruleActions}>
+                    <div className={styles.ruleActions} style={{ gridColumn: "6 / 7", gridRow: "1" }}>
                       {index === rules.length - 1 ? (
                         <button type="button" className={styles.addIconButton} onClick={addRule} aria-label="Add PP threshold row">
                           <FiPlus />

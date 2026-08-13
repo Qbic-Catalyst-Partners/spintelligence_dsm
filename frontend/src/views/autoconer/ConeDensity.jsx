@@ -742,8 +742,8 @@ const calculateGmsPerLitre = (row = {}) => {
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Enter type" },
     { label: "Entry ID", field: "date", type: "text", value: entryId, placeholder: "Entry ID" },
-    { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countOptions, placeholder: "Enter count name" },
     { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoconerOptions, placeholder: "Enter auto coner no." },
+    { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countOptions, placeholder: "Enter count name" },
     { label: "Drum From/To", field: "drumRange", type: "pair" },
     { label: "Cone Tip", field: "coneTip", type: "text", placeholder: "Enter cone tip" },
   ];

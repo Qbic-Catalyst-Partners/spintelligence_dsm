@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchUsers } from "@/store/slices/userSlice";
@@ -287,35 +288,44 @@ const buildExistingFilters = () => ({
 });
 
 function RowActionsMenu({ row, loader, onEdit, onToggleStatus, onDelete, busy }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [dropUp, setDropUp] = useState(false);
+  const [menuPosition, setMenuPosition] = useState(null);
   const containerRef = useRef(null);
+  const isOpen = Boolean(menuPosition);
 
   useEffect(() => {
+    if (!isOpen) return undefined;
     const handleOutsideClick = (event) => {
-      if (!containerRef.current?.contains(event.target)) {
-        setIsOpen(false);
-      }
+      if (containerRef.current?.contains(event.target)) return;
+      if (event.target.closest?.(`.${styles.hubActionMenu}`)) return;
+      setMenuPosition(null);
     };
     document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, []);
+  }, [isOpen]);
 
   if (!loader?.canEdit && !loader?.canToggleStatus && !loader?.canDelete) {
     return null;
   }
 
-  const handleToggleOpen = () => {
-    if (!isOpen) {
-      // Estimate whether the menu would render below the visible viewport
-      // (e.g. the last row(s) of a long table) and open upward instead so
-      // it's never clipped/invisible below the fold.
-      const buttonRect = containerRef.current?.getBoundingClientRect();
-      const estimatedMenuHeight = 160;
-      const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-      setDropUp(Boolean(buttonRect) && buttonRect.bottom + estimatedMenuHeight > viewportHeight);
+  const handleToggleOpen = (event) => {
+    if (isOpen) {
+      setMenuPosition(null);
+      return;
     }
-    setIsOpen((current) => !current);
+    // Anchor the menu to the button with fixed positioning and render it via
+    // a portal to document.body so the table's scroll/overflow container can
+    // never clip it, regardless of where the row sits after the table loads.
+    // Opens just below the button by default, flipping above only when
+    // there isn't enough room below.
+    const rect = event.currentTarget.getBoundingClientRect();
+    const estimatedMenuHeight = 160;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const openUpward = rect.bottom + estimatedMenuHeight > viewportHeight;
+    setMenuPosition(
+      openUpward
+        ? { bottom: Math.max(12, viewportHeight - rect.top + 6), right: Math.max(12, window.innerWidth - rect.right) }
+        : { top: rect.bottom + 6, right: Math.max(12, window.innerWidth - rect.right) }
+    );
   };
 
   return (
@@ -328,49 +338,60 @@ function RowActionsMenu({ row, loader, onEdit, onToggleStatus, onDelete, busy })
       >
         <FiMoreVertical />
       </button>
-      {isOpen ? (
-        <div className={`${styles.hubActionMenu} ${dropUp ? styles.hubActionMenuUp : ""}`}>
-          {loader.canEdit ? (
-            <button
-              type="button"
-              className={styles.hubActionMenuItem}
-              disabled={busy}
-              onClick={() => {
-                setIsOpen(false);
-                onEdit(row);
+      {isOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className={styles.hubActionMenu}
+              style={{
+                position: "fixed",
+                top: menuPosition.top ?? "auto",
+                bottom: menuPosition.bottom ?? "auto",
+                right: menuPosition.right,
               }}
             >
-              Edit
-            </button>
-          ) : null}
-          {loader.canToggleStatus ? (
-            <button
-              type="button"
-              className={styles.hubActionMenuItem}
-              disabled={busy}
-              onClick={() => {
-                setIsOpen(false);
-                onToggleStatus(row);
-              }}
-            >
-              {row.isActive ? "Inactive" : "Active"}
-            </button>
-          ) : null}
-          {loader.canDelete ? (
-            <button
-              type="button"
-              className={`${styles.hubActionMenuItem} ${styles.hubActionMenuDelete}`}
-              disabled={busy}
-              onClick={() => {
-                setIsOpen(false);
-                onDelete(row);
-              }}
-            >
-              Delete
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+              {loader.canEdit ? (
+                <button
+                  type="button"
+                  className={styles.hubActionMenuItem}
+                  disabled={busy}
+                  onClick={() => {
+                    setMenuPosition(null);
+                    onEdit(row);
+                  }}
+                >
+                  Edit
+                </button>
+              ) : null}
+              {loader.canToggleStatus ? (
+                <button
+                  type="button"
+                  className={styles.hubActionMenuItem}
+                  disabled={busy}
+                  onClick={() => {
+                    setMenuPosition(null);
+                    onToggleStatus(row);
+                  }}
+                >
+                  {row.isActive ? "Inactive" : "Active"}
+                </button>
+              ) : null}
+              {loader.canDelete ? (
+                <button
+                  type="button"
+                  className={`${styles.hubActionMenuItem} ${styles.hubActionMenuDelete}`}
+                  disabled={busy}
+                  onClick={() => {
+                    setMenuPosition(null);
+                    onDelete(row);
+                  }}
+                >
+                  Delete
+                </button>
+              ) : null}
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

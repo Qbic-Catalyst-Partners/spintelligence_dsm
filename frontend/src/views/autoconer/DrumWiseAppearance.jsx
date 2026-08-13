@@ -456,21 +456,6 @@ function DrumWiseAppearance({
           </div>
 
           <div className={styles.field}>
-            <label>Count Name</label>
-            <SearchableSelect
-              value={countName}
-              onChange={(value) => {
-                const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
-                setCountName(selected?.label ?? value);
-                setCountCode(selected?.code ?? "");
-              }}
-              options={countDropdownOptions.map((option) => option.label)}
-              className={styles.select}
-              placeholder="Select count name"
-            />
-          </div>
-
-          <div className={styles.field}>
             <label>Test No</label>
             <input
               type="text"
@@ -486,6 +471,21 @@ function DrumWiseAppearance({
               }}
               style={errorStyle(errors.testNo)}
               placeholder="Enter Test No"
+            />
+          </div>
+
+          <div className={styles.field}>
+            <label>Count Name</label>
+            <SearchableSelect
+              value={countName}
+              onChange={(value) => {
+                const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
+                setCountName(selected?.label ?? value);
+                setCountCode(selected?.code ?? "");
+              }}
+              options={countDropdownOptions.map((option) => option.label)}
+              className={styles.select}
+              placeholder="Select count name"
             />
           </div>
 
