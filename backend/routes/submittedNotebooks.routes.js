@@ -423,6 +423,29 @@ const getPpBatchSubDepartments = async () => {
   }));
 };
 
+const normalizeDepartmentKey = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+
+// Real hierarchy assignment for L1 (there's no manager-chain concept below
+// L1 - they're the leaf level, unlike L2+ which resolve via getManagerChain).
+// users.user_details.department already carries each L1 user's real
+// department (e.g. "Mixing", "Draw Frame") which lines up with
+// PP_BATCH_NOTEBOOKS' sub_department (e.g. "Mixing", "Drawframe" - hence the
+// space-insensitive match). Replaces the old behavior of handing every
+// missing screen the same blind "first 20 L1 users system-wide" pool.
+const getL1UserIdsByDepartment = async () => {
+  const result = await client.query(
+    `SELECT id, department FROM users.user_details WHERE UPPER(COALESCE(level, '')) = 'L1'`
+  );
+  const byDepartment = new Map();
+  for (const row of result.rows) {
+    const key = normalizeDepartmentKey(row.department);
+    if (!key) continue;
+    if (!byDepartment.has(key)) byDepartment.set(key, []);
+    byDepartment.get(key).push(Number(row.id));
+  }
+  return byDepartment;
+};
+
 // Scans all 10 PP notebook tables for entry_ids whose batch is overdue (first
 // submission older than at least one missing screen's completion_threshold_hours)
 // and files one consolidated PP_BATCH_INCOMPLETE ticket per entry_id (PP ID)
@@ -467,14 +490,13 @@ const runPpBatchCompletionCheck = async () => {
   const allLabels = PP_BATCH_NOTEBOOKS.map((notebookConfig) => notebookConfig.label);
   const created = [];
 
-  // Base pool of L1 users considered responsible for a missing screen -
-  // there's no per-department L1 assignment stored yet (that needs the PP
-  // Threshold config screen from the PDF's Phase 5), so every missing
-  // screen for now shares this same candidate pool. Once that config screen
-  // exists, this should be looked up per notebookConfig instead.
-  const configuredL1UserIds = (Array.isArray(config.approval_l1_user_ids) && config.approval_l1_user_ids.length)
-    ? config.approval_l1_user_ids
-    : await getL1ApproverIds([], { useDefault: true });
+  // Only ever assign to users actually configured in PP Thresholds - no
+  // blind "any 20 L1 users system-wide" fallback. If a screen's department
+  // has nobody assigned yet (e.g. no L1 user is on record for "Blowroom"),
+  // that screen simply contributes no approver until someone configures it,
+  // rather than notifying everyone.
+  const configuredL1UserIds = Array.isArray(config.approval_l1_user_ids) ? config.approval_l1_user_ids : [];
+  const l1UserIdsByDepartment = await getL1UserIdsByDepartment();
 
   for (const row of grouped.rows) {
     const completedScreens = Array.isArray(row.completed_screens) ? row.completed_screens : [];
@@ -505,17 +527,23 @@ const runPpBatchCompletionCheck = async () => {
     );
     if (existing.rows[0]?.ticket_id) continue;
 
-    // Union the L1 approvers configured for each overdue screen's notebook -
-    // every department with a missing, overdue entry gets its owner notified
-    // on the single shared ticket.
+    // Union the L1 approvers responsible for each overdue screen - manually
+    // configured approvers on the notebook's own threshold row win first,
+    // then whoever's real department (users.user_details.department) matches
+    // that screen's sub-department, and only the generic pool if neither
+    // resolves anyone (e.g. no L1 user is on record for that department yet).
     const approvalL1UserIdsSet = new Set();
     const severityRank = { High: 3, Medium: 2, Low: 1 };
     let ticketSeverity = 'High';
     for (const label of overdueScreens) {
       const notebookRow = notebookThresholds.get(label);
+      const subDepartment = PP_BATCH_LABEL_TO_SUB_DEPARTMENT[label];
+      const departmentIds = l1UserIdsByDepartment.get(normalizeDepartmentKey(subDepartment)) || [];
       const ids = (Array.isArray(notebookRow?.approval_l1_user_ids) && notebookRow.approval_l1_user_ids.length)
         ? notebookRow.approval_l1_user_ids
-        : configuredL1UserIds;
+        : departmentIds.length
+          ? departmentIds
+          : configuredL1UserIds;
       ids.forEach((id) => approvalL1UserIdsSet.add(id));
       if ((severityRank[notebookRow?.severity] || 0) > (severityRank[ticketSeverity] || 0)) {
         ticketSeverity = notebookRow.severity;
@@ -539,22 +567,25 @@ const runPpBatchCompletionCheck = async () => {
       message: `Process Parameter ${row.entry_id} was not completed within threshold. Missing: ${overdueScreens.join(', ')}.`
     };
 
-    // PP Entry Threshold (per the ticket-type spec table) is a flat, L1-only
-    // ticket - raised on L1 and resolved by L1 fixing/resubmitting the
-    // missing entry, with no L2/L3/L4/L5 escalation chain and no visibility
-    // to any other level's dashboard. The separate PP Approval ticket (see
-    // createPpApprovalTicket in processParameters.js) is what actually goes
-    // to L4, and only fires once every department's entry is in.
+    // PP Entry Threshold is raised on L1 first (they fix/resubmit the missing
+    // entry), but - same as every other threshold type - escalates to
+    // L2/L3/L4/L5 via runPpBatchTatCheck below if L1 doesn't act within
+    // pp_batch_config.l2_tat_hours. The separate PP Approval ticket (see
+    // createPpApprovalTicket in processParameters.js) is a different ticket
+    // that only fires once every department's entry is in.
+    const l2TatHours = Number(config.l2_tat_hours) > 0 ? Number(config.l2_tat_hours) : null;
+    const l1TatDueAt = l2TatHours ? new Date(Date.now() + l2TatHours * 60 * 60 * 1000).toISOString() : null;
+
     const ticket = await client.query(
       `INSERT INTO ticketing_system.operator_tickets
        (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
         severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
-        violation_details, approval_l1_user_ids, tat_current_level)
+        violation_details, approval_l1_user_ids, tat_current_level, l1_tat_due_at)
        VALUES (
          'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
          $1, $2::jsonb, $3::jsonb, $4::jsonb,
-         $7, 'In Progress', NOW(), 'MISSING_VALUE', 'PP_BATCH_INCOMPLETE', 'pp_batch',
-         $5::jsonb, $6::int[], 'L1'
+         $7, 'Open', NOW(), 'MISSING_VALUE', 'PP_BATCH_INCOMPLETE', 'pp_batch',
+         $5::jsonb, $6::int[], 'L1', $8
        )
        RETURNING *`,
       [
@@ -564,7 +595,8 @@ const runPpBatchCompletionCheck = async () => {
         toJson({ screen_thresholds: screenThresholds }, {}),
         toJson(violationDetails, {}),
         approvalL1UserIds,
-        ticketSeverity
+        ticketSeverity,
+        l1TatDueAt
       ]
     );
 
@@ -585,6 +617,74 @@ const runPpBatchCompletionCheck = async () => {
   }
 
   return { created, expired: [] };
+};
+
+// PP Entry Threshold escalation: an open PP_BATCH_INCOMPLETE ticket goes
+// straight from L1 to L4 once L1's TAT elapses without action - PP
+// Thresholds only ever configures L1 and L4 approvers (no L2/L3 row exists
+// anywhere in pp_notebook_threshold), matching PP Approval, Wheel Change
+// Approval, and Acknowledgement, which are all L4-only too. This previously
+// walked a generic L1->L2->L3->L4->L5 tier ladder (copied from Submission
+// Frequency's real multi-level chain) that had nothing real to resolve at
+// L2/L3, so a PP ticket auto-escalating on TAT timeout (as opposed to a
+// manual L1 submit, which already went straight to L4) still ended up
+// sitting at L2 - the same target level as every other ticket type, but
+// wrong for PP specifically.
+const runPpBatchTatCheck = async () => {
+  await ensureTicketApprovalColumnsForBatchCheck();
+  const notebookThresholds = await getPpNotebookThresholds();
+
+  const dueTickets = await client.query(
+    `SELECT * FROM ticketing_system.operator_tickets
+     WHERE ticket_type = 'PP_BATCH_INCOMPLETE'
+       AND tat_current_level = 'L1'
+       AND l1_tat_due_at IS NOT NULL
+       AND l1_tat_due_at <= NOW()
+       AND status <> 'Closed'`
+  );
+
+  const escalated = [];
+  for (const ticket of dueTickets.rows) {
+    const overdueScreens = Array.isArray(ticket.violation_details?.overdue_screens) && ticket.violation_details.overdue_screens.length
+      ? ticket.violation_details.overdue_screens
+      : Array.isArray(ticket.parameter_name) ? ticket.parameter_name : [];
+    const l4Set = new Set();
+    for (const label of overdueScreens) {
+      const notebookRow = notebookThresholds.get(label);
+      (Array.isArray(notebookRow?.approval_l4_user_ids) ? notebookRow.approval_l4_user_ids : [])
+        .forEach((id) => l4Set.add(Number(id)));
+    }
+    const nextApproverIds = Array.from(l4Set).filter((id) => Number.isInteger(id) && id > 0);
+
+    // eslint-disable-next-line no-await-in-loop
+    const result = await client.query(
+      `UPDATE ticketing_system.operator_tickets
+       SET tat_current_level = 'L4',
+           approval_l4_user_ids = $1
+       WHERE ticket_id = $2
+       RETURNING *`,
+      [nextApproverIds, ticket.ticket_id]
+    );
+    if (result.rows[0]) escalated.push(result.rows[0]);
+
+    const entryId = ticket?.violation_details?.entry_id || '';
+    if (nextApproverIds.length) {
+      // eslint-disable-next-line no-await-in-loop
+      await createNotificationsForUsers(nextApproverIds, {
+        ticketId: ticket.ticket_id,
+        type: 'PP_BATCH_INCOMPLETE',
+        category: 'Tickets',
+        priority: 'High',
+        title: (user) => `Hi ${user.full_name || 'there'} (L4), PP entry needs your action`,
+        body: (user) =>
+          `${user.full_name || 'You'} (L4) - this PP entry was not actioned at L1 in time and has escalated to L4.`,
+        linkUrl: `/supervisor-tickets/${ticket.ticket_id}`,
+        payload: { ticket_id: ticket.ticket_id, entry_id: entryId }
+      });
+    }
+  }
+
+  return escalated;
 };
 
 const ensureSubmittedNotebookTables = async () => {
@@ -928,12 +1028,28 @@ const recordPpNotebookSubmission = async ({
   await ensureSubmittedNotebookTables();
   const notebookSubmissionId = buildSubmissionId({ notebook, entryId, sourceTable, sourceRecordId });
 
+  // ack_due_at was always a flat 24 hours regardless of what's actually
+  // configured on the Acknowledgement Threshold screen for this notebook
+  // (e.g. Cotton HVI Data Entry's own acknowledge_within_hours row) - look
+  // it up the same way generateOverdueNotebookTickets does, so a notebook
+  // configured for a shorter/longer window is honored from the moment the
+  // submission is recorded, not just when checking it later.
+  const acknowledgementThreshold = await getAcknowledgementThresholdForNotebook({
+    input_screen: notebook,
+    notebook,
+    department,
+    sub_department: subDepartment
+  });
+  const ackWithinHours = Number(acknowledgementThreshold?.acknowledge_within_hours) > 0
+    ? Number(acknowledgementThreshold.acknowledge_within_hours)
+    : 24;
+
   const result = await client.query(
     `INSERT INTO ticketing_system.submitted_notebooks
      (notebook_submission_id, department, sub_department, notebook, input_screen, entry_id,
       source_schema, source_table, source_record_id, submitted_by_user_id, submitted_by_name,
       submitted_payload, submitted_at, ack_due_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb, NOW(), NOW() + INTERVAL '24 hours')
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb, NOW(), NOW() + ($13 || ' hours')::interval)
      ON CONFLICT (notebook_submission_id)
      DO UPDATE SET
        submitted_payload = EXCLUDED.submitted_payload,
@@ -951,7 +1067,8 @@ const recordPpNotebookSubmission = async ({
       sourceRecordId || null,
       submittedByUserId || null,
       submittedByName || null,
-      toJson(submittedPayload, {})
+      toJson(submittedPayload, {}),
+      ackWithinHours
     ]
   );
 
@@ -1112,11 +1229,12 @@ const generateOverdueNotebookTickets = async () => {
           .map((value) => parseInt(value.trim(), 10))
           .filter((value) => Number.isInteger(value) && value > 0)
       : [];
-    const l4ApproverIds = manualL4Ids.length
-      ? manualL4Ids
-      : resolvedChain.l4.length
-        ? resolvedChain.l4
-        : await getL4ApproverIds([], { useDefault: true });
+    const l4ApproverIds = manualL4Ids.length ? manualL4Ids : resolvedChain.l4;
+    // No Acknowledgement Threshold configured for this notebook (no manual
+    // L4 approver) and no L4 resolvable from the submitter's real reporting
+    // chain either - nobody is actually assigned to receive this, so no
+    // ticket should be raised blindly notifying every L4 user system-wide.
+    if (!l4ApproverIds.length) continue;
     const violationDetails = {
       category: 'MISSED_FREQUENCY',
       ticket_type: 'NOTEBOOK_ACK_OVERDUE',
@@ -1135,7 +1253,7 @@ const generateOverdueNotebookTickets = async () => {
        VALUES (
          'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
          $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb,
-         $11, 'In Progress', NOW(), $7, $8, 'MISSING_VALUE', 'REVIEW',
+         $11, 'Open', NOW(), $7, $8, 'MISSING_VALUE', 'REVIEW',
          $9::jsonb, $10::int[], 'L4'
        )
        RETURNING *`,
@@ -1635,12 +1753,15 @@ router.post('/pp-batch-config', async (req, res, next) => {
 router.post('/pp-batch-completion-check', async (req, res, next) => {
   try {
     const { created, expired } = await runPpBatchCompletionCheck();
+    const escalated = await runPpBatchTatCheck();
     return res.status(200).json({
       success: true,
       created_count: created.length,
       expired_count: expired.length,
+      escalated_count: escalated.length,
       tickets: created,
-      expired_tickets: expired
+      expired_tickets: expired,
+      escalated_tickets: escalated
     });
   } catch (error) {
     next(error);
@@ -2112,6 +2233,7 @@ module.exports = {
   generateOverdueNotebookTickets,
   recordPpNotebookSubmission,
   runPpBatchCompletionCheck,
+  runPpBatchTatCheck,
   ensurePpBatchSubDepartmentConfigTable,
   getPpBatchSubDepartmentThresholds,
   ensurePpNotebookThresholdTable,

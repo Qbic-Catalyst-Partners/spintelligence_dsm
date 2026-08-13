@@ -22,11 +22,13 @@ import { fetchTicketResolutionSlaAPI } from "@/apis/ticketResolutionSlaApi";
 import {
   isNotebookAcknowledgementTicketRecord as isAcknowledgementReviewTicket,
   isPpBatchCompletionTicketRecord,
+  isPpApprovalTicketRecord,
   isSubmissionTicketRecord,
   isWheelChangeApprovalTicketRecord,
   transformTicket,
   getTicketKind,
   TICKET_KIND,
+  formatAssignedNames,
 } from "../../utils/ticketTransformer";
 import { formatDateTime } from "../../utils/formatDateTime";
 
@@ -165,6 +167,7 @@ const getCurrentReviewer = (ticket) => {
 const getTicketTypeLabel = (ticket) => {
   if (isWheelChangeApprovalTicketRecord(ticket)) return "Wheel Change";
   if (isAcknowledgementReviewTicket(ticket)) return "Acknowledgement";
+  if (isPpApprovalTicketRecord(ticket)) return "PP Approval";
   if (isPpBatchCompletionTicketRecord(ticket)) return "PP";
   if (isSubmissionTicketRecord(ticket)) return "Submission";
   return "Value";
@@ -178,6 +181,32 @@ const getDisplayLevelType = (ticket, fallbackLevel = "L1") =>
     fallbackLevel ||
     "L1"
   ).trim().toUpperCase();
+
+// Wheel Change Approval, PP Approval, and Acknowledgement all land on L4 as
+// the final authority with nobody else's work to approve/reject - L4 is the
+// one actually resolving them (approving a Wheel Change is applying it,
+// clearing an Acknowledgement is acting on the overdue item), so that action
+// reads the same "Fix and Submit" as L1's own resolve action rather than
+// "Approve or Reject". If one of these is missed and escalates on to L5 (the
+// final PDF-defined escalation authority), L5 is now genuinely stepping in
+// to review L4's inaction, so L5 keeps "Approve or Reject" as normal.
+const isL4SelfResolveTicket = (ticket) =>
+  isAcknowledgementReviewTicket(ticket) ||
+  isWheelChangeApprovalTicketRecord(ticket) ||
+  isPpApprovalTicketRecord(ticket);
+
+// What the level actually sitting on a ticket right now needs to DO with it:
+// L1 is always the one fixing/resubmitting the underlying data; every level
+// above that is reviewing what L1 (or the prior level) already did and either
+// approving it or kicking it back - except the L4 self-resolve types above.
+const getLevelActionLabel = (levelType, ticket) => {
+  const level = String(levelType || "").trim().toUpperCase();
+  const stripped = level.startsWith("EXPIRED_") ? level.slice("EXPIRED_".length) : level;
+  if (stripped === "L1") return "Fix and Submit";
+  if (stripped === "L4" && isL4SelfResolveTicket(ticket)) return "Fix and Submit";
+  if (["L2", "L3", "L4", "L5"].includes(stripped)) return "Approve or Reject";
+  return "";
+};
 
 // Deterministic per-ticket seed so placeholder ownership figures stay
 // stable across re-renders instead of reshuffling on every fetch.
@@ -246,7 +275,7 @@ const isTicketResolved = (status) => {
   return normalized === "closed" || normalized === "submit";
 };
 
-const TICKET_TYPE_OPTIONS = ["Value", "Submission", "PP", "Acknowledgement", "Wheel Change"];
+const TICKET_TYPE_OPTIONS = ["Value", "Submission", "PP", "PP Approval", "Acknowledgement", "Wheel Change"];
 
 // Per the PDF's hierarchy design, a ticket's escalation walks L1->L2->L3->L4->L5
 // as each level's TAT window elapses without action - "Owned" means it is
@@ -273,13 +302,52 @@ const getTicketCurrentLevel = (ticket) => {
   return getPrimaryActorLevel(ticket);
 };
 
+// Whether `userId` is actually one of the named approvers a ticket has on
+// file for `level` right now - the real "is this person the assigned owner"
+// check, straight from approval_l{level}_user_ids, rather than inferring it
+// from a role flag.
+const isUserApproverAtLevel = (ticket, level, userId) => {
+  if (userId === null || userId === undefined || userId === "") return false;
+  const key = `approval_${String(level || "").toLowerCase()}_user_ids`;
+  const ids = ticket?.[key];
+  if (!Array.isArray(ids)) return false;
+  return ids.some((id) => String(id) === String(userId));
+};
+
 // Previously this was a random hashTicketId(...) % 3 placeholder completely
 // disconnected from real ticket data - replaced with the actual current
 // escalation-tier check above.
-const getOwnershipDisplay = (ticket, mode, delegateName) => {
+// "Owned" means the viewer personally holds this ticket at their own real
+// level right now. That used to be inferred from an admin/full-access role
+// flag (treat any privileged account as Mapped-only past L1), but that broke
+// the moment a genuinely-assigned L4 approver's account also happened to
+// carry a full-access role tag - a real owner was shown as "Mapped" simply
+// because of an unrelated role flag. Ownership is determined directly from
+// the ticket's own approval_l{level}_user_ids instead: the viewer owns it
+// only if they are actually named as an approver at the level the ticket is
+// currently sitting at, regardless of what other roles they hold.
+//
+// L1 is a different case entirely, not just exempt from that check: L1 has
+// no "Mapped" tab at all (nothing escalates to L1 from below), so a ticket
+// that's no longer AT L1 (e.g. a PP ticket L1 submitted, now sitting at L4)
+// has nowhere to render once currentLevel stops matching "L1" - it silently
+// vanished from the L1 dashboard the moment it escalated, even though it's
+// still the L1 user's own ticket to track. The L1 data feed is already
+// scoped server-side to "tickets this L1 user is an approver on", so for L1
+// specifically, being in that feed at all IS the ownership - it doesn't need
+// to still be sitting at L1 right now.
+//
+// L5 stays Mapped-only by design - L5 oversees every level's tickets rather
+// than personally owning tickets at its own tier.
+const getOwnershipDisplay = (ticket, mode, delegateName, currentUserId) => {
   const viewLevel = String(mode || "L2").trim().toUpperCase();
   const currentLevel = getTicketCurrentLevel(ticket);
-  const isOwned = viewLevel !== "L5" && currentLevel === viewLevel;
+  const isOwned =
+    viewLevel === "L1"
+      ? true
+      : viewLevel !== "L5" &&
+        currentLevel === viewLevel &&
+        isUserApproverAtLevel(ticket, viewLevel, currentUserId);
   return {
     kind: isOwned ? "owned" : "mapped",
     label: isOwned ? "Owned" : "Mapped",
@@ -318,6 +386,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   const authToken = useSelector((state) => state.auth?.token);
   const isAuthHydrated = useSelector((state) => state.auth?.isHydrated);
   const isAdminUser = isFullAccessUser(authUser);
+  const authUserId = authUser?.id ?? authUser?.user_id ?? authUser?.userId ?? null;
   const authFullName = firstText(
     authUser?.full_name,
     authUser?.fullName,
@@ -364,7 +433,14 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   // L1-L4 each get an "Owned" tab (tickets currently escalated to their own
   // level right now); L5 is the final escalation authority with nothing
   // assigned directly to it, so it's Mapped-only. L1 has nothing escalating
-  // to it from below, so it has no "Mapped" tab.
+  // to it from below, so it has no "Mapped" tab. The Owned tab itself is
+  // shown for every level but L5 regardless of role - whether it actually
+  // has any rows is decided per-ticket by getOwnershipDisplay's real
+  // approval_l{level}_user_ids membership check. Hiding the tab outright for
+  // any admin-flagged account used to also hide it for accounts that are
+  // both admin AND a genuinely-assigned approver at that level (e.g. an
+  // Admin-role user who is also named in a ticket's approval_l4_user_ids),
+  // leaving them with no way to see tickets they actually own.
   const showOwnedTab = mode !== "L5";
   const showMappedTab = mode !== "L1";
   const defaultTicketingView = showOwnedTab ? "owned" : "mapped";
@@ -486,15 +562,30 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   // Every ticket type (Value/Submission/Acknowledgement/PP) is merged into one row shape
   // here so they can share a single table, filter bar, and Owned/Mapped toggle instead of
   // separate tabbed views per ticket type. Value Threshold tickets still with L1 (Open/In
-  // Progress/Reopened) keep coming from safeTickets like before, but once submitted they're
-  // excluded here - from that point on they come exclusively from l2ApprovalQueueData below,
-  // which shows one row per ticket_approvals entry (so a rejected+resubmitted ticket shows
-  // every submit/approve/reject cycle as its own row) instead of one row with just current status.
+  // Progress/Reopened) keep coming from safeTickets like before; once submitted, L2-L5 pick
+  // them up from queueTickets instead (one row per ticket_approvals entry, so a
+  // rejected+resubmitted ticket shows every submit/approve/reject cycle as its own row) - but
+  // L1 has no equivalent queue fetch, so excluding Submit-status tickets from safeTickets
+  // there too made an L1 user's own just-submitted ticket vanish from their own dashboard
+  // entirely the moment they submitted it.
   const queueTickets = ["L2", "L3", "L4", "L5"].includes(mode) ? approvalQueueData : [];
   const mergedTickets = [
     ...safeTickets
       .filter((ticket) => {
+        // PP tickets come exclusively from processParameterTicketData below (the
+        // purpose-built /process-parameter-ticketing endpoint with entry_id,
+        // assigned_user_names, etc.) - now that this feed's ticket_type/ticket_kind
+        // columns are populated, PP tickets are correctly identified here too and
+        // would otherwise show up as a second, worse-labeled duplicate row per ticket.
+        if (getTicketTypeLabel(ticket) === "PP") return false;
         if (getTicketTypeLabel(ticket) !== "Value") return true;
+        // L1 needs to see its own ticket regardless of status (no Mapped tab
+        // to fall back to once it escalates away), and L5 is meant to see
+        // every ticket at every level/status as the final oversight view -
+        // both bypass the "still with L1" status restriction below, which
+        // exists only to avoid Value tickets appearing twice once the
+        // approval-queue feed also has a row for them at L2+.
+        if (mode === "L1" || mode === "L5") return true;
         const normalizedStatus = String(ticket?.status || "").trim().toLowerCase();
         // L5 (Executive Leadership) and admin see every activity at every
         // status under Mapped - nothing is hidden from the top of the chain.
@@ -509,12 +600,26 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
           : ["open", "in progress", "reopened"];
         return visibleStatuses.includes(normalizedStatus);
       })
-      .map((ticket) => applyTicketOverdueStatus({
-        ...ticket,
-        ticketType: getTicketTypeLabel(ticket),
-        userName: isAcknowledgementReviewTicket(ticket) ? getCurrentReviewer(ticket) : (ticket.user_name || "-"),
-        levelType: getDisplayLevelType(ticket, mode),
-      }, resolutionSlaData)),
+      .map((ticket) => {
+        // Wheel Change Approval and PP Approval tickets carry no user_name
+        // either - like Acknowledgement, there's no "submitter", just
+        // whoever the ticket is currently sitting with, resolved from the
+        // approval_lX_user_ids the same way the L2-L5 REVIEWER column does.
+        const resolvedUserName = (
+          isAcknowledgementReviewTicket(ticket) ||
+          isWheelChangeApprovalTicketRecord(ticket) ||
+          isPpApprovalTicketRecord(ticket)
+        )
+          ? getCurrentReviewer(ticket)
+          : (ticket.user_name || "-");
+        return applyTicketOverdueStatus({
+          ...ticket,
+          ticketType: getTicketTypeLabel(ticket),
+          userName: resolvedUserName,
+          userNameList: resolvedUserName && resolvedUserName !== "-" ? [resolvedUserName] : [],
+          levelType: getDisplayLevelType(ticket, mode),
+        }, resolutionSlaData);
+      }),
     ...queueTickets.map((row) => {
       const transformed = transformTicket({
         ticket_id: row.ticket_id,
@@ -540,20 +645,48 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
         approvalActionStatus: row.action_status,
         ticketType: "Value",
         userName: row.user_name || "-",
+        userNameList: row.user_name ? [row.user_name] : [],
         levelType: getDisplayLevelType(row, mode),
         tat_current_level: getDisplayLevelType(row, mode),
+        // The approval-queue endpoint didn't used to select the approver-id
+        // columns at all, so the ownership check (real approval_l{level}_user_ids
+        // membership) had nothing to check against here and every row from
+        // this feed fell back to "Mapped" - carrying these through fixes that.
+        approval_l1_user_ids: row.approval_l1_user_ids,
+        approval_l2_user_ids: row.approval_l2_user_ids,
+        approval_l3_user_ids: row.approval_l3_user_ids,
+        approval_l4_user_ids: row.approval_l4_user_ids,
+        approval_l5_user_ids: row.approval_l5_user_ids,
         queueSource: "approval-queue",
       }, resolutionSlaData);
     }),
-    ...processParameterTicketData.map((ticket) => ({
-      ...ticket,
-      ticketType: "PP",
-      userName: ticket.notebook || "-",
-      levelType: getDisplayLevelType(ticket, mode),
-    })),
+    ...processParameterTicketData.map((ticket) => {
+      const rawAssignedNames = ticket.assigned_user_names || ticket.assignedUserNames || "";
+      const assignedNameList = String(rawAssignedNames).split(",").map((name) => name.trim()).filter(Boolean);
+      return {
+        ...ticket,
+        ticketType: "PP",
+        // USER NAME is who's actually assigned to resolve the ticket, not the
+        // PP entry id it used to fall back to (ticket.notebook holds the entry
+        // id for PP tickets, e.g. "PP-0012") - resolved from approval_l1_user_ids.
+        // userNameList keeps every individual name (not the truncated "+N more"
+        // display string) so the User Name filter/dropdown can match and list
+        // each person even when several are assigned to the same ticket.
+        userName: formatAssignedNames(rawAssignedNames),
+        userNameList: assignedNameList,
+        levelType: getDisplayLevelType(ticket, mode),
+      };
+    }),
   ];
 
-  const filteredTickets = mergedTickets.filter((t) => {
+  // Overdue has to be resolved before filtering, not after - it used to be
+  // computed only once building taggedTickets (post-filter), so selecting
+  // "Overdue" in the Status filter compared against each ticket's real
+  // underlying status (e.g. "In Progress") and never matched anything, even
+  // though the STATUS column visibly showed "Overdue" for the same rows.
+  const overdueAwareTickets = mergedTickets.map((t) => applyTicketOverdueStatus(t, resolutionSlaData));
+
+  const filteredTickets = overdueAwareTickets.filter((t) => {
     const ticketDate = t.created_at ? new Date(t.created_at) : null;
     const start = startDate ? new Date(startDate) : null;
     const end = endDate ? new Date(endDate) : null;
@@ -565,19 +698,19 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
           (!start || ticketDate >= start) &&
           (!end || ticketDate <= end);
 
+    // Closed and Submit are two distinct, real stages in the ticket lifecycle
+    // now (Open -> In Progress -> Submit -> Closed, or -> Reopened) - they
+    // used to be treated as interchangeable here, so filtering by "Closed"
+    // also silently pulled in every still-open Submit ticket and vice versa.
     const normalizedTicketStatus = String(t.status || "").trim().toLowerCase();
     const normalizedFilterStatus = String(status || "").trim().toLowerCase();
-    const statusMatch =
-      !status ||
-      normalizedTicketStatus === normalizedFilterStatus ||
-      (normalizedFilterStatus === "closed" && normalizedTicketStatus === "submit") ||
-      (normalizedFilterStatus === "submit" && normalizedTicketStatus === "closed");
+    const statusMatch = !status || normalizedTicketStatus === normalizedFilterStatus;
 
     return (
       dateMatch &&
       statusMatch &&
       (!severity || t.severity === severity) &&
-      (!userName || t.userName === userName) &&
+      (!userName || (t.userNameList || [t.userName]).includes(userName)) &&
       (!ticketType || t.ticketType === ticketType) &&
       (!level || t.levelType === level) &&
       (!search ||
@@ -586,17 +719,25 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
     );
   });
 
+  // Built from each ticket's individual assignee names (userNameList), not the
+  // truncated display string (userName) - otherwise a multi-assignee PP ticket's
+  // "A, B, C +3 more" string became a single unfilterable dropdown entry, and a
+  // person buried past the "+N more" cutoff couldn't be filtered to at all.
   const uniqueUserNames = [
-    ...new Set(mergedTickets.map((t) => t.userName).filter((value) => value && value !== "-")),
-  ];
+    ...new Set(
+      mergedTickets
+        .flatMap((t) => (Array.isArray(t.userNameList) && t.userNameList.length ? t.userNameList : [t.userName]))
+        .filter((value) => value && value !== "-")
+    ),
+  ].sort();
   const statusFilterOptions = SUPERVISOR_VISIBLE_STATUS_OPTIONS;
 
   const taggedTickets = filteredTickets.map((t) => {
     const overdueTicket = applyTicketOverdueStatus(t, resolutionSlaData);
     return {
       ...overdueTicket,
-      ownership: getOwnershipDisplay(overdueTicket, mode, authFullName),
-      resolution: getResolutionDisplay(overdueTicket),
+      ownership: getOwnershipDisplay(overdueTicket, mode, authFullName, authUserId),
+      resolution: getResolutionDisplay(overdueTicket, resolutionSlaMap),
       isOverdue: String(overdueTicket?.status || "").trim().toLowerCase() === "overdue",
     };
   });
@@ -630,27 +771,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   return (
     <div className={styles["sup-page"]}>
       <div className={styles["sup-content"]}>
-        <h1 className={styles["sup-title"]}>
-          {mode === "L2" ? "L2 Approval Queue" : "Ticketing System"}
-        </h1>
-
-        {mode === "L2" ? (
-          <div
-            style={{
-              margin: "0 0 16px",
-              padding: "12px 14px",
-              borderRadius: 8,
-              background: "#f8fafc",
-              border: "1px solid #e4e7ec",
-              color: "#344054",
-              fontSize: 14,
-            }}
-          >
-            Tickets submitted by L1 appear here for L2 approval or rejection as soon as they are submitted.
-            Use Owned Tickets to review items currently assigned to L2, and Mapped Tickets to see
-            inherited visibility from lower levels.
-          </div>
-        ) : null}
+        <h1 className={styles["sup-title"]}>Ticketing System</h1>
 
         {showOwnedTab || showMappedTab ? (
           <div className={styles["ticketing-toggle"]}>
@@ -894,7 +1015,20 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                         <div className={styles["sup-small-label"]}>({t.ownership.delegateName})</div>
                       ) : null}
                     </td>
-                    <td>{t.levelType}</td>
+                    <td>
+                      {t.levelType}
+                      {getLevelActionLabel(t.levelType, t) ? (
+                        <div
+                          className={`${styles["sup-small-label"]} ${styles["sup-ticket-link"]}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleTicketClick(t.ticket_id, t.ticketType, t.status);
+                          }}
+                        >
+                          {getLevelActionLabel(t.levelType, t)}
+                        </div>
+                      ) : null}
+                    </td>
                     <td>{t.userName}</td>
                     <td>
                       <span
@@ -906,14 +1040,6 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                       >
                         {getSupervisorStatusLabel(t.status)}
                       </span>
-                      {t.isOverdue ? (
-                        <span
-                          className={`${styles["status-badge"]} ${styles["status-overdue"] || ""}`}
-                          style={{ marginLeft: 8 }}
-                        >
-                          Overdue
-                        </span>
-                      ) : null}
                     </td>
                     <td>
                       <span
@@ -1010,9 +1136,6 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                   <span className={styles["status-dot"]} />
                   {getSupervisorStatusLabel(t.status)}
                 </div>
-                {t.isOverdue ? (
-                  <div className={`${styles["sup-badge"]} ${styles.red || ""}`}>Overdue</div>
-                ) : null}
                 {isAcknowledgementReviewTicket(t) ? null : (
                   <div className={styles["details-link"]}>Details &gt;</div>
                 )}

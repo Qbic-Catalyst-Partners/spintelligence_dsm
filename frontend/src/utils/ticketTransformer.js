@@ -48,6 +48,20 @@ export const isNotebookAcknowledgementParameterName = (parameterName) => {
 export const isGenericQcHeaderParameterName = (parameterName) =>
   /qc\s*header$/i.test(String(parameterName || "").trim());
 
+// A PP screen with no L1 user assigned to its department falls back to the
+// entire pool of L1 users (see runPpBatchCompletionCheck's department-match
+// fallback) - that can legitimately be 20+ names, which is unreadable as a
+// flat comma list. Show the first few and collapse the rest into a count
+// instead of dumping everyone.
+export const formatAssignedNames = (namesInput, max = 3) => {
+  const names = Array.isArray(namesInput)
+    ? namesInput
+    : String(namesInput || "").split(",").map((name) => name.trim()).filter(Boolean);
+  if (!names.length) return "Unassigned";
+  if (names.length <= max) return names.join(", ");
+  return `${names.slice(0, max).join(", ")} +${names.length - max} more`;
+};
+
 export const formatTicketIdForDisplay = (ticketId) => {
   const rawId = String(ticketId || "").trim();
   if (!rawId) return "-";
@@ -193,10 +207,12 @@ export const isSubmissionFrequencyTicketRecord = (ticket) => {
 // its configured window. Moved here (was previously local to SupervisorDashboard.js only) so
 // every consumer — both dashboards and both detail pages — agrees on what counts as one.
 export const isNotebookAcknowledgementTicketRecord = (ticket) => {
-  // PP batch-completion tickets reuse the generic ticket_reason="MISSING_VALUE" shape, which
-  // would otherwise also match the "missing_value" text check below — exclude them first.
-  if (isPpBatchCompletionTicketRecord(ticket)) return false;
-
+  // Strong, unambiguous signals first: the backend stamps these explicitly
+  // for real Acknowledgement tickets. These must be checked before the PP/
+  // Wheel Change exclusion below - PP_BATCH_INCOMPLETE and NOTEBOOK_ACK_OVERDUE
+  // tickets both use category="MISSED_FREQUENCY", so a real Acknowledgement
+  // ticket would otherwise get caught by that exclusion and misclassified
+  // as PP before ever reaching this check.
   const actionMode = String(ticket?.action_mode || ticket?.actionMode || "").trim().toUpperCase();
   if (actionMode === "ACKNOWLEDGE") return true;
 
@@ -211,6 +227,13 @@ export const isNotebookAcknowledgementTicketRecord = (ticket) => {
   if (violationText.includes("notebook_ack_overdue") || violationText.includes("acknowledge_only")) {
     return true;
   }
+
+  // PP Batch, PP Approval, and Wheel Change Approval tickets are excluded
+  // from the looser heuristics that follow, as a defense against any of
+  // their own text incidentally matching "acknowledge"/"acknowledgement".
+  if (isPpBatchCompletionTicketRecord(ticket)) return false;
+  if (isPpApprovalTicketRecord(ticket)) return false;
+  if (isWheelChangeApprovalTicketRecord(ticket)) return false;
 
   const parameterNames = Array.isArray(ticket?.parameter_name)
     ? ticket.parameter_name
@@ -235,11 +258,17 @@ export const isNotebookAcknowledgementTicketRecord = (ticket) => {
     ticket?.status || ticket?.ticket_status || ticket?.current_status || ticket?.state || ""
   ).trim().toLowerCase();
 
+  // ticket_reason="MISSING_VALUE" used to be matched here too, but that's a
+  // generic reason string shared by PP Batch, PP Approval, and Wheel Change
+  // Approval tickets as well - it kept misclassifying all three as
+  // Acknowledgement. Every real Acknowledgement ticket already carries one
+  // of the stronger signals checked above (action_mode, violation_details
+  // ticket_type/action_type), so this loose text match was never actually
+  // needed and only caused collisions.
   return (
     isReviewType ||
     typeText.includes("acknowledge") ||
     typeText.includes("acknowledgement") ||
-    typeText.includes("missing_value") ||
     statusText.includes("pending approval") ||
     statusText.includes("pending acknowledgement") ||
     parameterNames.some(isNotebookAcknowledgementParameterName)
@@ -251,6 +280,7 @@ export const TICKET_KIND = {
   SUBMISSION_FREQUENCY: "submission_frequency",
   NOTEBOOK_ACK: "notebook_ack",
   PP_BATCH: "pp_batch",
+  PP_APPROVAL: "pp_approval",
   WHEEL_CHANGE: "wheel_change",
 };
 
@@ -259,6 +289,7 @@ const EXPLICIT_TICKET_KIND_KEYS = {
   submission_frequency: TICKET_KIND.SUBMISSION_FREQUENCY,
   notebook_ack: TICKET_KIND.NOTEBOOK_ACK,
   pp_batch: TICKET_KIND.PP_BATCH,
+  pp_approval: TICKET_KIND.PP_APPROVAL,
   wheel_change_approval: TICKET_KIND.WHEEL_CHANGE,
 };
 
@@ -280,6 +311,23 @@ export const isWheelChangeApprovalTicketRecord = (ticket) => {
   );
 };
 
+// PP Approval tickets (backend/routes/processParameters.js createPpApprovalTicket) -
+// a PP entry that's completed all departments and is awaiting L4 approval. Distinct
+// from PP_BATCH_INCOMPLETE (missing/overdue departments) even though both share the
+// generic ticket_reason="MISSING_VALUE" shape.
+export const isPpApprovalTicketRecord = (ticket) => {
+  const ticketType = String(ticket?.ticket_type || ticket?.ticketType || "").trim().toUpperCase();
+  const violationDetails = getViolationDetails(ticket);
+  const violationTicketType = String(violationDetails?.ticket_type || "").trim().toUpperCase();
+  const ticketKind = String(ticket?.ticket_kind || ticket?.ticketKind || "").trim().toLowerCase();
+
+  return (
+    ticketType === "PP_APPROVAL" ||
+    violationTicketType === "PP_APPROVAL" ||
+    ticketKind === "pp_approval"
+  );
+};
+
 // Single source of truth for "what kind of ticket is this." A ticket can carry an explicit
 // ticket_kind (e.g. stamped by a past manual-ticket creation flow) which is trusted first
 // since it's authoritative; tickets without that field fall through to the same heuristics
@@ -288,9 +336,20 @@ export const getTicketKind = (ticket) => {
   const explicitKind = EXPLICIT_TICKET_KIND_KEYS[String(ticket?.ticket_kind || "").trim().toLowerCase()];
   if (explicitKind) return explicitKind;
 
+  // Acknowledgement is checked before PP Batch even though PP Batch's own
+  // check comes first below in spirit - isNotebookAcknowledgementTicketRecord
+  // itself checks its strong signals (action_mode, violation ticket_type)
+  // before ever falling through to loose text heuristics, so a real
+  // Acknowledgement ticket is identified correctly here regardless of order.
+  // What must NOT happen is checking isPpBatchCompletionTicketRecord first -
+  // it matches on category="MISSED_FREQUENCY" alone, which every
+  // Acknowledgement ticket also carries, so checking it first misclassified
+  // every real Acknowledgement ticket as PP Batch before this function ever
+  // got a chance to recognize it.
   if (isWheelChangeApprovalTicketRecord(ticket)) return TICKET_KIND.WHEEL_CHANGE;
-  if (isPpBatchCompletionTicketRecord(ticket)) return TICKET_KIND.PP_BATCH;
+  if (isPpApprovalTicketRecord(ticket)) return TICKET_KIND.PP_APPROVAL;
   if (isNotebookAcknowledgementTicketRecord(ticket)) return TICKET_KIND.NOTEBOOK_ACK;
+  if (isPpBatchCompletionTicketRecord(ticket)) return TICKET_KIND.PP_BATCH;
   if (isSubmissionFrequencyTicketRecord(ticket)) return TICKET_KIND.SUBMISSION_FREQUENCY;
   return TICKET_KIND.THRESHOLD;
 };

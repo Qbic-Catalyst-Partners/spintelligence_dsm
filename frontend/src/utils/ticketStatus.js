@@ -10,6 +10,7 @@ export const SUPERVISOR_VISIBLE_STATUS_OPTIONS = [
   "Submit",
   "Reopened",
   "Closed",
+  "Overdue",
 ];
 
 export const getStoredTicketStatus = (ticketId) => {

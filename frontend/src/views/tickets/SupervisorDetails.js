@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { IoTimeSharp } from "react-icons/io5";
 import { BsThreeDotsVertical } from "react-icons/bs";
+import { FaCogs, FaClipboardCheck, FaBell } from "react-icons/fa";
 import styles from "../../styles/SupervisorDetails.module.css";
 import Pagination from "@/components/Pagination";
 import { useDispatch, useSelector } from "react-redux";
@@ -11,7 +12,7 @@ import {
   rejectTicket,
 } from "../../store/slices/supervisorSlice";
 import { fetchL2TicketPreviewApi, fetchTicketTimelineApi } from "../../apis/supervisorApi";
-import { fetchTicketApprovalsApi } from "../../apis/operatorApi";
+import { fetchTicketApprovalsApi, submitOperatorTicket } from "../../apis/operatorApi";
 import {
   formatTicketIdForDisplay,
   formatThresholdValue,
@@ -85,6 +86,16 @@ const buildPreviewTicket = (preview) => {
 
 const isAcknowledgeActionTicket = (ticket) => getTicketKind(ticket) === TICKET_KIND.NOTEBOOK_ACK;
 
+// Wheel Change Approval, PP Approval, and Acknowledgement all land on L4 as
+// the final authority with nobody else's work to approve/reject - L4 is the
+// one actually resolving them, so they get the same "Fix and Submit" action
+// as L1 instead of Accept/Reject. PP Batch stays on Accept/Reject at L4 -
+// it's not part of this group.
+const isL4SelfResolveTicket = (ticket) => {
+  const kind = getTicketKind(ticket);
+  return kind === TICKET_KIND.NOTEBOOK_ACK || kind === TICKET_KIND.WHEEL_CHANGE || kind === TICKET_KIND.PP_APPROVAL;
+};
+
 // Acknowledgement tickets are raised against a specific submitted_notebooks row (stamped into
 // violation_details.submitted_notebook_id when the ticket is created - see
 // submittedNotebooks.routes.js). Pulling it back out here is what lets the redirect to
@@ -126,6 +137,9 @@ export default function SupervisorDetails() {
   const [l2Preview, setL2Preview] = useState(null);
   const [l2PreviewLoaded, setL2PreviewLoaded] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showFixModal, setShowFixModal] = useState(false);
+  const [fixComment, setFixComment] = useState("");
+  const [fixSubmitting, setFixSubmitting] = useState(false);
 
   const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
   const toClassKey = (value) => String(value || "").toLowerCase().replace(/\s+/g, "-");
@@ -309,6 +323,33 @@ export default function SupervisorDetails() {
     }
   };
 
+  // L1 is the only level that actually fixes/resubmits the underlying data - Accept/Reject
+  // only makes sense once a ticket has escalated to a reviewing level. Reuses the same
+  // /operator-tickets/submit/:id endpoint operatordetail.js's Fix & Resubmit flow calls,
+  // then refreshes via this page's own (supervisor-scoped) fetchTicketDetails so the status
+  // change shows here without needing the operator slice this page doesn't otherwise use.
+  const handleFixResubmit = async () => {
+    if (!fixComment.trim()) {
+      alert("Enter a resolution comment");
+      return;
+    }
+
+    setFixSubmitting(true);
+    try {
+      await submitOperatorTicket(ticket.ticket_id, {
+        operator_comment: fixComment,
+        comment: fixComment,
+      });
+      setShowFixModal(false);
+      setFixComment("");
+      dispatch(fetchTicketDetails(ticket.ticket_id));
+    } catch (err) {
+      alert(err?.message || "Failed to submit fix.");
+    } finally {
+      setFixSubmitting(false);
+    }
+  };
+
   // Acknowledging a notebook ticket doesn't happen from this detail view anymore - it only
   // hands off to Submitted Notebooks, where the reviewer must actually open the notebook and
   // click Acknowledge there. That page owns the real acknowledgeSubmittedNotebookApi call.
@@ -419,6 +460,23 @@ export default function SupervisorDetails() {
       "-";
   const isClosedTicket = getSupervisorStatusLabel(ticket.status) === "Closed";
   const isAcknowledgeTicket = isAcknowledgeActionTicket(ticket);
+  // Accept/Reject is an L2+ reviewer action - a ticket still sitting at L1 hasn't
+  // escalated to anyone yet, so L1 is the one who needs to Fix & Resubmit it, not
+  // approve/reject it.
+  // Prefer the ticket list's own tat_current_level (refetched via
+  // fetchSupervisorTickets, so it reflects the latest escalation) over the
+  // l2-preview snapshot, which is fetched once per ticket id and can go
+  // stale the moment the ticket escalates - previously using the preview's
+  // value here made the Approve/Reject button flash to the correct action
+  // then immediately revert to the previous level's action.
+  const currentTicketLevel = String(
+    dashboardTicket?.tat_current_level || ticket?.tat_current_level || ticket?.tatCurrentLevel || "L1"
+  ).trim().toUpperCase();
+  const isL1OwnedTicket = !isAcknowledgeTicket && currentTicketLevel === "L1";
+  // Wheel Change Approval / PP Approval / Acknowledgement sitting at L4 (their
+  // final authority) get the same single "Fix and Submit" action as L1,
+  // instead of the Accept/Reject pair - see isL4SelfResolveTicket above.
+  const isL4SelfResolveOwnedTicket = isL4SelfResolveTicket(ticket) && currentTicketLevel === "L4";
   const machineName = ticket.notebook || ticket.machine_name || "Unknown machine";
   const machineDetailText =
     ticket.description ||
@@ -582,7 +640,23 @@ export default function SupervisorDetails() {
                       onClick={handleAcknowledge}
                       disabled={actionLoading}
                     >
-                      Acknowledge
+                      Fix &amp; Submit
+                    </button>
+                  ) : isL1OwnedTicket ? (
+                    <button
+                      className={styles.accept}
+                      onClick={() => setShowFixModal(true)}
+                      disabled={fixSubmitting}
+                    >
+                      Fix &amp; Submit
+                    </button>
+                  ) : isL4SelfResolveOwnedTicket ? (
+                    <button
+                      className={styles.accept}
+                      onClick={handleApprove}
+                      disabled={actionLoading}
+                    >
+                      Fix &amp; Submit
                     </button>
                   ) : (
                     <>
@@ -633,6 +707,7 @@ export default function SupervisorDetails() {
               const threshold = details.screen_thresholds && typeof details.screen_thresholds === "object"
                 ? Object.values(details.screen_thresholds)[0]
                 : details.completion_threshold_hours;
+              const assignedTo = ticket.assigned_user_names || ticket.assignedUserNames || "Unassigned";
 
               return (
                 <div className={styles.tableWrap}>
@@ -644,6 +719,7 @@ export default function SupervisorDetails() {
                         <th>COMPLETED</th>
                         <th>COMPLETION THRESHOLD</th>
                         <th>FIRST SUBMITTED</th>
+                        <th>ASSIGNED TO</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -659,9 +735,114 @@ export default function SupervisorDetails() {
                         </td>
                         <td>{threshold ? `${threshold} Hrs` : "-"}</td>
                         <td>{formatDateTime(details.first_created_at || ticket.created_at)}</td>
+                        <td>{assignedTo}</td>
                       </tr>
                     </tbody>
                   </table>
+                </div>
+              );
+            })()
+          ) : isL4SelfResolveTicket(ticket) ? (
+            // Wheel Change Approval / PP Approval / Acknowledgement tickets
+            // don't carry parameter/actual/threshold values at all (their
+            // actual_value and threshold_value columns are empty arrays) -
+            // the generic table below rendered as an empty, headers-only
+            // table for these. What they actually carry is real, useful
+            // context sitting entirely in violation_details, so this reads
+            // straight from there instead, styled to match what each kind
+            // is actually about rather than forcing it into a threshold
+            // table's shape.
+            (() => {
+              const details = ticket?.violation_details || {};
+              const kind = getTicketKind(ticket);
+              const assignedTo = ticket.assigned_user_names || ticket.assignedUserNames || "Unassigned";
+              const dueAt = ticket.l4_tat_due_at || ticket.l4TatDueAt || null;
+              const isOverdue = dueAt ? new Date(dueAt).getTime() < Date.now() : false;
+              // Live values from the actual Wheel Change/PP Notebook/Acknowledgement
+              // Threshold config this ticket was raised under - not the ticket's own
+              // frozen-at-creation snapshot, so a reviewer can tell whether the
+              // configured TAT/severity has since changed since this ticket fired.
+              const configuredTatHours = ticket.configured_tat_hours ?? ticket.configuredTatHours ?? null;
+              const configuredSeverity = ticket.configured_severity ?? ticket.configuredSeverity ?? null;
+              const thresholdActive = ticket.threshold_active ?? ticket.thresholdActive;
+              const configuredTatField = {
+                label: "Configured TAT",
+                value: configuredTatHours ? `${configuredTatHours} hr${Number(configuredTatHours) === 1 ? "" : "s"}${configuredSeverity ? ` · ${configuredSeverity}` : ""}` : "-",
+              };
+
+              let kindLabel = "Review";
+              let Icon = FaClipboardCheck;
+              let fields = [];
+
+              if (kind === TICKET_KIND.WHEEL_CHANGE) {
+                kindLabel = "Wheel Change Approval";
+                Icon = FaCogs;
+                const [rowTable, rowId] = String(details.wheel_change_row_key || "").split(":");
+                const proposalRef = rowTable && rowId
+                  ? `${rowTable.split(".")[0]?.replace(/^\w/, (c) => c.toUpperCase())} · Entry #${rowId}`
+                  : "-";
+                fields = [
+                  { label: "Department", value: details.department || "-" },
+                  { label: "Proposal", value: proposalRef },
+                  { label: "Assigned To", value: assignedTo },
+                  { label: "Approval Due", value: dueAt ? formatDateTime(dueAt) : "-", overdue: isOverdue },
+                  configuredTatField,
+                  { label: "Created At", value: formatDateTime(ticket.created_at) },
+                ];
+              } else if (kind === TICKET_KIND.PP_APPROVAL) {
+                kindLabel = "PP Approval";
+                Icon = FaClipboardCheck;
+                fields = [
+                  { label: "Entry ID", value: details.entry_id || "-" },
+                  { label: "Last Completed", value: details.notebook_label || "-" },
+                  { label: "Assigned To", value: assignedTo },
+                  { label: "Approval Due", value: dueAt ? formatDateTime(dueAt) : "-", overdue: isOverdue },
+                  configuredTatField,
+                  { label: "Created At", value: formatDateTime(ticket.created_at) },
+                ];
+              } else {
+                kindLabel = "Acknowledgement";
+                Icon = FaBell;
+                const entryRef = ticket?.actual_value?.entry_id || details.notebook_submission_id || "-";
+                const ackBy = details.ack_due_at || ticket?.threshold_value?.acknowledge_by || null;
+                fields = [
+                  { label: "Notebook / Screen", value: ticket.notebook || ticket.machine_name || "-" },
+                  { label: "Submitted By", value: ticket.user_name || "-" },
+                  { label: "Entry Reference", value: entryRef },
+                  { label: "Acknowledge By", value: ackBy ? formatDateTime(ackBy) : "-", overdue: ackBy ? new Date(ackBy).getTime() < Date.now() : false },
+                  { label: "Assigned To", value: assignedTo },
+                  configuredTatField,
+                ];
+              }
+
+              return (
+                <div
+                  className={styles.resolveSummary}
+                  style={{
+                    "--resolve-accent": kind === TICKET_KIND.WHEEL_CHANGE ? "#2563eb" : kind === TICKET_KIND.PP_APPROVAL ? "#7c3aed" : "#b45309",
+                    "--resolve-accent-tint": kind === TICKET_KIND.WHEEL_CHANGE ? "#eff6ff" : kind === TICKET_KIND.PP_APPROVAL ? "#f5f3ff" : "#fffbeb",
+                  }}
+                >
+                  <div className={styles.resolveSummaryHead}>
+                    <div className={styles.resolveSummaryKind}>
+                      <Icon />
+                      {kindLabel}
+                    </div>
+                  </div>
+                  {details.message && <p className={styles.resolveSummaryMessage}>{details.message}</p>}
+                  {thresholdActive === false && (
+                    <p className={styles.resolveSummaryMessage} style={{ color: "#b45309" }}>
+                      Note: the threshold config this was raised under is currently switched off - it won't fire again until re-enabled.
+                    </p>
+                  )}
+                  <div className={styles.resolveGrid}>
+                    {fields.map((field) => (
+                      <div className={styles.resolveItem} key={field.label}>
+                        <span>{field.label}</span>
+                        <strong className={field.overdue ? styles.overdue : ""}>{field.value}</strong>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               );
             })()
@@ -757,6 +938,42 @@ export default function SupervisorDetails() {
                 </button>
                 <button onClick={handleReject}>
                   Reject Ticket
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showFixModal && (
+          <div className={styles.modalOverlay}>
+            <div className={styles.modalBox}>
+              <h3 className={styles.modalTitle}>Fix &amp; Submit</h3>
+
+              <p className={styles.modalDesc}>
+                Resolve Ticket <b>{displayTicketId}</b> at L1 and submit it for review.
+              </p>
+
+              <label className={styles.modalLabel}>
+                Resolution Comment <span>*</span>
+              </label>
+
+              <textarea
+                placeholder="Enter resolution details..."
+                value={fixComment}
+                maxLength={500}
+                onChange={(e) => setFixComment(e.target.value)}
+              />
+
+              <div className={styles.modalFooterText}>
+                <span>{fixComment.length} / 500 characters</span>
+              </div>
+
+              <div className={styles.modalActions}>
+                <button onClick={() => setShowFixModal(false)} disabled={fixSubmitting}>
+                  Cancel
+                </button>
+                <button onClick={handleFixResubmit} disabled={fixSubmitting}>
+                  Submit
                 </button>
               </div>
             </div>
@@ -936,7 +1153,23 @@ export default function SupervisorDetails() {
                 onClick={handleAcknowledge}
                 disabled={actionLoading}
               >
-                Acknowledge
+                Fix &amp; Submit
+              </button>
+            ) : isL1OwnedTicket ? (
+              <button
+                className={styles.accept}
+                onClick={() => setShowFixModal(true)}
+                disabled={fixSubmitting}
+              >
+                Fix &amp; Submit
+              </button>
+            ) : isL4SelfResolveOwnedTicket ? (
+              <button
+                className={styles.accept}
+                onClick={handleApprove}
+                disabled={actionLoading}
+              >
+                Fix &amp; Submit
               </button>
             ) : (
               <>
@@ -1018,6 +1251,66 @@ export default function SupervisorDetails() {
                   onClick={() => setShowRejectModal(false)}
                 >
                   Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showFixModal && (
+          <div
+            className={styles.modalOverlay}
+            onClick={() => setShowFixModal(false)}
+          >
+            <div
+              className={styles.modalBox}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={styles.modalHeader}>
+                <div className={styles.modalTitle}>Fix &amp; Submit</div>
+
+                <span
+                  className={styles.closeBtn}
+                  onClick={() => setShowFixModal(false)}
+                >
+                  ×
+                </span>
+              </div>
+
+              <p className={styles.modalDesc}>
+                Resolve Ticket <b>{displayTicketId}</b> at L1 and submit it for review.
+              </p>
+
+              <label className={styles.modalLabel}>
+                Resolution Comment <span>*</span>
+              </label>
+
+              <textarea
+                placeholder="Enter resolution details..."
+                value={fixComment}
+                maxLength={500}
+                onChange={(e) => setFixComment(e.target.value)}
+              />
+
+              <div className={styles.modalFooterText}>
+                <span>{fixComment.length} / 500</span>
+              </div>
+
+              <div className={styles.modalActions}>
+                <button
+                  className={styles.rejectBtn}
+                  onClick={() => setShowFixModal(false)}
+                  disabled={fixSubmitting}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  className={styles.cancelbtn}
+                  onClick={handleFixResubmit}
+                  disabled={fixSubmitting}
+                >
+                  Submit
                 </button>
               </div>
             </div>

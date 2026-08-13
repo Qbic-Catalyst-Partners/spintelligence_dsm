@@ -412,7 +412,7 @@ const helpContentRouter = require('./routes/helpContent.routes');
 const inAppNotificationsRouter = require('./routes/inAppNotifications.routes');
 const supervisorAssignmentsRouter = require('./routes/supervisorAssignments.routes');
 const delegationsRouter = require('./routes/delegations.routes');
-const { router: submittedNotebooksRouter, generateOverdueNotebookTickets, runPpBatchCompletionCheck } = require('./routes/submittedNotebooks.routes');
+const { router: submittedNotebooksRouter, generateOverdueNotebookTickets, runPpBatchCompletionCheck, runPpBatchTatCheck } = require('./routes/submittedNotebooks.routes');
 const processParametersRoutes = require('./routes/processParameters');
 const spinningRoutes = require('./routes/spinning');
 const { router: reportSchedulesRouter, startReportScheduleWorker } = require('./routes/reportSchedules.routes');
@@ -627,6 +627,15 @@ const startThresholdTicketWorker = () => {
     }
 
     try {
+      const escalated = await runPpBatchTatCheck();
+      if (escalated.length) {
+        console.log(`[pp-batch] escalated ${escalated.length} ticket(s) to the next tier`);
+      }
+    } catch (error) {
+      console.warn('[pp-batch] TAT worker skipped:', error.message);
+    }
+
+    try {
       const created = await operatorTicketRoutes.runSubmissionFrequencyCheck();
       if (created.length) {
         console.log(`[submission-frequency] generated ${created.length} missed-frequency ticket(s)`);
@@ -665,5 +674,15 @@ const startThresholdTicketWorker = () => {
 };
 
 startThresholdTicketWorker();
+
+// value_threshold_rules' comparison_mode column (and the table itself) was
+// previously only migrated lazily, the first time someone hit the
+// /operator-tickets/thresholds routes - notebook submit routes that evaluate
+// against it (mixing.js's autoCreateTicket) never triggered that migration
+// themselves, so a fresh deploy's very first threshold breach could 500 on a
+// missing column. Ensure it once at boot instead.
+db.initPromise
+  .then(() => operatorTicketRoutes.ensureValueThresholdRulesTable())
+  .catch((error) => console.warn('[value-threshold-rules] schema ensure skipped:', error.message));
 
 
