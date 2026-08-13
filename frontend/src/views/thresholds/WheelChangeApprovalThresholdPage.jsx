@@ -293,8 +293,14 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
         }
 
       return {
-          department: 'Quality Control',
-          wheel_change_department: wheelChangeDepartment,
+          // The backend's /wheel-change/approval-config only ever reads
+          // req.body.department, validated against WHEEL_CHANGE_DEPARTMENTS
+          // (Spinning/Drawframe/Carding/Simplex) - it never reads
+          // wheel_change_department. Sending the literal 'Quality Control'
+          // string here (the form's own Department field, a different
+          // concept from the backend's department) always failed that
+          // validation ("department must be one of ...").
+          department: wheelChangeDepartment,
           severity: rule.severity,
           l4_user_ids: rule.l4UserIds.map((id) => Number(id)),
           tat_hours: hours,

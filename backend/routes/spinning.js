@@ -5055,14 +5055,16 @@ const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
 
   const department = deriveWheelChangeDepartment(tableName);
   const approvalConfig = await getWheelChangeApprovalConfig(department);
+  // No Wheel Change Approval Threshold configured for this department at
+  // all (no L4 approver ever assigned to it) - no ticket should be raised
+  // blindly notifying every L4 user system-wide. A ticket only makes sense
+  // once someone has actually been assigned to receive it.
+  if (!approvalConfig.l4_user_ids.length) return null;
   // A department toggled inactive isn't exempt from approval (the ticket
   // still must be raised per the PDF) - "inactive" just means its specific
-  // L4 override/TAT no longer applies, falling back to the same defaults
-  // used when no config exists at all.
+  // TAT override no longer applies, falling back to the default TAT.
   const useConfig = approvalConfig.is_active !== false;
-  const l4UserIds = useConfig && approvalConfig.l4_user_ids.length
-    ? approvalConfig.l4_user_ids
-    : await getUsersAtLevelForWheelChange('L4');
+  const l4UserIds = approvalConfig.l4_user_ids;
   const tatHours = useConfig && Number(approvalConfig.tat_hours) > 0
     ? Number(approvalConfig.tat_hours)
     : WHEEL_CHANGE_APPROVAL_TAT_HOURS;

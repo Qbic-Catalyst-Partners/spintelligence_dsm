@@ -747,7 +747,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
             {
                 id: `${Date.now()}-edit`,
                 fieldName: item?.input_field || item?.parameter_name || "",
-                comparison: item?.comparison_operator || item?.condition_level || "more_and_less_than",
+                comparison: item?.comparison_mode || item?.comparison_operator || item?.condition_level || "more_and_less_than",
                 actualValue: String(item?.actual_value ?? ""),
                 valueMode: item?.value_mode === "percent" ? "percent" : "number",
                 positiveTolerance:

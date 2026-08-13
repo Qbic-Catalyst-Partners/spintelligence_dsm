@@ -5,6 +5,8 @@ const sqlServer = require('../config/sqlserver');
 const { dedupeVarieties } = require('../utils/variety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
+const { getManagerChain } = require('./user.routes');
+const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 
 const COTTON_HVI_PARAMETERS = [
   'sci',
@@ -768,27 +770,21 @@ const resolveFieldValue = (obj, fieldName) => {
   return key ? obj[key] : undefined;
 };
 
+// Offsets (plus_value/minus_value) are relative to typical_value, the
+// configured baseline - not to the submitted value itself.
 const evaluateBreach = (actualRaw, rule) => {
   const actual = Number(actualRaw);
-  const condition = String(rule?.condition_level || 'More Than').toLowerCase();
-  const plus = Number(rule?.plus_threshold);
-  const minus = Number(rule?.minus_threshold);
-  const baseline = Number(rule?.actual_value);
+  const typical = Number(rule?.typical_value);
+  const plus = Number(rule?.plus_value);
+  const minus = Number(rule?.minus_value);
+  if (!Number.isFinite(actual) || !Number.isFinite(typical)) return null;
 
-  if (!Number.isFinite(actual)) return null;
-  if (condition === 'more than') {
-    if (!Number.isFinite(plus)) return null;
-    return actual > plus;
-  }
-  if (condition === 'less than') {
-    if (!Number.isFinite(minus)) return null;
-    return actual < minus;
-  }
-  if (condition === 'more and less than') {
-    if (!Number.isFinite(baseline) || !Number.isFinite(plus) || !Number.isFinite(minus)) return null;
-    const min = baseline - minus;
-    const max = baseline + plus;
-    return actual <= min || actual >= max;
+  const mode = String(rule?.comparison_mode || 'more_and_less_than').toLowerCase();
+  if (mode === 'more_than') return Number.isFinite(plus) ? actual > typical + plus : null;
+  if (mode === 'less_than') return Number.isFinite(minus) ? actual < typical - minus : null;
+  if (mode === 'more_and_less_than') {
+    if (!Number.isFinite(plus) || !Number.isFinite(minus)) return null;
+    return actual > typical + plus || actual < typical - minus;
   }
   return null;
 };
@@ -813,23 +809,26 @@ const autoCreateTicket = async ({
   const paramNames = Object.keys(values || {});
   if (!paramNames.length) return null;
 
+  // ticketing_system.value_threshold_rules is what the Value Threshold settings
+  // screen actually writes to - this used to query threshold_master, a table
+  // nothing ever configured through the current UI, so no threshold set there
+  // could ever fire a ticket.
   const thresholdsRes = await client.query(
-    `SELECT input_field, condition_level, plus_threshold, minus_threshold, actual_value,
-            approval_l1_user_id, approval_l2_user_id, approval_l3_user_id
-     FROM ticketing_system.threshold_master
+    `SELECT field, comparison_mode, typical_value, value_mode, plus_value, minus_value,
+            criticality, l1_user_id, approval_l1_user_ids
+     FROM ticketing_system.value_threshold_rules
      WHERE department = $1
        AND sub_department = $2
-       AND input_screen = $3
-       AND machine_name = $4
+       AND notebook = $3
        AND is_active = true`,
-    [department, sub_department, SCREEN_NAMES[screenKey], machine_name]
+    [department, sub_department, SCREEN_NAMES[screenKey]]
   );
 
   if (!thresholdsRes.rows.length) return null;
 
   const rules = {};
   for (const row of thresholdsRes.rows) {
-    rules[row.input_field] = row;
+    rules[row.field] = row;
   }
 
   const missingFields = [];
@@ -850,10 +849,10 @@ const autoCreateTicket = async ({
       breaches.push({
         field,
         actual_value: Number(actual),
-        condition_level: rule.condition_level,
-        plus_threshold: rule.plus_threshold,
-        minus_threshold: rule.minus_threshold,
-        baseline_actual_value: rule.actual_value
+        comparison_mode: rule.comparison_mode,
+        typical_value: rule.typical_value,
+        plus_value: rule.plus_value,
+        minus_value: rule.minus_value
       });
     }
   }
@@ -867,39 +866,39 @@ const autoCreateTicket = async ({
   const thresholdPayload = {};
   for (const [k, v] of Object.entries(rules)) {
     thresholdPayload[k] = {
-      condition_level: v.condition_level,
-      plus_threshold: v.plus_threshold,
-      minus_threshold: v.minus_threshold,
-      actual_value: v.actual_value
+      comparison_mode: v.comparison_mode,
+      typical_value: v.typical_value,
+      plus_value: v.plus_value,
+      minus_value: v.minus_value
     };
   }
 
-  const severity = deriveSeverity(missingFields.length, breaches.length);
+  const severityRank = { High: 3, Medium: 2, Low: 1 };
+  const severity = thresholdsRes.rows.reduce(
+    (worst, row) => (severityRank[row.criticality] || 0) > (severityRank[worst] || 0) ? row.criticality : worst,
+    deriveSeverity(missingFields.length, breaches.length)
+  );
   const approvalL1UserIds = Array.from(
     new Set(
       thresholdsRes.rows
-        .map((row) => Number(row.approval_l1_user_id))
+        .flatMap((row) => (Array.isArray(row.approval_l1_user_ids) && row.approval_l1_user_ids.length ? row.approval_l1_user_ids : [row.l1_user_id]))
+        .map((id) => Number(id))
         .filter((id) => Number.isInteger(id) && id > 0)
     )
   );
-  const approvalL2UserIds = Array.from(
-    new Set(
-      thresholdsRes.rows
-        .map((row) => Number(row.approval_l2_user_id))
-        .filter((id) => Number.isInteger(id) && id > 0)
-    )
-  );
-  const approvalL3UserIds = Array.from(
-    new Set(
-      thresholdsRes.rows
-        .map((row) => Number(row.approval_l3_user_id))
-        .filter((id) => Number.isInteger(id) && id > 0)
-    )
-  );
+
+  // L2 is assigned via hierarchy (the L1 approvers' real reporting chain),
+  // same as every other threshold type - not a manually configured column,
+  // since value_threshold_rules deliberately rejects manual L2 fields.
+  const l2Chains = await Promise.all(approvalL1UserIds.map((id) => getManagerChain(id)));
+  const approvalL2UserIds = Array.from(new Set(
+    l2Chains.flatMap((chain) => chain.filter((m) => m.level === 'L2').map((m) => m.id))
+  ));
+
   const result = await client.query(
     `INSERT INTO ticketing_system.operator_tickets
-     (ticket_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, violation_details, approval_l1_user_id, approval_l2_user_id, approval_l3_user_id, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids)
-     VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, 'Open', CURRENT_TIMESTAMP, $7, $8, $9, $10::jsonb, $11, $12, $13, $14::int[], $15::int[], $16::int[])
+     (ticket_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind, violation_details, approval_l1_user_ids, approval_l2_user_ids)
+     VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, 'Open', CURRENT_TIMESTAMP, $7, $8, $9, 'VALUE_THRESHOLD', 'value_threshold', $10::jsonb, $11::int[], $12::int[])
      RETURNING *`,
     [
       user_name || 'ERP System',
@@ -912,12 +911,8 @@ const autoCreateTicket = async ({
       sub_department,
       ticketReason,
       JSON.stringify({ missing_fields: missingFields, threshold_breaches: breaches }),
-      approvalL1UserIds[0] || null,
-      approvalL2UserIds[0] || null,
-      approvalL3UserIds[0] || null,
       approvalL1UserIds,
-      approvalL2UserIds,
-      approvalL3UserIds
+      approvalL2UserIds
     ]
   );
 
@@ -1682,11 +1677,34 @@ router.post('/afis', async (req, res, next) => {
     const ticket = await autoCreateTicket({
       screenKey: 'afis',
       machine_name: req.body.machine_name || SCREEN_NAMES.afis,
-      department: req.body.department || req.body.management_field,
-      sub_department: req.body.sub_department || req.body.erp_product_code,
+      // The AFIS entry form doesn't send department/management_field itself
+      // (unlike some of the other mixing screens), so this fell through to
+      // undefined and autoCreateTicket bailed out immediately - fall back to
+      // the department/sub_department AFIS's own configured threshold rules
+      // actually use (Quality Control / Mixing).
+      department: req.body.department || req.body.management_field || 'Quality Control',
+      sub_department: req.body.sub_department || req.body.erp_product_code || 'Mixing',
       user_name: req.body.user_name,
       values: { uql, l5, sfc_n, ifc, fibre_neps_gms, sfc_w, maturity, fineness, scn_gms }
     });
+
+    // AFIS (like every other mixing screen) never recorded its submission
+    // into submitted_notebooks, so the Acknowledgement Threshold system
+    // (generateOverdueNotebookTickets) had nothing to check and could never
+    // raise an overdue-acknowledgement ticket for L4 no matter how long a
+    // submission sat unacknowledged.
+    recordPpNotebookSubmission({
+      notebook: SCREEN_NAMES.afis,
+      department: req.body.department || req.body.management_field || 'Quality Control',
+      subDepartment: req.body.sub_department || req.body.erp_product_code || 'Mixing',
+      entryId: entry_id,
+      sourceSchema: 'mixing',
+      sourceTable: 'afis_data_entry',
+      sourceRecordId: entry_id,
+      submittedByUserId: req.user?.id,
+      submittedByName: req.body.user_name || req.user?.employee_id,
+      submittedPayload: { entry_id, lot_no, variety, maturity }
+    }).catch((err) => console.warn('[pp-notebook-log] AFIS Data Entry failed:', err.message));
 
     res.status(201).json({
       message: 'AFIS data created successfully',

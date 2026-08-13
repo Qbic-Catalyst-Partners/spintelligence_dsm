@@ -736,6 +736,15 @@ const ensureValueThresholdRulesTable = async () => {
       updated_at timestamptz NOT NULL DEFAULT NOW()
     )
   `);
+  // comparison_mode is the actual evaluation rule ("more_than" / "less_than" /
+  // "more_and_less_than") the frontend already sends as comparison_operator/
+  // condition_level - upsertValueThresholdRule previously never persisted it
+  // (only `criticality`, which is severity: High/Medium/Low), so nothing
+  // stored here could ever be evaluated against a submitted value.
+  await client.query(`
+    ALTER TABLE ticketing_system.value_threshold_rules
+      ADD COLUMN IF NOT EXISTS comparison_mode varchar(30) NOT NULL DEFAULT 'more_and_less_than'
+  `);
 };
 
 const normalizeThresholdMode = (value) => {
@@ -787,6 +796,12 @@ const rejectLegacyThresholdL2Fields = (payload) => {
   }
 };
 
+const VALID_COMPARISON_MODES = new Set(['more_than', 'less_than', 'more_and_less_than']);
+const normalizeComparisonMode = (value) => {
+  const mode = String(value || '').trim().toLowerCase();
+  return VALID_COMPARISON_MODES.has(mode) ? mode : 'more_and_less_than';
+};
+
 const upsertValueThresholdRule = async (payload) => {
   await ensureValueThresholdRulesTable();
   rejectLegacyThresholdL2Fields(payload);
@@ -796,6 +811,9 @@ const upsertValueThresholdRule = async (payload) => {
   const notebook = pickDropdownValue(payload.notebook);
   const field = pickDropdownValue(payload.field);
   const criticality = pickDropdownValue(payload.criticality);
+  const comparisonMode = normalizeComparisonMode(
+    payload.comparison_operator ?? payload.comparisonOperator ?? payload.condition_level ?? payload.conditionLevel ?? payload.comparison
+  );
   const valueMode = normalizeThresholdMode(payload.value_mode ?? payload.valueMode);
   const typicalValue = String(payload.typical_value ?? payload.typicalValue ?? '').trim();
   const plusValue = toNumericIfPossible(payload.plus_value ?? payload.plusValue);
@@ -831,13 +849,14 @@ const upsertValueThresholdRule = async (payload) => {
 
   const result = await client.query(
     `INSERT INTO ticketing_system.value_threshold_rules
-      (department, sub_department, notebook, field, l1_user_id, approval_l1_user_ids, l1_user_name, criticality, typical_value, value_mode, plus_value, minus_value, unique_ticket_key, is_active, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+      (department, sub_department, notebook, field, l1_user_id, approval_l1_user_ids, l1_user_name, criticality, comparison_mode, typical_value, value_mode, plus_value, minus_value, unique_ticket_key, is_active, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
      ON CONFLICT (unique_ticket_key)
      DO UPDATE SET
        l1_user_name = EXCLUDED.l1_user_name,
        approval_l1_user_ids = EXCLUDED.approval_l1_user_ids,
        criticality = EXCLUDED.criticality,
+       comparison_mode = EXCLUDED.comparison_mode,
        typical_value = EXCLUDED.typical_value,
        value_mode = EXCLUDED.value_mode,
        plus_value = EXCLUDED.plus_value,
@@ -845,7 +864,7 @@ const upsertValueThresholdRule = async (payload) => {
        is_active = EXCLUDED.is_active,
        updated_at = NOW()
      RETURNING *`,
-    [department, subDepartment, notebook, field, l1UserId, l1UserIds.length ? l1UserIds : [l1UserId], resolvedL1UserName, criticality, typicalValue, valueMode, plusValue, minusValue, uniqueTicketKey, Boolean(payload.is_active ?? payload.isActive ?? true)]
+    [department, subDepartment, notebook, field, l1UserId, l1UserIds.length ? l1UserIds : [l1UserId], resolvedL1UserName, criticality, comparisonMode, typicalValue, valueMode, plusValue, minusValue, uniqueTicketKey, Boolean(payload.is_active ?? payload.isActive ?? true)]
   );
 
   return result.rows[0];
@@ -2064,6 +2083,23 @@ router.get('/', async (req, res, next) => {
           ot.severity,
           ot.status,
           ot.created_at,
+          ot.ticket_type,
+          ot.ticket_kind,
+          ot.violation_details,
+          ot.tat_current_level,
+          (
+            SELECT string_agg(ud.full_name, ', ' ORDER BY ud.full_name)
+            FROM users.user_details ud
+            WHERE ud.id = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
+          ) AS assigned_user_names,
+          (
+            SELECT tl.created_at
+            FROM ticketing_system.ticket_logs tl
+            WHERE tl.ticket_id = ot.ticket_id
+              AND UPPER(tl.action) IN ('APPROVED', 'ACKNOWLEDGED', 'SUBMITTED', 'RESUBMITTED', 'REJECTED')
+            ORDER BY tl.created_at DESC
+            LIMIT 1
+          ) AS resolved_at,
           ${isDelegatedExpr} AS is_delegated,
           COUNT(*) OVER()::int AS total_count,
           COALESCE(
@@ -2092,7 +2128,11 @@ router.get('/', async (req, res, next) => {
           ot.threshold_value,
           ot.severity,
           ot.status,
-          ot.created_at
+          ot.created_at,
+          ot.ticket_type,
+          ot.ticket_kind,
+          ot.violation_details,
+          ot.tat_current_level
       ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\\D', '', 'g'), '')::bigint DESC, ot.created_at DESC;
     `;
 
@@ -2203,6 +2243,162 @@ router.get('/submission-ticketing', async (req, res, next) => {
   }
 });
 
+// PP_BATCH_INCOMPLETE tickets - the frontend has called this exact path
+// (getProcessParameterTickets in operatorApi.js) since before this route
+// existed, silently 404ing every time and leaving the Process Parameter tab
+// on both the operator dashboard and SupervisorDashboard's L1 view always
+// empty. Mirrors /submission-ticketing's shape/filters/pagination, scoped by
+// the same viewer-visibility rule as the base '/' route (admin/L5 see
+// everything, everyone else only tickets naming them as an approver at some
+// level or as the ticket's owner).
+router.get('/process-parameter-ticketing', async (req, res, next) => {
+  try {
+    await ensureOperatorTicketApprovalColumns();
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
+    const offset = (page - 1) * limit;
+
+    const status = String(req.query.status || '').trim();
+    const severity = String(req.query.severity || '').trim();
+    const startDate = String(req.query.start_date || '').trim();
+    const endDate = String(req.query.end_date || '').trim();
+
+    const values = [];
+    const where = [`ot.ticket_type = 'PP_BATCH_INCOMPLETE'`];
+
+    if (status && status.toLowerCase() !== 'all') {
+      values.push(status);
+      where.push(`ot.status = $${values.length}`);
+    }
+    if (severity && severity.toLowerCase() !== 'all') {
+      values.push(severity);
+      where.push(`ot.severity = $${values.length}`);
+    }
+    if (startDate) {
+      values.push(startDate);
+      where.push(`ot.created_at::date >= $${values.length}::date`);
+    }
+    if (endDate) {
+      values.push(endDate);
+      where.push(`ot.created_at::date <= $${values.length}::date`);
+    }
+
+    const requesterEmployeeId = String(req.user?.employee_id || '').trim().toUpperCase();
+    const requesterRole = String(req.user?.role || '').trim().toLowerCase();
+    const requesterLevel = String(req.user?.level || '').trim().toUpperCase();
+    const canViewAllTickets =
+      requesterEmployeeId === 'ADMIN001' ||
+      requesterRole === 'admin' ||
+      requesterRole === 'super admin' ||
+      requesterRole === 'superadmin' ||
+      requesterLevel === 'L5';
+
+    const viewerUserId = canViewAllTickets ? null : parsePositiveInt(req.user?.id);
+    if (viewerUserId) {
+      values.push(viewerUserId);
+      where.push(`(
+        ot.user_id = $${values.length}
+        OR $${values.length} = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
+        OR $${values.length} = ANY(COALESCE(ot.approval_l2_user_ids, ARRAY[]::int[]))
+        OR $${values.length} = ANY(COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[]))
+        OR $${values.length} = ANY(COALESCE(ot.approval_l4_user_ids, ARRAY[]::int[]))
+        OR $${values.length} = ANY(COALESCE(ot.approval_l5_user_ids, ARRAY[]::int[]))
+        OR ot.user_id IN (
+          SELECT owner_user_id FROM users.delegations
+          WHERE delegate_user_id = $${values.length}
+            AND from_date <= CURRENT_DATE
+            AND to_date >= CURRENT_DATE
+        )
+      )`);
+    }
+
+    values.push(limit);
+    const limitIndex = values.length;
+    values.push(offset);
+    const offsetIndex = values.length;
+
+    const result = await client.query(
+      `SELECT
+         ot.ticket_id,
+         ot.machine_name,
+         ot.parameter_name,
+         ot.severity,
+         ot.status,
+         ot.created_at,
+         ot.tat_current_level,
+         ot.violation_details,
+         ot.violation_details->>'entry_id' AS entry_id,
+         ot.violation_details->>'first_created_at' AS entry_created_at,
+         ot.approval_l1_user_ids,
+         ot.approval_l2_user_ids,
+         ot.approval_l3_user_ids,
+         ot.approval_l4_user_ids,
+         ot.approval_l5_user_ids,
+         (
+           -- Whoever is assigned to actually resolve/approve it at the tier
+           -- it's sitting at right now (PP escalates L1 -> L4 directly), not
+           -- always L1's original assignees - once it's at L4, the L1 names
+           -- are no longer who owns the next action on it.
+           SELECT string_agg(ud.full_name, ', ' ORDER BY ud.full_name)
+           FROM users.user_details ud
+           WHERE ud.id = ANY(COALESCE(
+             CASE UPPER(COALESCE(ot.tat_current_level, 'L1'))
+               WHEN 'L2' THEN ot.approval_l2_user_ids
+               WHEN 'L3' THEN ot.approval_l3_user_ids
+               WHEN 'L4' THEN ot.approval_l4_user_ids
+               WHEN 'L5' THEN ot.approval_l5_user_ids
+               ELSE ot.approval_l1_user_ids
+             END,
+             ARRAY[]::int[]
+           ))
+         ) AS assigned_user_names,
+         (
+           SELECT MAX(v.value::numeric)
+           FROM jsonb_each_text(COALESCE(ot.violation_details->'screen_thresholds', '{}'::jsonb)) v
+         ) AS completion_time_provided_hours,
+         GREATEST(
+           0,
+           EXTRACT(EPOCH FROM (NOW() - NULLIF(ot.violation_details->>'first_created_at', '')::timestamptz)) / 3600
+         )::numeric(10,1) AS time_lagged_hours,
+         resolution_log.resolved_at,
+         COUNT(*) OVER()::int AS total_count
+       FROM ticketing_system.operator_tickets ot
+       LEFT JOIN LATERAL (
+         -- ACTUAL RES TIME is when the ticket was last actually actioned -
+         -- this route (PP tickets specifically) never selected it at all, so
+         -- every PP ticket showed "--:--" for Actual Res Time and Resolution
+         -- Gap regardless of whether L1 had submitted it, matching the same
+         -- fix already applied to /supervisor-tickets/tickets.
+         SELECT tl.created_at AS resolved_at
+         FROM ticketing_system.ticket_logs tl
+         WHERE tl.ticket_id = ot.ticket_id
+           AND UPPER(tl.action) IN ('APPROVED', 'ACKNOWLEDGED', 'SUBMITTED', 'RESUBMITTED', 'REJECTED')
+         ORDER BY tl.created_at DESC
+         LIMIT 1
+       ) resolution_log ON true
+       WHERE ${where.join(' AND ')}
+       ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\\D', '', 'g'), '')::bigint DESC, ot.created_at DESC
+       LIMIT $${limitIndex}
+       OFFSET $${offsetIndex}`,
+      values
+    );
+
+    const totalCount = result.rows[0]?.total_count || 0;
+    return res.status(200).json({
+      tickets: result.rows,
+      data: result.rows,
+      pagination: {
+        totalItems: totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+        currentPage: page,
+        itemsPerPage: limit
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 /**
  * @swagger
  * /operator-tickets/{id}:
@@ -2289,7 +2485,22 @@ router.get('/:id/timeline', async (req, res, next) => {
       [ticketId]
     );
     if (!ticketRes.rows.length) return res.status(404).json({ message: 'Ticket not found' });
-    const ticket = ticketRes.rows[0];
+    let ticket = ticketRes.rows[0];
+
+    // Open/Reopened -> In Progress happens the moment someone actually opens
+    // the ticket's own detail page - this timeline endpoint is the one call
+    // every detail-page load makes unconditionally (unlike the ticket-by-id
+    // fetch, which is skipped whenever the ticket's already in the caller's
+    // local list), so it's the reliable place to record "viewed." This only
+    // touches status, not tat_current_level - Fix & Resubmit still shows
+    // correctly off tat_current_level='L1', independent of this status text.
+    if (['open', 'reopened'].includes(String(ticket.status || '').trim().toLowerCase())) {
+      const viewedResult = await client.query(
+        `UPDATE ticketing_system.operator_tickets SET status = 'In Progress' WHERE ticket_id = $1 RETURNING status`,
+        [ticketId]
+      );
+      ticket = { ...ticket, status: viewedResult.rows[0]?.status || 'In Progress' };
+    }
 
     const logRes = await client.query(
       `SELECT action, performed_by, role, created_at
@@ -2317,25 +2528,36 @@ router.get('/:id/timeline', async (req, res, next) => {
         null;
     }
 
+    // Only include events that actually happened - this used to fill gaps with
+    // invented sample copy ("vibration sensor", "Maintenance Team A (Technician:
+    // Surya Prakash)", a canned bearing/lubricant comment) whenever there was no
+    // real ticket_logs row or violation_details comment yet, which showed fabricated
+    // history on every ticket that hadn't been touched since creation.
     const timeline = [
       {
         at: ticket.created_at,
         title: 'Ticket Created',
-        detail: `Automated system alert triggered by vibration sensor ${ticket.machine_name || 'N/A'}`
-      },
-      {
-        at: assignedLog?.created_at || ticket.created_at,
-        title: 'Assigned to maintenance',
-        detail: assignedLog?.performed_by
-          ? `Ticket assigned by ${assignedLog.performed_by}`
-          : `Ticket assigned to Maintenance Team A (Technician : ${ticket.user_name || 'Surya Prakash'})`
-      },
-      {
-        at: submittedLog?.created_at || ticket.created_at,
-        title: 'L1 Comment',
-        detail: l1Comment || 'Check the lubricant levels. It seems the main bearing is overheating. Need to replace the grease and re-test the vibration levels. proceed with caution.'
+        detail: `Ticket raised for ${ticket.machine_name || ticket.user_name || 'the assigned owner'}`
       }
     ];
+
+    if (assignedLog) {
+      timeline.push({
+        at: assignedLog.created_at,
+        title: 'Assigned',
+        detail: assignedLog.performed_by
+          ? `Ticket assigned by ${assignedLog.performed_by}`
+          : 'Ticket assigned'
+      });
+    }
+
+    if (submittedLog || l1Comment) {
+      timeline.push({
+        at: submittedLog?.created_at || ticket.created_at,
+        title: 'L1 Comment',
+        detail: l1Comment || `Ticket ${String(submittedLog?.action || '').toLowerCase() || 'updated'} by L1`
+      });
+    }
 
     return res.status(200).json({
       ticket_id: ticket.ticket_id,
@@ -2362,7 +2584,16 @@ router.get('/:id', async (req, res, next) => {
           ot.threshold_value,
           ot.severity,
           ot.status,
-          ot.created_at
+          ot.created_at,
+          ot.ticket_type,
+          ot.ticket_kind,
+          ot.violation_details,
+          ot.tat_current_level,
+          (
+            SELECT string_agg(ud.full_name, ', ' ORDER BY ud.full_name)
+            FROM users.user_details ud
+            WHERE ud.id = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
+          ) AS assigned_user_names
 
       FROM ticketing_system.operator_tickets ot
       WHERE ot.ticket_id = $1
@@ -2812,6 +3043,7 @@ router.get('/thresholds/list', async (req, res, next) => {
         vt.approval_l1_user_ids,
         vt.l1_user_name,
         vt.criticality,
+        vt.comparison_mode,
         vt.typical_value,
         vt.value_mode,
         vt.plus_value,
@@ -3646,16 +3878,54 @@ router.put('/submit/:id', async (req, res, next) => {
       });
     }
 
+    // L1 submitting is what actually escalates the ticket. PP Entry Threshold
+    // tickets (PP_BATCH_INCOMPLETE) have no L2/L3 configured anywhere in PP
+    // Thresholds - only L1 and L4 - matching the same pattern as PP Approval,
+    // Wheel Change Approval, and Acknowledgement, which all escalate straight
+    // to L4 too. Every other ticket type keeps going to L2 (manually
+    // configured approval_l2_user_ids first, then the submitter's real
+    // reporting-chain L2 manager). Previously this only set status='Submit'
+    // and left tat_current_level at 'L1' forever, so the ticket kept showing
+    // the L1 Fix & Resubmit action instead of the next level's review action.
+    const isPpBatchTicket = ticket.ticket_kind === 'pp_batch' || ticket.ticket_type === 'PP_BATCH_INCOMPLETE';
+
+    let nextLevel;
+    let nextApproverIds;
+    if (isPpBatchTicket) {
+      const { getPpNotebookThresholds } = require('./submittedNotebooks.routes');
+      const notebookThresholds = await getPpNotebookThresholds();
+      const overdueScreens = Array.isArray(ticket.violation_details?.overdue_screens) && ticket.violation_details.overdue_screens.length
+        ? ticket.violation_details.overdue_screens
+        : Array.isArray(ticket.parameter_name) ? ticket.parameter_name : [];
+      const l4Set = new Set();
+      for (const label of overdueScreens) {
+        const notebookRow = notebookThresholds.get(label);
+        (Array.isArray(notebookRow?.approval_l4_user_ids) ? notebookRow.approval_l4_user_ids : [])
+          .forEach((id) => l4Set.add(Number(id)));
+      }
+      nextLevel = 'L4';
+      nextApproverIds = Array.from(l4Set).filter((id) => Number.isInteger(id) && id > 0);
+    } else {
+      const fallbackL2Ids = Array.isArray(ticket.approval_l2_user_ids) ? ticket.approval_l2_user_ids : [];
+      const hierarchyL2Ids = ticket.user_id
+        ? (await getManagerChain(ticket.user_id)).filter((manager) => String(manager.level || '').trim().toUpperCase() === 'L2').map((manager) => manager.id)
+        : [];
+      nextLevel = 'L2';
+      nextApproverIds = Array.from(new Set([...fallbackL2Ids, ...hierarchyL2Ids].map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)));
+    }
     const updateResult = await client.query(
       `UPDATE ticketing_system.operator_tickets
        SET status = 'Submit',
+           tat_current_level = $3,
+           approval_l2_user_ids = CASE WHEN $3 = 'L2' THEN $4::int[] ELSE approval_l2_user_ids END,
+           approval_l4_user_ids = CASE WHEN $3 = 'L4' THEN $4::int[] ELSE approval_l4_user_ids END,
            violation_details = CASE
              WHEN $2::text IS NULL OR btrim($2::text) = '' THEN violation_details
              ELSE COALESCE(violation_details, '{}'::jsonb) || jsonb_build_object('operator_comment', $2::text)
            END
        WHERE ticket_id = $1
        RETURNING *`,
-      [ticketId, operatorComment]
+      [ticketId, operatorComment, nextLevel, nextApproverIds]
     );
 
     const updatedTicket = updateResult.rows[0];
@@ -3685,20 +3955,17 @@ router.put('/submit/:id', async (req, res, next) => {
     );
     await client.query(
       `INSERT INTO ticketing_system.ticket_approvals (ticket_id, level, action_status)
-       VALUES ($1, 'L2', 'Pending')`,
-      [ticketId]
+       VALUES ($1, $2, 'Pending')`,
+      [ticketId, nextLevel]
     );
 
-    const fallbackL2Ids = Array.isArray(ticket.approval_l2_user_ids) ? ticket.approval_l2_user_ids : [];
-    const hierarchyL2Ids = ticket.user_id ? (await getManagerChain(ticket.user_id)).filter((manager) => String(manager.level || '').trim().toUpperCase() === 'L2').map((manager) => manager.id) : [];
-    const notifyL2Ids = Array.from(new Set([...fallbackL2Ids, ...hierarchyL2Ids].map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)));
-    if (notifyL2Ids.length) {
-      await createNotificationsForUsers(notifyL2Ids, {
+    if (nextApproverIds.length) {
+      await createNotificationsForUsers(nextApproverIds, {
         ticketId,
-        type: 'TICKET_SUBMITTED_TO_L2',
+        type: `TICKET_SUBMITTED_TO_${nextLevel}`,
         category: 'Tickets',
         priority: 'High',
-        title: `Ticket submitted for L2 review - ${ticketId}`,
+        title: `Ticket submitted for ${nextLevel} review - ${ticketId}`,
         body: `${ticket.user_name || ticket.user_id || 'An L1 user'} submitted ticket ${ticketId}.`,
         linkUrl: `/operator-tickets/${ticketId}`,
         payload: { ticket_id: ticketId, level: 'L2' }
@@ -3759,7 +4026,17 @@ const getApprovalQueue = async (req, res, next) => {
     const values = [levelFilter];
     const where = [
       `ta.level = $1`,
-      `COALESCE(ot.ticket_type, 'THRESHOLD') = 'THRESHOLD'`,
+      // This queue is for the L1 -> L2 -> L3... hierarchy-chain ticket types
+      // only (Value Threshold, Submission Frequency) - PP Batch/PP Approval/
+      // Wheel Change/Acknowledgement escalate straight L1 -> L4 and are
+      // already served by their own dedicated feeds. This used to compare
+      // against the literal string 'THRESHOLD', which only matched legacy
+      // rows where ticket_type had never been set (COALESCE defaulted it to
+      // 'THRESHOLD') - once ticket_type started being populated for real as
+      // 'VALUE_THRESHOLD'/'SUBMISSION_FREQUENCY', that comparison stopped
+      // matching anything and this endpoint silently returned zero rows for
+      // every real ticket, hiding the entire L2-L5 approval queue.
+      `COALESCE(ot.ticket_type, 'VALUE_THRESHOLD') IN ('VALUE_THRESHOLD', 'SUBMISSION_FREQUENCY', 'THRESHOLD')`,
       nonAcknowledgementTicketWhere
     ];
 
@@ -3801,6 +4078,12 @@ const getApprovalQueue = async (req, res, next) => {
          ot.severity,
          ot.status AS ticket_status,
          ot.created_at AS ticket_created_at,
+         ot.tat_current_level,
+         ot.approval_l1_user_ids,
+         ot.approval_l2_user_ids,
+         ot.approval_l3_user_ids,
+         ot.approval_l4_user_ids,
+         ot.approval_l5_user_ids,
          COUNT(*) OVER()::int AS total_count
        FROM ticketing_system.ticket_approvals ta
        JOIN ticketing_system.operator_tickets ot ON ot.ticket_id = ta.ticket_id
@@ -3838,3 +4121,4 @@ module.exports = router;
 module.exports.runSubmissionFrequencyTatCheck = runSubmissionFrequencyTatCheck;
 module.exports.runSubmissionFrequencyCheck = runSubmissionFrequencyCheck;
 module.exports.ensureTicketApprovalsTable = ensureTicketApprovalsTable;
+module.exports.ensureValueThresholdRulesTable = ensureValueThresholdRulesTable;
