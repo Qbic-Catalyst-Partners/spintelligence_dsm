@@ -519,7 +519,7 @@ router.get('/tickets', async (req, res, next) => {
          ot.approval_l4_user_ids,
          ot.approval_l5_user_ids,
          COALESCE(l1_approvers.users, '[]'::json) AS l1_approvers,
-         l1_approvers.names AS assigned_user_names,
+         current_assignees.names AS assigned_user_names,
          COALESCE(l2_approvers.users, '[]'::json) AS l2_approvers,
          COALESCE(l3_approvers.users, '[]'::json) AS l3_approvers,
          COALESCE(l4_approvers.users, '[]'::json) AS l4_approvers,
@@ -535,6 +535,9 @@ router.get('/tickets', async (req, res, next) => {
          ot.l5_tat_due_at,
          ot.created_at,
          resolution_log.resolved_at,
+         threshold_config.configured_tat_hours,
+         threshold_config.configured_severity,
+         threshold_config.threshold_active,
          COUNT(*) OVER()::int AS total_count
        FROM ticketing_system.operator_tickets ot
        LEFT JOIN LATERAL (
@@ -559,11 +562,28 @@ router.get('/tickets', async (req, res, next) => {
                'level', u.level
              )
              ORDER BY u.full_name, u.id
-           ) AS users,
-           string_agg(u.full_name, ', ' ORDER BY u.full_name) AS names
+           ) AS users
          FROM users.user_details u
          WHERE u.id = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
        ) l1_approvers ON true
+       LEFT JOIN LATERAL (
+         -- Whoever it's actually assigned to right now, not always L1 - Wheel
+         -- Change/PP Approval/Acknowledgement tickets never have an L1
+         -- assignee at all (only approval_l4_user_ids), so this used to
+         -- always come back empty ("Unassigned") for them.
+         SELECT string_agg(u.full_name, ', ' ORDER BY u.full_name) AS names
+         FROM users.user_details u
+         WHERE u.id = ANY(COALESCE(
+           CASE UPPER(COALESCE(ot.tat_current_level, 'L1'))
+             WHEN 'L2' THEN ot.approval_l2_user_ids
+             WHEN 'L3' THEN ot.approval_l3_user_ids
+             WHEN 'L4' THEN ot.approval_l4_user_ids
+             WHEN 'L5' THEN ot.approval_l5_user_ids
+             ELSE ot.approval_l1_user_ids
+           END,
+           ARRAY[]::int[]
+         ))
+       ) current_assignees ON true
        LEFT JOIN LATERAL (
          SELECT json_agg(
            json_build_object(
@@ -616,6 +636,36 @@ router.get('/tickets', async (req, res, next) => {
          FROM users.user_details u
          WHERE u.id = ANY(COALESCE(ot.approval_l5_user_ids, ARRAY[]::int[]))
        ) l5_approvers ON true
+       LEFT JOIN LATERAL (
+         -- Live threshold config this ticket was raised under (see the same
+         -- join on GET /tickets/:id) - lets the list/detail pages show the
+         -- configured TAT/severity without relying only on the snapshot
+         -- frozen onto the ticket at creation time.
+         SELECT
+           wc.tat_hours AS configured_tat_hours,
+           wc.severity AS configured_severity,
+           wc.is_active AS threshold_active
+         FROM ticketing_system.wheel_change_approval_config wc
+         WHERE ot.ticket_kind = 'wheel_change_approval'
+           AND wc.config_key = ot.violation_details->>'department'
+         UNION ALL
+         SELECT
+           pt.approve_within_hours AS configured_tat_hours,
+           pt.severity AS configured_severity,
+           pt.is_active AS threshold_active
+         FROM ticketing_system.pp_notebook_threshold pt
+         WHERE ot.ticket_kind = 'pp_approval'
+           AND pt.notebook_label = ot.violation_details->>'notebook_label'
+         UNION ALL
+         SELECT
+           nt.acknowledge_within_hours AS configured_tat_hours,
+           nt.criticality AS configured_severity,
+           nt.is_active AS threshold_active
+         FROM ticketing_system.notebook_acknowledgement_threshold nt
+         WHERE (ot.violation_details->>'ticket_type') = 'NOTEBOOK_ACK_OVERDUE'
+           AND nt.screen_name = ot.machine_name
+         LIMIT 1
+       ) threshold_config ON true
        ${whereClause}
        ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\\D', '', 'g'), '')::bigint DESC, ot.created_at DESC
        LIMIT $${limitIndex}
@@ -730,7 +780,15 @@ router.get('/tickets/:id/l2-preview', async (req, res, next) => {
       actual_value: ticket.actual_value,
       threshold_value: ticket.threshold_value,
       submitted_fields: normalizeJsonFields(ticket.actual_value),
-      parameters: normalizeJsonFields(ticket.parameter_name),
+      // parameter_name is always a plain array of field-name strings (e.g.
+      // ["maturity"]), never a values-needing-labels shape - running it
+      // through normalizeJsonFields treated each string as an unnamed value
+      // and relabeled it by array index instead (producing {name: "1",
+      // value: "maturity"}), which the frontend then couldn't read as a real
+      // field name and fell back to listing every key in actual_value
+      // instead - showing every submitted field as if it were relevant to
+      // the ticket, not just the one that actually mattered.
+      parameters: Array.isArray(ticket.parameter_name) ? ticket.parameter_name : normalizeJsonFields(ticket.parameter_name),
       threshold_fields: normalizeJsonFields(ticket.threshold_value),
       actual: valueAliases.actual,
       actual_value_display: valueAliases.actual_display,
@@ -1081,6 +1139,44 @@ router.get('/tickets/:id/timeline', async (req, res, next) => {
   }
 });
 
+// Called when L4 clicks Fix & Submit on an Acknowledgement ticket, right
+// before being sent to Submitted Notebooks to actually acknowledge it there
+// - marks the ticket Submit so it's visibly "in hand" rather than still
+// Open/In Progress while that's pending. It does NOT close the ticket (the
+// real acknowledgement hasn't happened yet); runL4SelfResolveReconciliationCheck
+// settles it to Closed or back to Open once the real submitted_notebooks row
+// confirms whether it actually got acknowledged.
+router.patch('/tickets/acknowledge/mark-submit', async (req, res, next) => {
+  try {
+    await ensureOperatorTicketApprovalColumns();
+    const canViewAll = await getPrivilegedSupervisorAccess(req);
+    const ticketId = getTicketIdFromRequest(req);
+    if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
+
+    const ticketRes = await client.query(
+      `SELECT * FROM ticketing_system.operator_tickets ot
+       WHERE ot.ticket_id = $1
+         AND ${acknowledgementTicketWhere}`,
+      [ticketId]
+    );
+    if (!ticketRes.rows.length) return res.status(404).json({ message: 'Acknowledgement review ticket not found' });
+    const ticket = ticketRes.rows[0];
+
+    if (!canViewAll && !canApproveOrRejectTicket(req, ticket)) {
+      return res.status(403).json({ message: 'You are not authorized to update this ticket' });
+    }
+
+    const updated = await client.query(
+      `UPDATE ticketing_system.operator_tickets SET status = 'Submit' WHERE ticket_id = $1 RETURNING *`,
+      [ticketId]
+    );
+
+    return res.status(200).json({ message: 'Ticket marked Submit', ticket: updated.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.patch('/tickets/acknowledge', async (req, res, next) => {
   try {
     await ensureOperatorTicketApprovalColumns();
@@ -1314,6 +1410,85 @@ const applyRealUnderlyingDecision = async (ticket, decision, req) => {
   return { ok: true, handled: false };
 };
 
+// Safety net for tickets left sitting at 'Submit' - PP Approval and Wheel
+// Change Approval normally resolve this synchronously the moment L4 clicks
+// Fix & Submit (see applyRealUnderlyingDecision above), but Acknowledgement
+// tickets go to 'Submit' the moment L4 clicks Fix & Submit and then the real
+// acknowledgement itself happens on a separate page (Submitted Notebooks) -
+// there's a real gap in between where nothing has confirmed it actually
+// happened yet. This periodically checks every ticket still parked on
+// 'Submit' against its real backing record and settles it one way or the
+// other: Closed if the real thing is actually done, back to Open if it
+// isn't (rather than leaving it stuck on Submit forever, unclear whether
+// anyone still needs to act on it).
+const runL4SelfResolveReconciliationCheck = async () => {
+  const pending = await client.query(
+    `SELECT * FROM ticketing_system.operator_tickets
+     WHERE status = 'Submit'
+       AND (
+         ticket_kind IN ('pp_approval', 'wheel_change_approval')
+         OR (violation_details->>'ticket_type') = 'NOTEBOOK_ACK_OVERDUE'
+       )`
+  );
+
+  const closed = [];
+  const reopened = [];
+
+  for (const ticket of pending.rows) {
+    const ticketKind = String(ticket.ticket_kind || '').trim().toLowerCase();
+    const details = ticket.violation_details || {};
+    let isDone = null; // eslint-disable-line no-await-in-loop
+
+    if (ticketKind === 'pp_approval') {
+      const entryId = String(details?.entry_id || '').trim();
+      if (!entryId) continue; // eslint-disable-line no-continue
+      // eslint-disable-next-line no-await-in-loop
+      const row = await client.query(
+        `SELECT status FROM process_parameters.master WHERE entry_id = $1`,
+        [entryId]
+      );
+      isDone = row.rows[0]?.status === 'active';
+    } else if (ticketKind === 'wheel_change_approval') {
+      const rowKey = String(details?.wheel_change_row_key || '').trim();
+      const [tableName, rawId] = rowKey.split(':');
+      const rowId = parseInt(rawId, 10);
+      if (!WHEEL_CHANGE_ROW_TABLE_WHITELIST.has(tableName) || !Number.isInteger(rowId) || rowId <= 0) continue; // eslint-disable-line no-continue
+      // eslint-disable-next-line no-await-in-loop
+      const row = await client.query(
+        `SELECT approval_status FROM ${tableName} WHERE id = $1`,
+        [rowId]
+      );
+      isDone = ['approved', 'rejected'].includes(String(row.rows[0]?.approval_status || '').toLowerCase());
+    } else {
+      const submittedNotebookId = parsePositiveInt(details?.submitted_notebook_id);
+      if (!submittedNotebookId) continue; // eslint-disable-line no-continue
+      // eslint-disable-next-line no-await-in-loop
+      const row = await client.query(
+        `SELECT status FROM ticketing_system.submitted_notebooks WHERE id = $1`,
+        [submittedNotebookId]
+      );
+      isDone = row.rows[0]?.status === 'ACKNOWLEDGED';
+    }
+
+    if (isDone === null) continue; // eslint-disable-line no-continue
+
+    // eslint-disable-next-line no-await-in-loop
+    await client.query(
+      `UPDATE ticketing_system.operator_tickets SET status = $2 WHERE ticket_id = $1`,
+      [ticket.ticket_id, isDone ? 'Closed' : 'Open']
+    );
+    // eslint-disable-next-line no-await-in-loop
+    await client.query(
+      `INSERT INTO ticketing_system.ticket_logs (ticket_id, action, performed_by, role, created_at)
+       VALUES ($1, $2, 'System', 'System', NOW())`,
+      [ticket.ticket_id, isDone ? 'RECONCILED_CLOSED' : 'RECONCILED_REOPENED']
+    );
+    (isDone ? closed : reopened).push(ticket.ticket_id);
+  }
+
+  return { closed, reopened };
+};
+
 router.patch('/tickets/approve', async (req, res, next) => {
   try {
     await ensureOperatorTicketApprovalColumns();
@@ -1334,8 +1509,27 @@ router.patch('/tickets/approve', async (req, res, next) => {
       return res.status(403).json({ message: 'You are not authorized to approve this ticket' });
     }
 
+    // Wheel Change/PP Approval/Acknowledgement tickets go through an actual
+    // Open -> In Progress -> Submit -> Closed lifecycle like every other
+    // ticket type - L4 clicking Fix & Submit marks it Submit right away, but
+    // the ticket doesn't get to call itself Closed just because that click
+    // happened. It only becomes Closed once the real backing record (PP
+    // master status, Wheel Change approval_status, notebook acknowledgement)
+    // is confirmed - if that confirmation fails (already actioned by someone
+    // else, or the real action never actually went through), the ticket goes
+    // back to Open rather than sitting stuck on Submit.
+    const isL4SelfResolveKind = ['pp_approval', 'wheel_change_approval'].includes(
+      String(ticket.ticket_kind || '').trim().toLowerCase()
+    );
+    if (isL4SelfResolveKind) {
+      await client.query(`UPDATE ticketing_system.operator_tickets SET status = 'Submit' WHERE ticket_id = $1`, [ticketId]);
+    }
+
     const realDecision = await applyRealUnderlyingDecision(ticket, 'approve', req);
     if (!realDecision.ok) {
+      if (isL4SelfResolveKind) {
+        await client.query(`UPDATE ticketing_system.operator_tickets SET status = 'Open' WHERE ticket_id = $1`, [ticketId]);
+      }
       return res.status(409).json({ message: realDecision.message });
     }
 
@@ -1680,3 +1874,4 @@ router.get('/employee/:employeeId/supervisor', async (req, res, next) => {
 });
 
 module.exports = router;
+module.exports.runL4SelfResolveReconciliationCheck = runL4SelfResolveReconciliationCheck;

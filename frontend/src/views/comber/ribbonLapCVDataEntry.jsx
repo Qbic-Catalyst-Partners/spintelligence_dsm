@@ -8,6 +8,7 @@ import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { fetchComberMasterVarieties, fetchComberRibbonLapMasterMcNos } from "@/apis/comber";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import styles from "./ribbonLapCVDataEntry.module.css";
 
 const defaultSampleCount = 5;
@@ -275,6 +276,28 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                 } catch (customFieldError) {
                     console.error("Failed to save custom field values:", customFieldError);
                 }
+            }
+
+            try {
+                await createThresholdViolationTickets({
+                    department: "Quality Control",
+                    subDepartment: "Comber",
+                    screenName: selectedType || "Ribbon Lap CV1M Data Entry",
+                    machineName: machine || selectedType || "Ribbon Lap CV1M Data Entry",
+                    entryId,
+                    values: [
+                        { label: "Lap Weight (KGs)", value: lapWeight },
+                        { label: "Lap Length (Mts)", value: lapLength },
+                        { label: "Grams / Meter", value: gramsPerMeter },
+                        { label: "Average", value: stats.avg },
+                        { label: "Minimum", value: stats.min },
+                        { label: "Maximum", value: stats.max },
+                        { label: "Standard Deviation", value: stats.sd },
+                        { label: "CV %", value: stats.cv },
+                    ],
+                });
+            } catch (thresholdError) {
+                console.error("Failed to evaluate value thresholds:", thresholdError);
             }
 
             return true;

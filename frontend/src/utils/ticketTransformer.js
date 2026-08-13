@@ -131,8 +131,25 @@ const getObjectKeys = (value) => {
   return Object.keys(normalized);
 };
 
+// parameter_name (and the l2-preview endpoint's equivalent `parameters`
+// field) is deliberately a SUBSET of actual_value's keys - the field(s) that
+// actually caused the ticket (missing or breached), not everything the
+// operator submitted on the form. actual_value/submitted_fields legitimately
+// keep the full submission for context, so unioning every source together
+// (as this used to do) pulled every other submitted field back in as if it
+// were also part of the alert, once a ticket's own parameter_name was
+// correctly narrowed down to just the relevant field(s). If parameter_name
+// (or its l2-preview equivalent) is present, it's trusted alone; the wider
+// union across every other shape is now only a fallback for older/odd
+// tickets that never had a real parameter_name recorded at all.
 export const getTicketParameterNames = (ticket) => {
   const fromParameterName = toParameterList(ticket?.parameter_name);
+  const fromParameters = (Array.isArray(ticket?.parameters) ? ticket.parameters : [])
+    .map(fieldLabel)
+    .filter(Boolean);
+  if (fromParameterName.length) return dedupeParameterNames(fromParameterName);
+  if (fromParameters.length) return dedupeParameterNames(fromParameters);
+
   const fromActualValue = getObjectKeys(ticket?.actual_value);
   const fromThresholdValue = getObjectKeys(ticket?.threshold_value);
   const fromSubmittedFields = [
@@ -141,18 +158,18 @@ export const getTicketParameterNames = (ticket) => {
   ].map(fieldLabel);
   const fromThresholdFields = (Array.isArray(ticket?.threshold_fields) ? ticket.threshold_fields : [])
     .map(fieldLabel);
-  const fromParameters = (Array.isArray(ticket?.parameters) ? ticket.parameters : [])
-    .map(fieldLabel);
 
-  const seen = new Set();
-  return [
-    ...fromParameterName,
+  return dedupeParameterNames([
     ...fromActualValue,
     ...fromThresholdValue,
     ...fromSubmittedFields,
     ...fromThresholdFields,
-    ...fromParameters,
-  ].filter((name) => {
+  ]);
+};
+
+const dedupeParameterNames = (names) => {
+  const seen = new Set();
+  return names.filter((name) => {
     const normalized = getTicketParameterKey(name);
     if (!normalized || seen.has(normalized)) {
       return false;

@@ -6,7 +6,6 @@ const sqlServerPrep = require('../config/sqlserverPrep');
 const { fetchPrepVarieties, isDatabaseAccessDenied } = require('../utils/prepVariety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
-const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const { createWheelChangeApprovalTicket, closeWheelChangeApprovalTicket } = require('./spinning');
 const SCREEN_ID_PREFIXES = {
   yarn_cv: 'DY',
@@ -2285,7 +2284,9 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
       ]
     );
 
-    await createWheelChangeApprovalTicket('drawframe.wheel_change', result.rows[0].id);
+    // No ticket raised here anymore - see runWheelChangeApprovalOverdueCheck
+    // in spinning.js, which raises it once this row's configured TAT window
+    // actually elapses with approval_status still 'pending'.
 
     res.status(201).json({
       message: 'Drawframe wheel change entry created successfully',
@@ -2629,21 +2630,14 @@ router.put('/header/:ins_id', async (req, res, next) => {
       return res.status(404).json({ message: 'Drawframe entry not found' });
     }
 
-    // PP_SUB_DEPARTMENTS (ticketing_system's completion tracking) expects Breaker and
-    // Finisher to be logged as two distinct notebooks — hardcoding 'Drawframe QC Header'
-    // for both meant a real Finisher submission was indistinguishable from a Breaker one,
-    // so the batch-completion checker could never see "Drawframe Finisher Drawing
-    // Inspection" as actually done.
-    recordPpNotebookSubmission({
-      notebook: entry_scope === 'finisher' ? 'Drawframe Finisher Drawing Inspection' : 'Drawframe QC Header',
-      department: 'Drawframe',
-      entryId: entry_id,
-      sourceSchema: 'drawframe',
-      sourceTable: 'drawframe_qc_header',
-      submittedByUserId: req.user?.id,
-      submittedByName: req.user?.employee_id,
-      submittedPayload: { count_name, consignee_name, creation_date }
-    }).catch((err) => console.warn('[pp-notebook-log] Drawframe QC Header failed:', err.message));
+    // PP Batch completion tracking reads entry_scope directly off this table
+    // (see PP_BATCH_NOTEBOOKS in submittedNotebooks.routes.js), so it doesn't
+    // need this row logged into submitted_notebooks. The frontend
+    // (DrawFrameHeaderEntry.jsx) already calls recordSubmittedNotebook after
+    // every save, create or update - doing it here too created a second
+    // submitted_notebooks row per edit and, once overdue, a duplicate
+    // acknowledgement-overdue ticket for the same entry (the same bug fixed
+    // for AFIS Data Entry in mixing.js).
 
     res.status(200).json({
       message: 'Drawframe entry updated successfully',

@@ -6,7 +6,6 @@ const { dedupeVarieties } = require('../utils/variety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
 const { getManagerChain } = require('./user.routes');
-const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 
 const COTTON_HVI_PARAMETERS = [
   'sci',
@@ -863,6 +862,16 @@ const autoCreateTicket = async ({
   else if (breaches.length) ticketReason = 'THRESHOLD_BREACH';
   if (!ticketReason) return null;
 
+  // The ticket's own parameter_name is what the detail page renders as one
+  // row per entry - it used to be every field submitted on the form
+  // (paramNames, all of AFIS/Cotton HVI/etc.), so a ticket raised because
+  // Maturity alone breached still listed all 8 other unrelated fields
+  // (each showing a bare "-" for standard/threshold, since only Maturity
+  // has a configured rule) as if they were all part of the alert. Only the
+  // field(s) that actually caused this ticket - missing or breached -
+  // belong here.
+  const relevantParamNames = Array.from(new Set([...missingFields, ...breaches.map((b) => b.field)]));
+
   const thresholdPayload = {};
   for (const [k, v] of Object.entries(rules)) {
     thresholdPayload[k] = {
@@ -903,7 +912,7 @@ const autoCreateTicket = async ({
     [
       user_name || 'ERP System',
       machine_name,
-      JSON.stringify(paramNames),
+      JSON.stringify(relevantParamNames),
       JSON.stringify(values),
       JSON.stringify(thresholdPayload),
       severity,
@@ -1246,36 +1255,13 @@ router.post('/cotton-hvi', async (req, res, next) => {
       ]
     );
 
-    const ticket = await autoCreateTicket({
-      screenKey: 'cotton_hvi',
-      machine_name: req.body.machine_name || SCREEN_NAMES.cotton_hvi,
-      department: req.body.department || req.body.management_field,
-      sub_department: req.body.sub_department || req.body.erp_product_code,
-      user_name: req.body.user_name,
-      values: {
-        sci: numericValues.sci,
-        span_length: numericValues.span_length,
-        mic: numericValues.mic,
-        gtex: numericValues.gtex,
-        maturity: numericValues.maturity,
-        ur: numericValues.ur,
-        sfi: numericValues.sfi,
-        elongation: numericValues.elongation,
-        yellow_b: numericValues.yellow_b,
-        trcnt: numericValues.trcnt,
-        trar: numericValues.trar,
-        trid: numericValues.trid,
-        trash_content_percentage: numericValues.trash_content_percentage,
-        invisible_loss_percentage: numericValues.invisible_loss_percentage,
-        rd: numericValues.rd,
-        colour_grade: numericValues.colour_grade
-      }
-    });
-
+    // Value Threshold ticket generation for this screen now happens client-side
+    // (frontend/src/views/mixing/cottonHVIDataEntry.jsx calls
+    // createThresholdViolationTickets) - calling autoCreateTicket here too used
+    // to fire a second, duplicate ticket for the same breach.
     res.status(201).json({
       message: 'Cotton HVI data created successfully',
-      data: withScreenEntryId('cotton_hvi', result.rows[0]),
-      ticket
+      data: withScreenEntryId('cotton_hvi', result.rows[0])
     });
 
   } catch (error) {
@@ -1470,19 +1456,13 @@ router.post('/fibre', async (req, res, next) => {
       ]
     );
 
-    const ticket = await autoCreateTicket({
-      screenKey: 'fibre',
-      machine_name: req.body.machine_name || SCREEN_NAMES.fibre,
-      department: req.body.department || req.body.management_field,
-      sub_department: req.body.sub_department || req.body.erp_product_code,
-      user_name: req.body.user_name,
-      values: { cut_length, length_cv, mean_denier, cv_per_denier, tenacity, cv_per_tenacity, elongation, cv_per_elongation, crimp, whiteness_index, spin_finish }
-    });
-
+    // Value Threshold ticket generation for this screen now happens client-side
+    // (frontend/src/views/mixing/fibreDataEntry.jsx calls
+    // createThresholdViolationTickets) - calling autoCreateTicket here too used
+    // to fire a second, duplicate ticket for the same breach.
     res.status(201).json({
       message: 'Fibre data created successfully',
-      data: withScreenEntryId('fibre', result.rows[0]),
-      ticket
+      data: withScreenEntryId('fibre', result.rows[0])
     });
 
   } catch (error) {
@@ -1674,42 +1654,20 @@ router.post('/afis', async (req, res, next) => {
       ]
     );
 
-    const ticket = await autoCreateTicket({
-      screenKey: 'afis',
-      machine_name: req.body.machine_name || SCREEN_NAMES.afis,
-      // The AFIS entry form doesn't send department/management_field itself
-      // (unlike some of the other mixing screens), so this fell through to
-      // undefined and autoCreateTicket bailed out immediately - fall back to
-      // the department/sub_department AFIS's own configured threshold rules
-      // actually use (Quality Control / Mixing).
-      department: req.body.department || req.body.management_field || 'Quality Control',
-      sub_department: req.body.sub_department || req.body.erp_product_code || 'Mixing',
-      user_name: req.body.user_name,
-      values: { uql, l5, sfc_n, ifc, fibre_neps_gms, sfc_w, maturity, fineness, scn_gms }
-    });
+    // Value Threshold ticket generation for this screen now happens client-side
+    // (frontend/src/views/mixing/afisDataEntry.jsx calls
+    // createThresholdViolationTickets) - calling autoCreateTicket here too used
+    // to fire a second, duplicate ticket for the same breach.
 
-    // AFIS (like every other mixing screen) never recorded its submission
-    // into submitted_notebooks, so the Acknowledgement Threshold system
-    // (generateOverdueNotebookTickets) had nothing to check and could never
-    // raise an overdue-acknowledgement ticket for L4 no matter how long a
-    // submission sat unacknowledged.
-    recordPpNotebookSubmission({
-      notebook: SCREEN_NAMES.afis,
-      department: req.body.department || req.body.management_field || 'Quality Control',
-      subDepartment: req.body.sub_department || req.body.erp_product_code || 'Mixing',
-      entryId: entry_id,
-      sourceSchema: 'mixing',
-      sourceTable: 'afis_data_entry',
-      sourceRecordId: entry_id,
-      submittedByUserId: req.user?.id,
-      submittedByName: req.body.user_name || req.user?.employee_id,
-      submittedPayload: { entry_id, lot_no, variety, maturity }
-    }).catch((err) => console.warn('[pp-notebook-log] AFIS Data Entry failed:', err.message));
+    // AFIS submission tracking for the Acknowledgement Threshold system happens
+    // client-side (frontend/src/views/mixing/afisDataEntry.jsx calls
+    // recordSubmittedNotebook) - recording it here too created a second
+    // submitted_notebooks row per entry and, once overdue, a duplicate
+    // acknowledgement-overdue ticket for the same entry.
 
     res.status(201).json({
       message: 'AFIS data created successfully',
-      data: withScreenEntryId('afis', result.rows[0]),
-      ticket
+      data: withScreenEntryId('afis', result.rows[0])
     });
 
   } catch (error) {
@@ -2124,19 +2082,13 @@ router.post('/moisture', async (req, res, next) => {
       ]
     );
 
-    const ticket = await autoCreateTicket({
-      screenKey: 'moisture',
-      machine_name: req.body.machine_name || SCREEN_NAMES.moisture,
-      department: req.body.department || req.body.management_field,
-      sub_department: req.body.sub_department || req.body.erp_product_code,
-      user_name: req.body.user_name,
-      values: { value1, value2, value3, value4, value5, value6, value7, value8, value9, value10, average }
-    });
-
+    // Value Threshold ticket generation for this screen now happens client-side
+    // (frontend/src/views/mixing/moistureDataEntry.jsx calls
+    // createThresholdViolationTickets) - calling autoCreateTicket here too used
+    // to fire a second, duplicate ticket for the same breach.
     res.status(201).json({
       message: 'Moisture data created successfully',
-      data: withScreenEntryId('moisture', result.rows[0]),
-      ticket
+      data: withScreenEntryId('moisture', result.rows[0])
     });
 
   } catch (error) {

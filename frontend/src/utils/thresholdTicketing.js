@@ -181,6 +181,7 @@ export const createThresholdViolationTickets = async ({
   subDepartment,
   screenName,
   machineName,
+  entryId,
   values = [],
 }) => {
   const { userId, userName } = getCurrentTicketUser();
@@ -214,11 +215,18 @@ export const createThresholdViolationTickets = async ({
     return [];
   }
 
+  // ticketing_system.value_threshold_rules (what GET /thresholds/list actually
+  // returns) keys its columns as field/typical_value/plus_value/minus_value/
+  // comparison_mode - this used to look for input_field/parameter_name/
+  // actual_value/plus_threshold/minus_threshold/condition_level, none of
+  // which exist on the real response, so thresholdMap was always built with
+  // an empty/undefined key and no violation was ever detected, for any
+  // department, no matter how far outside range the submitted value was.
   const thresholdMap = new Map(
     thresholds
       .filter((item) => item?.is_active !== false)
       .map((item) => [
-        normalizeText(item?.input_field || item?.parameter_name),
+        normalizeText(item?.field),
         item,
       ])
   );
@@ -233,14 +241,10 @@ export const createThresholdViolationTickets = async ({
       }
 
       const actualValue = parseNumericValue(item?.value);
-      const targetValue = parseNumericValue(threshold?.actual_value);
-      const plusTolerance = parseNumericValue(
-        threshold?.plus_threshold ?? threshold?.positive_tolerance
-      );
-      const minusTolerance = parseNumericValue(
-        threshold?.minus_threshold ?? threshold?.negative_tolerance
-      );
-      const conditionLevel = threshold?.condition_level || threshold?.comparison_operator;
+      const targetValue = parseNumericValue(threshold?.typical_value);
+      const plusTolerance = parseNumericValue(threshold?.plus_value);
+      const minusTolerance = parseNumericValue(threshold?.minus_value);
+      const conditionLevel = threshold?.comparison_mode;
 
       if (actualValue === null) {
         return null;
@@ -266,16 +270,11 @@ export const createThresholdViolationTickets = async ({
 
       return {
         label,
-        ticketField:
-          String(threshold?.input_field || threshold?.parameter_name || label).trim(),
+        ticketField: String(threshold?.field || label).trim(),
         actualValue,
-        conditionLevel: toServerConditionLabel(
-          threshold?.condition_level || threshold?.comparison_operator
-        ),
+        conditionLevel: toServerConditionLabel(threshold?.comparison_mode),
         thresholdValue: {
-          condition_level: toServerConditionLabel(
-            threshold?.condition_level || threshold?.comparison_operator
-          ),
+          condition_level: toServerConditionLabel(threshold?.comparison_mode),
           actual_value: targetValue,
           plus_threshold: plusTolerance,
           minus_threshold: minusTolerance,
@@ -327,6 +326,7 @@ export const createThresholdViolationTickets = async ({
       erp_product_code: subDepartment,
       input_screen: screenName,
       machine_name: machineName || screenName,
+      entry_id: entryId || null,
       parameter_name: parameterNames,
       actual_value: actualValues,
       threshold_value: thresholdValues,

@@ -11,6 +11,7 @@ import { clearCardingState, submitCardingNre } from "@/store/slices/carding";
 import { fetchCardingMasterMachines } from "@/apis/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import styles from "./cardThickPlaceEntry.module.css";
 
 const MACHINE_MODEL_OPTIONS = ["DK803", "DK903", "TC03", "DK800", "TC05", "TC06", "TC10", "TC26I"];
@@ -193,6 +194,19 @@ function CardingNreDataEntry({ types, selectedType, onTypeChange, entryId = "", 
                 console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
             }
             setShowSuccess(true);
+
+            try {
+                await createThresholdViolationTickets({
+                    department: "Quality Control",
+                    subDepartment: "Carding",
+                    screenName: selectedType || "Carding NRE%",
+                    machineName: formData.machine || selectedType || "Carding NRE%",
+                    entryId: nextEntryId,
+                    values: previewItems.filter((item) => !["Type", "Entry ID"].includes(item.label)),
+                });
+            } catch (thresholdError) {
+                console.error("Failed to evaluate value thresholds:", thresholdError);
+            }
 
             const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
             if (nextEntryId && customFieldEntries.length) {

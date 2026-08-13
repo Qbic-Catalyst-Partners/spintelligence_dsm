@@ -225,6 +225,25 @@ export const rejectTicketApi = async (ticketId, reason) => {
   }
 };
 
+export const markAcknowledgeTicketSubmitApi = async (ticketId) => {
+  try {
+    const encodeId = encodeURIComponent(formatTicketId(ticketId));
+    const response = await requestSupervisorApi(
+      "patch",
+      `/tickets/acknowledge/mark-submit?ticketId=${encodeId}`
+    );
+
+    return response.data;
+  } catch (error) {
+    if (error.response && error.response.data) {
+      throw new Error(
+        error.response.data.message || "Failed to mark ticket as submitted"
+      );
+    }
+    throw new Error(error.message || "Server error occurred");
+  }
+};
+
 export const acknowledgeTicketApi = async (ticketId) => {
   try {
     const encodeId = encodeURIComponent(formatTicketId(ticketId));

@@ -3424,7 +3424,10 @@ router.post('/change-control', async (req, res, next) => {
       ]
     );
 
-    await createWheelChangeApprovalTicket('carding.carding_change_request', result.rows[0].id);
+    // No ticket raised here anymore - a ticket means "L4 missed this," not
+    // "this is now pending" (matching Acknowledgement). Only runWheelChangeApprovalOverdueCheck
+    // (spinning.js), once this row's configured TAT window has actually
+    // elapsed with approval_status still 'pending', raises it for real.
 
     res.status(201).json({
       message: 'Carding change control entry created successfully',
