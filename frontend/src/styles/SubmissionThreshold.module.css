@@ -457,23 +457,28 @@
   border-radius: 10px;
   background: #ffffff;
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
-  max-height: 170px;
+  max-height: 130px;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 4px;
+  padding: 2px;
 }
 
 .singleSelectOption {
   width: 100%;
+  height: auto;
+  min-height: 0;
+  box-sizing: border-box;
   border: none;
+  margin: 0;
   background: #ffffff;
-  padding: 4px 8px;
+  padding: 0 6px;
   color: #29374f;
-  font-size: 12px;
+  font-size: 9px;
   text-align: left;
   cursor: pointer;
-  border-radius: 6px;
-  line-height: 1.2;
+  border-radius: 4px;
+  line-height: 1;
+  display: block;
 }
 
 .singleSelectOption:hover,
@@ -484,13 +489,13 @@
 .multiSelectOptionRow {
   display: flex;
   align-items: center;
-  gap: 3px;
-  min-height: 18px;
+  gap: 6px;
+  min-height: 0;
 }
 
 .multiSelectOptionRow input {
-  width: 13px;
-  height: 34px;
+  width: 9px;
+  height: 9px;
   margin: 0;
 }
 

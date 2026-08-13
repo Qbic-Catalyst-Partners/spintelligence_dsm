@@ -691,8 +691,8 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Select Type" },
     { label: "Entry ID", field: "date", type: "text", value: effectiveEntryId, placeholder: "Entry ID" },
-    { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countNameDropdownOptions, placeholder: "Select count name" },
     { label: "Actual Count", field: "actualCount", type: "text", placeholder: "0.00" },
+    { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countNameDropdownOptions, placeholder: "Select count name" },
     { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoconerDropdownOptions, placeholder: "Select auto coner" },
     { label: "Cone Tip", field: "coneTip", type: "select", options: coneTipOptions, placeholder: "Select cone tip" },
   ];
@@ -1006,8 +1006,8 @@ const RewindingStudy = forwardRef(function RewindingStudy(
           <tr className="border-b border-slate-300 text-left uppercase tracking-wide text-slate-500">
             <th className="px-2 py-2 font-semibold">Entry ID</th>
             <th className="px-2 py-2 font-semibold">Date</th>
-            <th className="px-2 py-2 font-semibold">Count Name</th>
             <th className="px-2 py-2 font-semibold">Actual Count</th>
+            <th className="px-2 py-2 font-semibold">Count Name</th>
             <th className="px-2 py-2 font-semibold">Auto Coner No.</th>
             <th className="px-2 py-2 font-semibold">Cone Tip</th>
             <th className="px-2 py-2 font-semibold">No. of Cuts</th>
@@ -1019,8 +1019,8 @@ const RewindingStudy = forwardRef(function RewindingStudy(
             <tr key={`${entry.entryId}-${index}`} className="border-b border-slate-100 last:border-b-0">
               <td className="px-2 py-2">{entry.entryId}</td>
               <td className="px-2 py-2">{entry.date}</td>
-              <td className="px-2 py-2">{entry.countName}</td>
               <td className="px-2 py-2">{entry.actualCount}</td>
+              <td className="px-2 py-2">{entry.countName}</td>
               <td className="px-2 py-2">{entry.autoConerNo}</td>
               <td className="px-2 py-2">{entry.coneTip}</td>
               <td className="px-2 py-2">{entry.noOfCuts}</td>

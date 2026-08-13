@@ -387,6 +387,16 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
         </div>
 
         <div className={styles.field}>
+          <label>Machine No.</label>
+          <SearchableSelect
+            value={machineNo}
+            onChange={(value) => setMachineNo(value)}
+            options={machineDropdownOptions.map((option) => option.value)}
+            className={styles.select}
+          />
+        </div>
+
+        <div className={styles.field}>
           <label>Count</label>
           <SearchableSelect
             value={count}
@@ -398,16 +408,6 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
             options={countDropdownOptions.map((option) => option.label)}
             className={styles.select}
             placeholder="Select count name"
-          />
-        </div>
-
-        <div className={styles.field}>
-          <label>Machine No.</label>
-          <SearchableSelect
-            value={machineNo}
-            onChange={(value) => setMachineNo(value)}
-            options={machineDropdownOptions.map((option) => option.value)}
-            className={styles.select}
           />
         </div>
 
