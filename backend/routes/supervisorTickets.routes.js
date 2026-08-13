@@ -5,6 +5,7 @@ const auth = require('../middleware/auth');
 const { createNotification, ensureNotificationMetadataColumns } = require('../utils/notifications');
 const { ensureTicketApprovalsTable } = require('./operatorTickets.routes');
 const { ensureDelegationsTable } = require('./delegations.routes');
+const { ensureReportsToColumn } = require('./user.routes');
 
 const parsePositiveInt = (value) => {
   const n = Number(value);
@@ -363,6 +364,8 @@ router.get('/tickets', async (req, res, next) => {
     await ensureOperatorTicketApprovalColumns();
     await ensureNotificationRecipientColumn();
     await ensureDelegationsTable();
+    // Reporting-hierarchy visibility (below) walks reports_to_user_id.
+    await ensureReportsToColumn();
 
     const requesterId = parsePositiveInt(req.user?.id);
     if (!requesterId) return res.status(401).json({ message: 'Authentication required' });
@@ -461,8 +464,24 @@ router.get('/tickets', async (req, res, next) => {
     if (!canViewAll) {
       values.push(requesterId);
       const requesterParam = values.length;
+      // A supervisor sees every ticket owned by anyone below them in the
+      // reporting hierarchy (reports_to_user_id chain), regardless of ticket
+      // status or whether approval_lN_user_ids was ever populated - the
+      // approval-array and delegation checks are kept as additional inclusion
+      // paths. Without this, an L2 whose reportees' tickets never had their
+      // approval_l2_user_ids filled (e.g. Open/In Progress tickets) sees
+      // nothing at all.
       where.push(`(
         (${REVIEW_LEVELS.map((level) => `$${requesterParam} = ANY(COALESCE(ot.approval_${level.toLowerCase()}_user_ids, ARRAY[]::int[]))`).join(' OR ')})
+        OR ot.user_id IN (
+          WITH RECURSIVE reportees AS (
+            SELECT id FROM users.user_details WHERE reports_to_user_id = $${requesterParam}
+            UNION
+            SELECT u.id FROM users.user_details u
+            JOIN reportees r ON u.reports_to_user_id = r.id
+          )
+          SELECT id FROM reportees
+        )
         OR ${requesterIsDelegateExpr}
       )`);
     }

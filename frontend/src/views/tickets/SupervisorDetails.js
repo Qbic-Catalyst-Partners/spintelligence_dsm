@@ -68,6 +68,11 @@ const buildPreviewTicket = (preview) => {
 
   return {
     ...source,
+    // The l2-preview endpoint returns the ticket's creation timestamp as
+    // submitted_at (there is no created_at key on that response), so the
+    // detail view's formatDateTime(ticket.created_at) rendered "-". Map it
+    // back to created_at here, keeping any real created_at if present.
+    created_at: source.created_at ?? preview?.submitted_at ?? preview?.data?.submitted_at ?? source.submitted_at,
     submitted_notebook_fields: submittedFields || source.submitted_notebook_fields,
     notifications: preview?.notifications || preview?.data?.notifications || source.notifications,
     endpoint_hints: preview?.endpoint_hints || preview?.data?.endpoint_hints || source.endpoint_hints,

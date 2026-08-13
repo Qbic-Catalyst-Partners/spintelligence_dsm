@@ -490,23 +490,30 @@ export const formatThresholdValue = (value) => {
     normalizedValue.positive_tolerance !== undefined ||
     normalizedValue.upper_threshold !== undefined ||
     normalizedValue.max_tolerance !== undefined ||
+    normalizedValue.plus_value !== undefined ||
     normalizedValue.minus_threshold !== undefined ||
     normalizedValue.negative_tolerance !== undefined ||
     normalizedValue.lower_threshold !== undefined ||
-    normalizedValue.min_tolerance !== undefined;
+    normalizedValue.min_tolerance !== undefined ||
+    normalizedValue.minus_value !== undefined;
 
   if (hasToleranceShape) {
+    // Value Threshold config stores plus_value/minus_value (see
+    // value_threshold_rules); older/threshold_master rows use
+    // plus_threshold/minus_threshold. Accept both.
     const plusThreshold =
       normalizedValue.plus_threshold ??
       normalizedValue.positive_tolerance ??
       normalizedValue.upper_threshold ??
       normalizedValue.max_tolerance ??
+      normalizedValue.plus_value ??
       "-";
     const minusThreshold =
       normalizedValue.minus_threshold ??
       normalizedValue.negative_tolerance ??
       normalizedValue.lower_threshold ??
       normalizedValue.min_tolerance ??
+      normalizedValue.minus_value ??
       "-";
 
     return `+:${plusThreshold}/-:${minusThreshold}`;
@@ -552,13 +559,15 @@ export const calculateTicketDeviation = (actual, standard, thresholdSource) => {
       normalizedThresholdSource.plus_threshold ??
         normalizedThresholdSource.positive_tolerance ??
         normalizedThresholdSource.upper_threshold ??
-        normalizedThresholdSource.max_tolerance
+        normalizedThresholdSource.max_tolerance ??
+        normalizedThresholdSource.plus_value
     );
     const minusToleranceNumber = Number(
       normalizedThresholdSource.minus_threshold ??
         normalizedThresholdSource.negative_tolerance ??
         normalizedThresholdSource.lower_threshold ??
-        normalizedThresholdSource.min_tolerance
+        normalizedThresholdSource.min_tolerance ??
+        normalizedThresholdSource.minus_value
     );
 
     if (actualNumber > standardNumber && Number.isFinite(plusToleranceNumber)) {
@@ -593,6 +602,8 @@ export const formatStandardValue = (value) => {
     normalizedValue.actual_value ??
     normalizedValue.target_value ??
     normalizedValue.nominal_value ??
+    // Value Threshold config stores the baseline as typical_value.
+    normalizedValue.typical_value ??
     "-";
   return actualValue;
 };

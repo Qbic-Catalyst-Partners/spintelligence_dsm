@@ -587,7 +587,18 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
         // approval-queue feed also has a row for them at L2+.
         if (mode === "L1" || mode === "L5") return true;
         const normalizedStatus = String(ticket?.status || "").trim().toLowerCase();
-        return ["open", "in progress", "reopened"].includes(normalizedStatus);
+        // L5 (Executive Leadership) and admin see every activity at every
+        // status under Mapped - nothing is hidden from the top of the chain.
+        if (mode === "L5" || isAdminUser) return true;
+        // L1 keeps its own submitted ticket visible (status shows "Submit")
+        // after Fix & Resubmit instead of it vanishing - the operator can see
+        // it's now awaiting L2 review. For L2-L4 the submitted ticket comes
+        // from the approval queue (queueTickets below) instead, so exclude the
+        // "Submit" record here to avoid showing it twice at those levels.
+        const visibleStatuses = mode === "L1"
+          ? ["open", "in progress", "reopened", "submit"]
+          : ["open", "in progress", "reopened"];
+        return visibleStatuses.includes(normalizedStatus);
       })
       .map((ticket) => {
         // Wheel Change Approval and PP Approval tickets carry no user_name
@@ -620,7 +631,11 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
         threshold_value: row.threshold_value,
         severity: row.severity,
         status: row.ticket_status,
-        created_at: row.approval_created_at,
+        // Use the ticket's real creation time, not the approval-row insert
+        // time (approval_created_at) - the latter is (nearly) identical across
+        // tickets submitted in the same batch, which made every row show the
+        // same Created At. ticket_created_at is the actual ot.created_at.
+        created_at: row.ticket_created_at || row.approval_created_at,
         tat_current_level: "L2",
       });
       return applyTicketOverdueStatus({
