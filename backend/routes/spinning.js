@@ -39,6 +39,8 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
   const entry_id = formatScreenEntryId(screenKey, record[idField]);
   return entry_id ? { ...record, entry_id } : { ...record };
 };
+const getAuthenticatedOperatorName = (req) =>
+  String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null;
 
 const withoutTestNumber = (record = {}) => {
   const { test_no, test_number, ...rest } = record;
@@ -497,6 +499,21 @@ const ensureSpinningEntryIdColumnsImpl = async () => {
       ADD COLUMN IF NOT EXISTS total_draft_existing NUMERIC,
       ADD COLUMN IF NOT EXISTS total_draft_proposed NUMERIC;
   `);
+
+  for (const tableName of [
+    'spinning.speed_checking',
+    'spinning.cots_checking',
+    'spinning.lycra_missing',
+    'spinning.bottom_apron_checking',
+    'spinning.lycra_centering',
+    'spinning.RSM_and_lycrasensor_cheking_online',
+    'spinning.RSM_and_lycrasensor_cheking_offline'
+  ]) {
+    await client.query(`
+      ALTER TABLE ${tableName}
+        ADD COLUMN IF NOT EXISTS operator TEXT;
+    `);
+  }
 
   await client.query(`DROP TABLE IF EXISTS spinning.wheel_change_type4`);
 
@@ -1662,6 +1679,7 @@ router.post('/speed-checking', async (req, res, next) => {
     // Difference is computed on the frontend from Display/Spindle Speed
     // (LHS/RHS is a free-form spindle list, not a pair of numbers to subtract).
     const difference = payloadDifference ?? null;
+    const operatorName = getAuthenticatedOperatorName(req);
 
     await client.query('BEGIN');
 
@@ -1671,9 +1689,9 @@ router.post('/speed-checking', async (req, res, next) => {
        Display_Speed, Spindle_Speed,
        Difference,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
-       LHS_TextRemarks, LHS_Audio,
+       LHS_TextRemarks, LHS_Audio, operator,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
       RETURNING *;
     `, [
       entry_id,
@@ -1689,6 +1707,7 @@ router.post('/speed-checking', async (req, res, next) => {
       hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
+      operatorName,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
@@ -1844,6 +1863,8 @@ router.post('/cots-checking', async (req, res, next) =>{
     const hasLhsValues = Array.isArray(lhs_values);
     const hasRhsValues = Array.isArray(rhs_values);
 
+    const operatorName = getAuthenticatedOperatorName(req);
+
     // Each spindle reading in the comma-separated list is range-checked individually.
     const measurementErrors = [];
 
@@ -1874,9 +1895,9 @@ router.post('/cots-checking', async (req, res, next) =>{
       INSERT INTO spinning.cots_checking
       (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
-       LHS_TextRemarks, LHS_Audio,
+       LHS_TextRemarks, LHS_Audio, operator,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *;
     `, [
       entry_id,
@@ -1889,6 +1910,7 @@ router.post('/cots-checking', async (req, res, next) =>{
       hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
+      operatorName,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
@@ -2021,14 +2043,15 @@ router.post('/lycra-missing', async (req, res, next) => {
     if (!entry_id) {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
+    const operatorName = getAuthenticatedOperatorName(req);
 
     const result = await client.query(`
       INSERT INTO spinning.lycra_missing
       (entry_id, InspectionDate, MachineNo,
        LHS_Value, RHS_Value,
-       LHS_TextRemarks, LHS_Audio,
+       LHS_TextRemarks, LHS_Audio, operator,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       RETURNING *;
     `, [
       entry_id,
@@ -2038,6 +2061,7 @@ router.post('/lycra-missing', async (req, res, next) => {
       rhs_value,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
+      operatorName,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
@@ -2168,6 +2192,7 @@ router.post('/bottom-apron-checking', async (req, res, next) => {
 
     const hasLhsValues = Array.isArray(lhs_values);
     const hasRhsValues = Array.isArray(rhs_values);
+    const operatorName = getAuthenticatedOperatorName(req);
 
     await client.query('BEGIN');
 
@@ -2175,9 +2200,9 @@ router.post('/bottom-apron-checking', async (req, res, next) => {
       INSERT INTO spinning.bottom_apron_checking
       (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
-       LHS_TextRemarks, LHS_Audio,
+       LHS_TextRemarks, LHS_Audio, operator,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *;
     `, [
       entry_id,
@@ -2190,6 +2215,7 @@ router.post('/bottom-apron-checking', async (req, res, next) => {
       hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
+      operatorName,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
@@ -2331,6 +2357,7 @@ router.post('/lycra-centering', async (req, res, next) => {
 
     const hasLhsValues = Array.isArray(lhs_values);
     const hasRhsValues = Array.isArray(rhs_values);
+    const operatorName = getAuthenticatedOperatorName(req);
 
     await client.query('BEGIN');
 
@@ -2338,9 +2365,9 @@ router.post('/lycra-centering', async (req, res, next) => {
       INSERT INTO spinning.lycra_centering
       (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
-       LHS_TextRemarks, LHS_Audio,
+       LHS_TextRemarks, LHS_Audio, operator,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *;
     `, [
       entry_id,
@@ -2353,6 +2380,7 @@ router.post('/lycra-centering', async (req, res, next) => {
       hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
+      operatorName,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
@@ -2494,6 +2522,7 @@ router.post('/rsm-lycra-online', async (req, res, next) => {
 
     const hasLhsValues = Array.isArray(lhs_values);
     const hasRhsValues = Array.isArray(rhs_values);
+    const operatorName = getAuthenticatedOperatorName(req);
 
     await client.query('BEGIN');
 
@@ -2501,9 +2530,9 @@ router.post('/rsm-lycra-online', async (req, res, next) => {
       INSERT INTO spinning.RSM_and_lycrasensor_cheking_online
       (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
-       LHS_TextRemarks, LHS_Audio,
+       LHS_TextRemarks, LHS_Audio, operator,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *;
     `, [
       entry_id,
@@ -2516,6 +2545,7 @@ router.post('/rsm-lycra-online', async (req, res, next) => {
       hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
+      operatorName,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
@@ -2657,6 +2687,7 @@ router.post('/rsm-lycra-offline', async (req, res, next) => {
 
     const hasLhsValues = Array.isArray(lhs_values);
     const hasRhsValues = Array.isArray(rhs_values);
+    const operatorName = getAuthenticatedOperatorName(req);
 
     await client.query('BEGIN');
 
@@ -2664,9 +2695,9 @@ router.post('/rsm-lycra-offline', async (req, res, next) => {
       INSERT INTO spinning.RSM_and_lycrasensor_cheking_offline
       (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
-       LHS_TextRemarks, LHS_Audio,
+       LHS_TextRemarks, LHS_Audio, operator,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *;
     `, [
       entry_id,
@@ -2679,6 +2710,7 @@ router.post('/rsm-lycra-offline', async (req, res, next) => {
       hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
+      operatorName,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
@@ -4104,7 +4136,9 @@ router.post('/wheel-change/type1', async (req, res, next) => {
       type1Fields,
       d
     );
-    await createWheelChangeApprovalTicket('spinning.wheel_change_inspection', result.rows[0].id);
+    // No ticket raised here anymore - runWheelChangeApprovalOverdueCheck
+    // below raises it once this row's configured TAT window actually
+    // elapses with approval_status still 'pending'.
     res.status(201).json({
       message: 'Type1 created',
       data: result.rows[0]
@@ -4351,7 +4385,9 @@ router.post('/wheel-change/type2', async (req, res, next) => {
       type2Fields,
       d
     );
-    await createWheelChangeApprovalTicket('spinning.wheel_change_v2', result.rows[0].id);
+    // No ticket raised here anymore - runWheelChangeApprovalOverdueCheck
+    // below raises it once this row's configured TAT window actually
+    // elapses with approval_status still 'pending'.
     res.status(201).json({
       message: 'Type2 created',
       data: result.rows[0]
@@ -4577,7 +4613,9 @@ router.post('/wheel-change/type3', async (req, res, next) => {
       type3Fields,
       d
     );
-    await createWheelChangeApprovalTicket('spinning.wheel_change', result.rows[0].id);
+    // No ticket raised here anymore - runWheelChangeApprovalOverdueCheck
+    // below raises it once this row's configured TAT window actually
+    // elapses with approval_status still 'pending'.
     res.status(201).json({
       message: 'Type3 created',
       data: result.rows[0]
@@ -4741,12 +4779,12 @@ router.post('/wheel-change/approval-config', async (req, res, next) => {
     const severity = String(req.body?.severity || '').trim() || 'High';
 
     const result = await client.query(
-      `INSERT INTO ticketing_system.wheel_change_approval_config (config_key, l4_user_id, l4_user_ids, tat_hours, is_active, severity, updated_at)
-       VALUES ($1, $2, $3::int[], $4, $5, $6, NOW())
+      `INSERT INTO ticketing_system.wheel_change_approval_config (config_key, l4_user_ids, tat_hours, is_active, severity, updated_at)
+       VALUES ($1, $2::int[], $3, $4, $5, NOW())
        ON CONFLICT (config_key)
-       DO UPDATE SET l4_user_id = EXCLUDED.l4_user_id, l4_user_ids = EXCLUDED.l4_user_ids, tat_hours = EXCLUDED.tat_hours, is_active = EXCLUDED.is_active, severity = EXCLUDED.severity, updated_at = NOW()
+       DO UPDATE SET l4_user_ids = EXCLUDED.l4_user_ids, tat_hours = EXCLUDED.tat_hours, is_active = EXCLUDED.is_active, severity = EXCLUDED.severity, updated_at = NOW()
        RETURNING *`,
-      [department, l4UserIds[0] || null, l4UserIds, tatHours, isActive, severity]
+      [department, l4UserIds, tatHours, isActive, severity]
     );
 
     return res.status(200).json({ message: `Wheel Change Approval configuration for ${department} saved successfully`, config: { department, ...result.rows[0] } });
@@ -4953,20 +4991,45 @@ const getWheelChangeApprovalConfig = async (department = 'Spinning') => {
     row = fallback.rows[0];
   }
   if (!row) {
-    return { config_key: department, l4_user_ids: [], tat_hours: WHEEL_CHANGE_APPROVAL_TAT_HOURS, is_active: true, severity: 'High', updated_at: null };
+    return {
+      department: 'Quality Control',
+      config_key: department,
+      wheel_change_department: department,
+      l4_user_ids: [],
+      tat_hours: WHEEL_CHANGE_APPROVAL_TAT_HOURS,
+      is_active: true,
+      severity: 'High',
+      updated_at: null
+    };
   }
   const l4UserIds = Array.isArray(row.l4_user_ids) && row.l4_user_ids.length
     ? row.l4_user_ids
     : (row.l4_user_id ? [row.l4_user_id] : []);
-  return { ...row, l4_user_ids: l4UserIds };
+  return {
+    ...row,
+    department: 'Quality Control',
+    wheel_change_department: row.config_key,
+    l4_user_ids: l4UserIds
+  };
 };
 
 const getAllWheelChangeApprovalConfigs = async () => {
   await ensureWheelChangeApprovalConfigTable();
-  const configs = await Promise.all(
-    WHEEL_CHANGE_DEPARTMENTS.map((department) => getWheelChangeApprovalConfig(department))
+  const result = await client.query(
+    `SELECT *
+     FROM ticketing_system.wheel_change_approval_config
+     WHERE config_key = ANY($1::text[])
+     ORDER BY config_key`,
+    [WHEEL_CHANGE_DEPARTMENTS]
   );
-  return WHEEL_CHANGE_DEPARTMENTS.map((department, index) => ({ department, ...configs[index] }));
+  return result.rows.map((row) => ({
+    department: 'Quality Control',
+    wheel_change_department: row.config_key,
+    ...row,
+    l4_user_ids: Array.isArray(row.l4_user_ids) && row.l4_user_ids.length
+      ? row.l4_user_ids
+      : (row.l4_user_id ? [row.l4_user_id] : [])
+  }));
 };
 
 const ensureWheelChangeApprovalTicketSchema = async () => {
@@ -4998,14 +5061,16 @@ const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
 
   const department = deriveWheelChangeDepartment(tableName);
   const approvalConfig = await getWheelChangeApprovalConfig(department);
+  // No Wheel Change Approval Threshold configured for this department at
+  // all (no L4 approver ever assigned to it) - no ticket should be raised
+  // blindly notifying every L4 user system-wide. A ticket only makes sense
+  // once someone has actually been assigned to receive it.
+  if (!approvalConfig.l4_user_ids.length) return null;
   // A department toggled inactive isn't exempt from approval (the ticket
   // still must be raised per the PDF) - "inactive" just means its specific
-  // L4 override/TAT no longer applies, falling back to the same defaults
-  // used when no config exists at all.
+  // TAT override no longer applies, falling back to the default TAT.
   const useConfig = approvalConfig.is_active !== false;
-  const l4UserIds = useConfig && approvalConfig.l4_user_ids.length
-    ? approvalConfig.l4_user_ids
-    : await getUsersAtLevelForWheelChange('L4');
+  const l4UserIds = approvalConfig.l4_user_ids;
   const tatHours = useConfig && Number(approvalConfig.tat_hours) > 0
     ? Number(approvalConfig.tat_hours)
     : WHEEL_CHANGE_APPROVAL_TAT_HOURS;
@@ -5052,6 +5117,52 @@ const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
   return insertedTicketId;
 };
 
+// A Wheel Change ticket means "L4 missed this," not "this is now pending" -
+// matching Acknowledgement, no ticket is raised at submission time anymore
+// (each department's own save route used to call createWheelChangeApprovalTicket
+// synchronously - that call was removed). This runs periodically instead and
+// raises the ticket only once the department's configured TAT window has
+// actually elapsed since the proposal was submitted, still with
+// approval_status = 'pending'. Uses the exact same config resolution (and
+// "no config, no ticket" rule) createWheelChangeApprovalTicket itself uses.
+const WHEEL_CHANGE_PENDING_TABLES = [
+  'spinning.wheel_change_inspection',
+  'spinning.wheel_change_v2',
+  'spinning.wheel_change',
+  'carding.carding_change_request',
+  'drawframe.wheel_change',
+  'simplex.wheel_change',
+];
+
+const runWheelChangeApprovalOverdueCheck = async () => {
+  const created = [];
+  for (const tableName of WHEEL_CHANGE_PENDING_TABLES) {
+    const department = deriveWheelChangeDepartment(tableName);
+    // eslint-disable-next-line no-await-in-loop
+    const approvalConfig = await getWheelChangeApprovalConfig(department);
+    if (!approvalConfig.l4_user_ids.length) continue; // eslint-disable-line no-continue
+    const useConfig = approvalConfig.is_active !== false;
+    const tatHours = useConfig && Number(approvalConfig.tat_hours) > 0
+      ? Number(approvalConfig.tat_hours)
+      : WHEEL_CHANGE_APPROVAL_TAT_HOURS;
+
+    // eslint-disable-next-line no-await-in-loop
+    const pending = await client.query(
+      `SELECT id, created_at FROM ${tableName}
+       WHERE approval_status = 'pending'
+         AND created_at <= NOW() - ($1 || ' hours')::interval`,
+      [tatHours]
+    );
+
+    for (const row of pending.rows) {
+      // eslint-disable-next-line no-await-in-loop
+      const ticketId = await createWheelChangeApprovalTicket(tableName, row.id);
+      if (ticketId) created.push(ticketId);
+    }
+  }
+  return created;
+};
+
 const closeWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
   await ensureWheelChangeApprovalTicketSchema();
   const wheelChangeRowKey = `${tableName}:${wheelChangeRowId}`;
@@ -5063,50 +5174,16 @@ const closeWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
   );
 };
 
-// L4 -> L5 escalation once the L4 TAT elapses without action.
-const runWheelChangeApprovalTatCheck = async () => {
-  await ensureWheelChangeApprovalTicketSchema();
-
-  const dueTickets = await client.query(
-    `SELECT ticket_id FROM ticketing_system.operator_tickets
-     WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL'
-       AND tat_current_level = 'L4'
-       AND l4_tat_due_at IS NOT NULL
-       AND l4_tat_due_at <= NOW()
-       AND status <> 'Closed'`
-  );
-  if (!dueTickets.rowCount) return [];
-
-  const l5UserIds = await getUsersAtLevelForWheelChange('L5');
-  const escalated = [];
-  for (const row of dueTickets.rows) {
-    // eslint-disable-next-line no-await-in-loop
-    const result = await client.query(
-      `UPDATE ticketing_system.operator_tickets
-       SET tat_current_level = 'L5', approval_l5_user_ids = $1, l5_tat_due_at = NOW()
-       WHERE ticket_id = $2
-       RETURNING *`,
-      [l5UserIds, row.ticket_id]
-    );
-    const escalatedTicket = result.rows[0];
-    if (escalatedTicket) {
-      escalated.push(escalatedTicket);
-      // eslint-disable-next-line no-await-in-loop
-      await createNotificationsForUsers(l5UserIds, {
-        ticketId: escalatedTicket.ticket_id,
-        type: 'WHEEL_CHANGE_APPROVAL',
-        category: 'Tickets',
-        priority: 'High',
-        title: (user) => `Hi ${user.full_name || 'there'} (L5), a Wheel Change escalated to you`,
-        body: (user) =>
-          `${user.full_name || 'You'} (L5) - a Wheel Change proposal was not approved at L4 in time and has escalated to you. Please approve it.`,
-        linkUrl: `/supervisor-tickets/${escalatedTicket.ticket_id}`,
-        payload: { ticket_id: escalatedTicket.ticket_id }
-      });
-    }
-  }
-  return escalated;
-};
+// Wheel Change Approval is owned by L4 fully and directly - there's no
+// configured L5 approver anywhere in Wheel Change Approval Threshold (only
+// L4/TAT), so a missed L4 TAT used to escalate to "any current L5 user"
+// system-wide - the exact blind-notify-everyone pattern removed from every
+// other threshold type this session. A ticket past its TAT just stays at L4
+// and shows Overdue (computed client-side from l4_tat_due_at) - L5 already
+// has full oversight visibility via its Mapped-only view without needing a
+// fake reassignment. Kept as a no-op (rather than removed) so the worker
+// registration in server.js doesn't need touching.
+const runWheelChangeApprovalTatCheck = async () => [];
 
 // Called right after a Wheel Change is approved (type1-4) - consumes the
 // Active PP for its Count + Consignee (flips it to Inactive) and stamps
@@ -5325,6 +5402,7 @@ router.get('/wheel-change/pp-approval-status', async (req, res, next) => {
 
 module.exports = router;
 module.exports.runWheelChangeApprovalTatCheck = runWheelChangeApprovalTatCheck;
+module.exports.runWheelChangeApprovalOverdueCheck = runWheelChangeApprovalOverdueCheck;
 module.exports.createWheelChangeApprovalTicket = createWheelChangeApprovalTicket;
 module.exports.closeWheelChangeApprovalTicket = closeWheelChangeApprovalTicket;
 module.exports.ensureWheelChangeApprovalConfigTable = ensureWheelChangeApprovalConfigTable;

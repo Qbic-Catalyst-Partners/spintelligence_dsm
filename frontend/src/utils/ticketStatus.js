@@ -10,6 +10,7 @@ export const SUPERVISOR_VISIBLE_STATUS_OPTIONS = [
   "Submit",
   "Reopened",
   "Closed",
+  "Overdue",
 ];
 
 export const getStoredTicketStatus = (ticketId) => {
@@ -77,3 +78,43 @@ export const getSupervisorStatusLabel = (status) => status;
 export const getOperatorStatusLabel = (status) => status;
 
 export const getTicketStatusLabel = (status) => status;
+
+const RESOLVED_STATUS_KEYS = new Set(["closed", "approved", "submit", "acknowledged", "resolved"]);
+
+const normalizeLevel = (value) => String(value || "").trim().toUpperCase();
+
+export const getResolutionSlaHours = (ticket, slaRecords = []) => {
+  const level = normalizeLevel(ticket?.tat_current_level || ticket?.tatCurrentLevel || "L1");
+  const record = (Array.isArray(slaRecords) ? slaRecords : []).find(
+    (item) => normalizeLevel(item?.level) === level && item?.is_active !== false
+  );
+  const hours = Number(record?.resolution_hours);
+  return Number.isFinite(hours) && hours > 0 ? hours : null;
+};
+
+export const isTicketOverdueBySla = (ticket, slaRecords = [], now = Date.now()) => {
+  if (!ticket) return false;
+  const status = String(ticket?.status || "").trim().toLowerCase();
+  if (RESOLVED_STATUS_KEYS.has(status)) return false;
+
+  const hours = getResolutionSlaHours(ticket, slaRecords);
+  if (!hours) return false;
+
+  const createdAt = new Date(ticket?.created_at || ticket?.createdAt);
+  if (Number.isNaN(createdAt.getTime())) return false;
+
+  const ageHours = (Number(now) - createdAt.getTime()) / (1000 * 60 * 60);
+  return ageHours > hours;
+};
+
+export const applyTicketOverdueStatus = (ticket, slaRecords = [], now = Date.now()) => {
+  if (!ticket) return ticket;
+  if (!isTicketOverdueBySla(ticket, slaRecords, now)) return ticket;
+
+  return {
+    ...ticket,
+    status: "Overdue",
+    ticket_status: "Overdue",
+    isOverdue: true,
+  };
+};

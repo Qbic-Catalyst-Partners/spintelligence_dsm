@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchUsers } from "@/store/slices/userSlice";
@@ -60,20 +61,20 @@ const THRESHOLD_TYPE_COLUMNS = {
   value: [
     { key: "field", label: "Input Field" },
     { key: "l1", label: "L1" },
-    { key: "l2", label: "L2" },
     { key: "typicalValue", label: "Typical Value" },
     { key: "detail", label: "Plus (+) / Minus (-)" },
   ],
   submission: [
     { key: "l1", label: "L1" },
-    { key: "l2", label: "L2" },
-    { key: "detail", label: "Frequency" },
+    { key: "days", label: "Days" },
+    { key: "frequency", label: "Frequency" },
   ],
   pp: [
     { key: "field", label: "Severity" },
     { key: "l1", label: "L1 Proposer" },
     { key: "l2", label: "L4 Approver" },
-    { key: "detail", label: "Entry / Approve Within" },
+    { key: "entryWithin", label: "Entry Within" },
+    { key: "approveWithin", label: "Approve Within" },
   ],
   acknowledgement: [
     { key: "l2", label: "L4" },
@@ -120,22 +121,28 @@ const getRowId = (item) => item?.id || item?._id || item?.threshold_id || item?.
 
 // Normalizes each threshold type's row shape into one common display shape
 // so the merged "Existing Thresholds" tab can render every type in one table.
-const normalizeValueThresholdRow = (item) => ({
+const normalizeValueThresholdRow = (item, users) => {
+  const l1UserNames =
+    resolveUserNames(item?.approval_l1_user_ids, users) ||
+    resolveUserNames(item?.approval_l1_ids, users) ||
+    [];
+
+  return ({
   type: "value",
   typeLabel: "Value Threshold",
   id: getRowId(item),
   raw: item,
   department: item?.department || item?.management_field || "-",
   subDepartment: item?.sub_department || item?.erp_product_code || "-",
-  notebookType: item?.input_screen || item?.machine_name || "-",
-  field: item?.input_field || item?.parameter_name || "-",
-  l1: nameListToText(item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1),
-  l2: nameListToText(item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2),
-  typicalValue: item?.actual_value ?? "-",
-  detail: `${item?.plus_threshold ?? item?.positive_tolerance ?? "-"} / ${item?.minus_threshold ?? item?.negative_tolerance ?? "-"}`,
+  notebookType: item?.notebook || item?.input_screen || item?.machine_name || "-",
+  field: item?.field || item?.input_field || item?.parameter_name || "-",
+  l1: item?.l1_user_name || item?.approval_l1_name || item?.approval_l1_names || l1UserNames.join(", ") || item?.approval_l1 || item?.approval_l1_user_name || "-",
+  typicalValue: item?.typical_value ?? item?.actual_value ?? "-",
+  detail: `${item?.plus_value ?? item?.plus_threshold ?? item?.positive_tolerance ?? "-"} / ${item?.minus_value ?? item?.minus_threshold ?? item?.negative_tolerance ?? "-"}`,
   isActive: getActiveValue(item),
   createdAt: item?.created_at || item?.createdAt,
-});
+  });
+};
 
 const normalizeSubmissionThresholdRow = (item) => ({
   type: "submission",
@@ -147,7 +154,8 @@ const normalizeSubmissionThresholdRow = (item) => ({
   notebookType: item?.screen_name || "-",
   field: "-",
   l1: nameListToText(item?.approval_l1_name || item?.approval_l1),
-  l2: nameListToText(item?.approval_l2_name || item?.approval_l2),
+  days: item?.range ?? "-",
+  frequency: item?.frequency ?? "-",
   detail: `Every ${item?.range ?? "-"}d x ${item?.frequency ?? "-"}`,
   isActive: getActiveValue(item),
   createdAt: item?.created_at || item?.createdAt,
@@ -171,6 +179,8 @@ const normalizePpThresholdRow = (item, users) => ({
   field: item?.severity || "-",
   l1: nameListToText(resolveUserNames(item?.approval_l1_user_ids, users)),
   l2: nameListToText(resolveUserNames(item?.approval_l4_user_ids, users)) || "Any current L4 user",
+  entryWithin: item?.completion_threshold_hours ?? "-",
+  approveWithin: item?.approve_within_hours ?? "-",
   detail: `Entry ${item?.completion_threshold_hours ?? "-"}h / Approve ${item?.approve_within_hours ?? "-"}h`,
   isActive: getActiveValue(item),
   createdAt: item?.updated_at || item?.created_at || item?.createdAt,
@@ -186,7 +196,7 @@ const normalizeAcknowledgementThresholdRow = (item) => ({
   notebookType: item?.screen_name || item?.notebook || item?.notebook_name || "-",
   field: "-",
   l1: "-",
-  l2: nameListToText(item?.approval_l4_name || item?.approval_l4 || item?.approval_l2_name || item?.approval_l2),
+  l2: nameListToText(item?.approval_l4_name || item?.approval_l4),
   detail: `${item?.acknowledge_within_hours ?? item?.acknowledgeWithinHours ?? "-"} Hrs`,
   isActive: getActiveValue(item),
   createdAt: item?.created_at || item?.createdAt,
@@ -197,14 +207,15 @@ const normalizeAcknowledgementThresholdRow = (item) => ({
 // so each gets its own editable row here too.
 const normalizeWheelChangeApprovalRow = (item, users) => {
   const approverNames = resolveUserNames(item?.l4_user_ids, users);
+  const wheelChangeDepartment = item?.wheel_change_department || item?.config_key || item?.department || "-";
   return {
     type: "wheel-change-approval",
     typeLabel: "WC Threshold",
     id: item?.department,
     raw: item,
-    department: item?.department || "-",
+    department: "Quality Control",
     subDepartment: "-",
-    notebookType: item?.department || "All",
+    notebookType: wheelChangeDepartment || "All",
     field: item?.severity || "-",
     l1: approverNames.length ? nameListToText(approverNames) : "Any current L4 user",
     l2: "-",
@@ -277,35 +288,44 @@ const buildExistingFilters = () => ({
 });
 
 function RowActionsMenu({ row, loader, onEdit, onToggleStatus, onDelete, busy }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [dropUp, setDropUp] = useState(false);
+  const [menuPosition, setMenuPosition] = useState(null);
   const containerRef = useRef(null);
+  const isOpen = Boolean(menuPosition);
 
   useEffect(() => {
+    if (!isOpen) return undefined;
     const handleOutsideClick = (event) => {
-      if (!containerRef.current?.contains(event.target)) {
-        setIsOpen(false);
-      }
+      if (containerRef.current?.contains(event.target)) return;
+      if (event.target.closest?.(`.${styles.hubActionMenu}`)) return;
+      setMenuPosition(null);
     };
     document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, []);
+  }, [isOpen]);
 
   if (!loader?.canEdit && !loader?.canToggleStatus && !loader?.canDelete) {
     return null;
   }
 
-  const handleToggleOpen = () => {
-    if (!isOpen) {
-      // Estimate whether the menu would render below the visible viewport
-      // (e.g. the last row(s) of a long table) and open upward instead so
-      // it's never clipped/invisible below the fold.
-      const buttonRect = containerRef.current?.getBoundingClientRect();
-      const estimatedMenuHeight = 160;
-      const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-      setDropUp(Boolean(buttonRect) && buttonRect.bottom + estimatedMenuHeight > viewportHeight);
+  const handleToggleOpen = (event) => {
+    if (isOpen) {
+      setMenuPosition(null);
+      return;
     }
-    setIsOpen((current) => !current);
+    // Anchor the menu to the button with fixed positioning and render it via
+    // a portal to document.body so the table's scroll/overflow container can
+    // never clip it, regardless of where the row sits after the table loads.
+    // Opens just below the button by default, flipping above only when
+    // there isn't enough room below.
+    const rect = event.currentTarget.getBoundingClientRect();
+    const estimatedMenuHeight = 160;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const openUpward = rect.bottom + estimatedMenuHeight > viewportHeight;
+    setMenuPosition(
+      openUpward
+        ? { bottom: Math.max(12, viewportHeight - rect.top + 6), right: Math.max(12, window.innerWidth - rect.right) }
+        : { top: rect.bottom + 6, right: Math.max(12, window.innerWidth - rect.right) }
+    );
   };
 
   return (
@@ -318,49 +338,60 @@ function RowActionsMenu({ row, loader, onEdit, onToggleStatus, onDelete, busy })
       >
         <FiMoreVertical />
       </button>
-      {isOpen ? (
-        <div className={`${styles.hubActionMenu} ${dropUp ? styles.hubActionMenuUp : ""}`}>
-          {loader.canEdit ? (
-            <button
-              type="button"
-              className={styles.hubActionMenuItem}
-              disabled={busy}
-              onClick={() => {
-                setIsOpen(false);
-                onEdit(row);
+      {isOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className={styles.hubActionMenu}
+              style={{
+                position: "fixed",
+                top: menuPosition.top ?? "auto",
+                bottom: menuPosition.bottom ?? "auto",
+                right: menuPosition.right,
               }}
             >
-              Edit
-            </button>
-          ) : null}
-          {loader.canToggleStatus ? (
-            <button
-              type="button"
-              className={styles.hubActionMenuItem}
-              disabled={busy}
-              onClick={() => {
-                setIsOpen(false);
-                onToggleStatus(row);
-              }}
-            >
-              {row.isActive ? "Inactive" : "Active"}
-            </button>
-          ) : null}
-          {loader.canDelete ? (
-            <button
-              type="button"
-              className={`${styles.hubActionMenuItem} ${styles.hubActionMenuDelete}`}
-              disabled={busy}
-              onClick={() => {
-                setIsOpen(false);
-                onDelete(row);
-              }}
-            >
-              Delete
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+              {loader.canEdit ? (
+                <button
+                  type="button"
+                  className={styles.hubActionMenuItem}
+                  disabled={busy}
+                  onClick={() => {
+                    setMenuPosition(null);
+                    onEdit(row);
+                  }}
+                >
+                  Edit
+                </button>
+              ) : null}
+              {loader.canToggleStatus ? (
+                <button
+                  type="button"
+                  className={styles.hubActionMenuItem}
+                  disabled={busy}
+                  onClick={() => {
+                    setMenuPosition(null);
+                    onToggleStatus(row);
+                  }}
+                >
+                  {row.isActive ? "Inactive" : "Active"}
+                </button>
+              ) : null}
+              {loader.canDelete ? (
+                <button
+                  type="button"
+                  className={`${styles.hubActionMenuItem} ${styles.hubActionMenuDelete}`}
+                  disabled={busy}
+                  onClick={() => {
+                    setMenuPosition(null);
+                    onDelete(row);
+                  }}
+                >
+                  Delete
+                </button>
+              ) : null}
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

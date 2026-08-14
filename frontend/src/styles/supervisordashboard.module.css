@@ -393,6 +393,12 @@
   color: #dc3545;
 }
 
+/* Overdue */
+.status-overdue {
+  background: #fbdcdc;
+  color: #c81e1e;
+}
+
 .status-select,
 .mobile-status-select {
   min-width: 118px;
@@ -543,6 +549,12 @@
 :global(:root[data-theme="dark"]) .status-unresolved,
 :global(:root[data-theme="dark"]) .status-text.unresolved {
   background: #9f2f2f;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .status-overdue,
+:global(:root[data-theme="dark"]) .status-text.overdue {
+  background: #8a1f1f;
   color: #ffffff;
 }
 
@@ -893,6 +905,14 @@
 }
 .status-text.unresolved .status-dot {
   background: #CA0000;
+}
+
+/* OVERDUE */
+.status-text.overdue {
+  color: #555555;
+}
+.status-text.overdue .status-dot {
+  background: #c81e1e;
 }
 
   .sup-muted {

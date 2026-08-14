@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { IoTimeSharp } from "react-icons/io5";
 import { BsThreeDotsVertical } from "react-icons/bs";
+import { FaCogs, FaClipboardCheck, FaBell } from "react-icons/fa";
 import styles from "../../styles/SupervisorDetails.module.css";
 import Pagination from "@/components/Pagination";
 import { useDispatch, useSelector } from "react-redux";
@@ -10,8 +11,8 @@ import {
   fetchTicketDetails,
   rejectTicket,
 } from "../../store/slices/supervisorSlice";
-import { fetchL2TicketPreviewApi, fetchTicketTimelineApi } from "../../apis/supervisorApi";
-import { fetchTicketApprovalsApi } from "../../apis/operatorApi";
+import { fetchL2TicketPreviewApi, fetchTicketTimelineApi, markAcknowledgeTicketSubmitApi } from "../../apis/supervisorApi";
+import { fetchTicketApprovalsApi, submitOperatorTicket } from "../../apis/operatorApi";
 import {
   formatTicketIdForDisplay,
   formatThresholdValue,
@@ -67,6 +68,11 @@ const buildPreviewTicket = (preview) => {
 
   return {
     ...source,
+    // The l2-preview endpoint returns the ticket's creation timestamp as
+    // submitted_at (there is no created_at key on that response), so the
+    // detail view's formatDateTime(ticket.created_at) rendered "-". Map it
+    // back to created_at here, keeping any real created_at if present.
+    created_at: source.created_at ?? preview?.submitted_at ?? preview?.data?.submitted_at ?? source.submitted_at,
     submitted_notebook_fields: submittedFields || source.submitted_notebook_fields,
     notifications: preview?.notifications || preview?.data?.notifications || source.notifications,
     endpoint_hints: preview?.endpoint_hints || preview?.data?.endpoint_hints || source.endpoint_hints,
@@ -79,6 +85,16 @@ const buildPreviewTicket = (preview) => {
 };
 
 const isAcknowledgeActionTicket = (ticket) => getTicketKind(ticket) === TICKET_KIND.NOTEBOOK_ACK;
+
+// Wheel Change Approval, PP Approval, and Acknowledgement all land on L4 as
+// the final authority with nobody else's work to approve/reject - L4 is the
+// one actually resolving them, so they get the same "Fix and Submit" action
+// as L1 instead of Accept/Reject. PP Batch stays on Accept/Reject at L4 -
+// it's not part of this group.
+const isL4SelfResolveTicket = (ticket) => {
+  const kind = getTicketKind(ticket);
+  return kind === TICKET_KIND.NOTEBOOK_ACK || kind === TICKET_KIND.WHEEL_CHANGE || kind === TICKET_KIND.PP_APPROVAL;
+};
 
 // Acknowledgement tickets are raised against a specific submitted_notebooks row (stamped into
 // violation_details.submitted_notebook_id when the ticket is created - see
@@ -121,18 +137,26 @@ export default function SupervisorDetails() {
   const [l2Preview, setL2Preview] = useState(null);
   const [l2PreviewLoaded, setL2PreviewLoaded] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showFixModal, setShowFixModal] = useState(false);
+  const [fixComment, setFixComment] = useState("");
+  const [fixSubmitting, setFixSubmitting] = useState(false);
 
   const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
   const toClassKey = (value) => String(value || "").toLowerCase().replace(/\s+/g, "-");
   const requestedTicketId = Array.isArray(ticketId) ? ticketId[0] : ticketId;
   const normalizedRequestedTicketId = normalizeTicketId(requestedTicketId);
   const requestedTicketType = Array.isArray(ticketType) ? ticketType[0] : ticketType;
-  // The L2 preview endpoint returns raw submitted-notebook fields, not the
-  // actual_value/threshold_value shape review tickets use - fetching/using it for an
-  // Acknowledgement ticket overwrites the correct dashboard record with mismatched data,
-  // which both renders a stray object as a table cell and flips the UI to the Accept/Reject
-  // (non-acknowledgement) action layout a moment after the page first loads correctly.
-  const isKnownAcknowledgementTicket = String(requestedTicketType || "").toLowerCase() === "acknowledgement";
+  // The L2 preview endpoint is built for Value-threshold review tickets - its
+  // response shape has no assigned_user_names/configured_tat_hours/threshold_active
+  // fields at all, and for Acknowledgement it fetches the wrong submitted-notebook
+  // shape entirely. It used to only be skipped for Acknowledgement, so Wheel
+  // Change/PP Approval tickets still fetched it - when that fetch succeeded (it
+  // 200s for some viewer roles), its sparse shape won as the ticket source and
+  // silently blanked out Assigned To/Approval Due/Configured TAT, which the
+  // GET /tickets/:id fetch further down had already gotten right.
+  const skipL2PreviewFetch = ["acknowledgement", "wheel change", "pp approval"].includes(
+    String(requestedTicketType || "").toLowerCase()
+  );
 
   const dashboardTicket = useMemo(() => {
     if (!requestedTicketId || !Array.isArray(tickets)) return null;
@@ -148,29 +172,45 @@ export default function SupervisorDetails() {
     // (ot.*, including violation_details) for both kinds - it's a safe fallback when the
     // dashboard list hasn't been loaded yet (e.g. a hard refresh straight onto this page),
     // which previously left acknowledgement tickets with no notebook id to deep-link to.
-    const previewSource = isKnownAcknowledgementTicket ? null : buildPreviewTicket(l2Preview);
+    const previewSource = skipL2PreviewFetch ? null : buildPreviewTicket(l2Preview);
     const previewMatches =
       previewSource && normalizeTicketId(previewSource?.ticket_id || previewSource?.id) === normalizedRequestedTicketId;
     const detailSource = ticketDetail?.data || ticketDetail?.ticket || ticketDetail;
     const detailMatches =
       detailSource && normalizeTicketId(detailSource?.ticket_id || detailSource?.id) === normalizedRequestedTicketId;
-    const source = previewMatches ? previewSource : dashboardTicket || (detailMatches ? detailSource : null);
+    // detailSource (the single-ticket fetch) wins over dashboardTicket (the
+    // dashboard list row) when both exist - the list endpoint doesn't select
+    // everything this page needs (current-level-aware assigned-to, live
+    // threshold-config fields), so it used to silently shadow the complete
+    // data the moment the dashboard list had already loaded a row for this
+    // ticket. dashboardTicket is spread first purely as a base so any
+    // dashboard-only field survives; detailSource's real values take over.
+    const source = previewMatches
+      ? previewSource
+      : detailMatches
+        ? { ...dashboardTicket, ...detailSource }
+        : dashboardTicket;
     return source ? applyStoredTicketStatus(transformTicketWithDescription(source)) : null;
-  }, [dashboardTicket, isKnownAcknowledgementTicket, l2Preview, normalizedRequestedTicketId, ticketDetail]);
+  }, [dashboardTicket, skipL2PreviewFetch, l2Preview, normalizedRequestedTicketId, ticketDetail]);
 
   useEffect(() => {
     if (!router.isReady || !requestedTicketId) return;
 
-    if (!isKnownAcknowledgementTicket && !l2PreviewLoaded) return;
+    if (!skipL2PreviewFetch && !l2PreviewLoaded) return;
 
+    // Always pull the single-ticket endpoint, even when the dashboard list
+    // already has a row for this id - the list endpoint doesn't carry
+    // everything this page needs (e.g. the current-level-aware assigned-to
+    // name, or the live threshold-config fields on Wheel Change/PP Approval/
+    // Acknowledgement tickets), so relying on the list row alone left those
+    // showing blank/"Unassigned" even though the data genuinely exists.
     if (
       !l2Preview &&
-      !dashboardTicket &&
       normalizeTicketId(ticketDetail?.ticket_id) !== normalizedRequestedTicketId
     ) {
       dispatch(fetchTicketDetails(requestedTicketId));
     }
-  }, [dashboardTicket, dispatch, isKnownAcknowledgementTicket, l2Preview, l2PreviewLoaded, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
+  }, [dispatch, skipL2PreviewFetch, l2Preview, l2PreviewLoaded, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
 
   useEffect(() => {
     let mounted = true;
@@ -231,7 +271,7 @@ export default function SupervisorDetails() {
   useEffect(() => {
     let mounted = true;
     const loadPreview = async () => {
-      if (!requestedTicketId || isKnownAcknowledgementTicket) {
+      if (!requestedTicketId || skipL2PreviewFetch) {
         if (mounted) setL2PreviewLoaded(true);
         return;
       }
@@ -265,7 +305,7 @@ export default function SupervisorDetails() {
     return () => {
       mounted = false;
     };
-  }, [requestedTicketId, isKnownAcknowledgementTicket]);
+  }, [requestedTicketId, skipL2PreviewFetch]);
 
   useEffect(() => {
     if (!showMoreMenu) return undefined;
@@ -304,6 +344,33 @@ export default function SupervisorDetails() {
     }
   };
 
+  // L1 is the only level that actually fixes/resubmits the underlying data - Accept/Reject
+  // only makes sense once a ticket has escalated to a reviewing level. Reuses the same
+  // /operator-tickets/submit/:id endpoint operatordetail.js's Fix & Resubmit flow calls,
+  // then refreshes via this page's own (supervisor-scoped) fetchTicketDetails so the status
+  // change shows here without needing the operator slice this page doesn't otherwise use.
+  const handleFixResubmit = async () => {
+    if (!fixComment.trim()) {
+      alert("Enter a resolution comment");
+      return;
+    }
+
+    setFixSubmitting(true);
+    try {
+      await submitOperatorTicket(ticket.ticket_id, {
+        operator_comment: fixComment,
+        comment: fixComment,
+      });
+      setShowFixModal(false);
+      setFixComment("");
+      dispatch(fetchTicketDetails(ticket.ticket_id));
+    } catch (err) {
+      alert(err?.message || "Failed to submit fix.");
+    } finally {
+      setFixSubmitting(false);
+    }
+  };
+
   // Acknowledging a notebook ticket doesn't happen from this detail view anymore - it only
   // hands off to Submitted Notebooks, where the reviewer must actually open the notebook and
   // click Acknowledge there. That page owns the real acknowledgeSubmittedNotebookApi call.
@@ -311,6 +378,11 @@ export default function SupervisorDetails() {
   // instead of dropping the reviewer on the bare list.
   const handleAcknowledge = () => {
     const notebookId = getTicketNotebookId(ticket);
+    // Marks the ticket Submit so it reads as "in hand" rather than still
+    // Open/In Progress while the real acknowledgement happens on the next
+    // page - best-effort, the reconciliation worker settles Closed/Open
+    // regardless of whether this particular call succeeds.
+    markAcknowledgeTicketSubmitApi(ticket.ticket_id).catch(() => {});
     router.push(
       notebookId
         ? `/submitted-notebooks?openNotebookId=${encodeURIComponent(notebookId)}`
@@ -414,6 +486,33 @@ export default function SupervisorDetails() {
       "-";
   const isClosedTicket = getSupervisorStatusLabel(ticket.status) === "Closed";
   const isAcknowledgeTicket = isAcknowledgeActionTicket(ticket);
+  // Accept/Reject is an L2+ reviewer action - a ticket still sitting at L1 hasn't
+  // escalated to anyone yet, so L1 is the one who needs to Fix & Resubmit it, not
+  // approve/reject it.
+  // Prefer the ticket list's own tat_current_level (refetched via
+  // fetchSupervisorTickets, so it reflects the latest escalation) over the
+  // l2-preview snapshot, which is fetched once per ticket id and can go
+  // stale the moment the ticket escalates - previously using the preview's
+  // value here made the Approve/Reject button flash to the correct action
+  // then immediately revert to the previous level's action.
+  const currentTicketLevel = String(
+    dashboardTicket?.tat_current_level || ticket?.tat_current_level || ticket?.tatCurrentLevel || "L1"
+  ).trim().toUpperCase();
+  const isL1OwnedTicket = !isAcknowledgeTicket && currentTicketLevel === "L1";
+  // Wheel Change Approval / PP Approval / Acknowledgement sitting at L4 (their
+  // final authority) get the same single "Fix and Submit" action as L1,
+  // instead of the Accept/Reject pair - see isL4SelfResolveTicket above.
+  const isL4SelfResolveOwnedTicket = isL4SelfResolveTicket(ticket) && currentTicketLevel === "L4";
+  // Replaces the "Resolution Submission" comment box for these ticket kinds
+  // - they have no operator/fix-comment concept, so that box only ever read
+  // "No comment submitted during fix and resubmit," which explained nothing.
+  const liveStatusPanel = isL4SelfResolveTicket(ticket) ? (
+    <p style={{ margin: 0, color: "#4b5563", fontSize: "13px", lineHeight: 1.5 }}>
+      {isClosedTicket
+        ? "This ticket is closed - the real record it was raised for has been confirmed done."
+        : "This closes automatically once the real record confirms it's done, or reopens if it turns out not to have gone through."}
+    </p>
+  ) : null;
   const machineName = ticket.notebook || ticket.machine_name || "Unknown machine";
   const machineDetailText =
     ticket.description ||
@@ -577,7 +676,23 @@ export default function SupervisorDetails() {
                       onClick={handleAcknowledge}
                       disabled={actionLoading}
                     >
-                      Acknowledge
+                      Fix &amp; Submit
+                    </button>
+                  ) : isL1OwnedTicket ? (
+                    <button
+                      className={styles.accept}
+                      onClick={() => setShowFixModal(true)}
+                      disabled={fixSubmitting}
+                    >
+                      Fix &amp; Submit
+                    </button>
+                  ) : isL4SelfResolveOwnedTicket ? (
+                    <button
+                      className={styles.accept}
+                      onClick={handleApprove}
+                      disabled={actionLoading}
+                    >
+                      Fix &amp; Submit
                     </button>
                   ) : (
                     <>
@@ -609,43 +724,167 @@ export default function SupervisorDetails() {
             // in actual_value/threshold_value, which for a PP Batch ticket
             // are the completed-screens array and a stray
             // completion_threshold_hours key, neither of which is the actual
-            // point of the ticket (the missing department). Each ticket
-            // already represents exactly one missing department (see PDF
-            // Step 3: "tickets are raised per user, not per PP ID"), so this
-            // shows that directly instead of a noisy 10-row table of mostly
-            // blank cells.
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>ENTRY ID</th>
-                    <th>MISSING DEPARTMENT</th>
-                    <th>COMPLETED</th>
-                    <th>COMPLETION THRESHOLD</th>
-                    <th>FIRST SUBMITTED</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>{ticket?.violation_details?.entry_id || ticket.notebook || ticket.machine_name || "-"}</td>
-                    <td style={{ color: "#CA0000" }}>
-                      {ticket?.violation_details?.missing_screen || "-"}
-                    </td>
-                    <td>
-                      {Array.isArray(ticket?.violation_details?.completed_screens)
-                        ? `${ticket.violation_details.completed_screens.length} dept(s): ${ticket.violation_details.completed_screens.join(", ")}`
-                        : "-"}
-                    </td>
-                    <td>
-                      {ticket?.violation_details?.completion_threshold_hours
-                        ? `${ticket.violation_details.completion_threshold_hours} Hrs`
-                        : "-"}
-                    </td>
-                    <td>{formatDateTime(ticket?.violation_details?.first_created_at || ticket.created_at)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            // point of the ticket (the missing departments). One ticket
+            // covers every department still missing for the PP ID (see PDF
+            // Step 3's "one ticket per PP ID"), so this lists them all
+            // instead of a noisy 10-row table of mostly blank cells.
+            // `overdue_screens`/`missing_screens` (plural) is the current
+            // shape; `missing_screen` (singular) is kept as a fallback for
+            // tickets filed while this was briefly one-ticket-per-department.
+            (() => {
+              const details = ticket?.violation_details || {};
+              const missingDepartments = Array.isArray(details.overdue_screens) && details.overdue_screens.length
+                ? details.overdue_screens
+                : Array.isArray(details.missing_screens) && details.missing_screens.length
+                  ? details.missing_screens
+                  : details.missing_screen
+                    ? [details.missing_screen]
+                    : [];
+              const threshold = details.screen_thresholds && typeof details.screen_thresholds === "object"
+                ? Object.values(details.screen_thresholds)[0]
+                : details.completion_threshold_hours;
+              const assignedTo = ticket.assigned_user_names || ticket.assignedUserNames || "Unassigned";
+
+              return (
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>ENTRY ID</th>
+                        <th>MISSING DEPARTMENTS</th>
+                        <th>COMPLETED</th>
+                        <th>COMPLETION THRESHOLD</th>
+                        <th>FIRST SUBMITTED</th>
+                        <th>ASSIGNED TO</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>{details.entry_id || ticket.notebook || ticket.machine_name || "-"}</td>
+                        <td style={{ color: "#CA0000" }}>
+                          {missingDepartments.length ? missingDepartments.join(", ") : "-"}
+                        </td>
+                        <td>
+                          {Array.isArray(details.completed_screens)
+                            ? `${details.completed_screens.length} dept(s): ${details.completed_screens.join(", ")}`
+                            : "-"}
+                        </td>
+                        <td>{threshold ? `${threshold} Hrs` : "-"}</td>
+                        <td>{formatDateTime(details.first_created_at || ticket.created_at)}</td>
+                        <td>{assignedTo}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()
+          ) : isL4SelfResolveTicket(ticket) ? (
+            // Wheel Change Approval / PP Approval / Acknowledgement tickets
+            // don't carry parameter/actual/threshold values at all (their
+            // actual_value and threshold_value columns are empty arrays) -
+            // the generic table below rendered as an empty, headers-only
+            // table for these. What they actually carry is real, useful
+            // context sitting entirely in violation_details, so this reads
+            // straight from there instead, styled to match what each kind
+            // is actually about rather than forcing it into a threshold
+            // table's shape.
+            (() => {
+              const details = ticket?.violation_details || {};
+              const kind = getTicketKind(ticket);
+              const assignedTo = ticket.assigned_user_names || ticket.assignedUserNames || "Unassigned";
+              const dueAt = ticket.l4_tat_due_at || ticket.l4TatDueAt || null;
+              const isOverdue = dueAt ? new Date(dueAt).getTime() < Date.now() : false;
+              const dueValue = dueAt ? formatDateTime(dueAt) : "-";
+              // Live values from the actual Wheel Change/PP Notebook/Acknowledgement
+              // Threshold config this ticket was raised under - not the ticket's own
+              // frozen-at-creation snapshot, so a reviewer can tell whether the
+              // configured TAT/severity has since changed since this ticket fired.
+              const configuredTatHours = ticket.configured_tat_hours ?? ticket.configuredTatHours ?? null;
+              const configuredSeverity = ticket.configured_severity ?? ticket.configuredSeverity ?? null;
+              const thresholdActive = ticket.threshold_active ?? ticket.thresholdActive;
+              const configuredTatField = {
+                label: "Configured TAT",
+                value: configuredTatHours ? `${configuredTatHours} hr${Number(configuredTatHours) === 1 ? "" : "s"}${configuredSeverity ? ` · ${configuredSeverity}` : ""}` : "-",
+              };
+
+              let kindLabel = "Review";
+              let Icon = FaClipboardCheck;
+              let fields = [];
+
+              if (kind === TICKET_KIND.WHEEL_CHANGE) {
+                kindLabel = "Wheel Change Approval";
+                Icon = FaCogs;
+                const [rowTable, rowId] = String(details.wheel_change_row_key || "").split(":");
+                const proposalRef = rowTable && rowId
+                  ? `${rowTable.split(".")[0]?.replace(/^\w/, (c) => c.toUpperCase())} · Entry #${rowId}`
+                  : "-";
+                fields = [
+                  { label: "Department", value: details.department || "-" },
+                  { label: "Proposal", value: proposalRef },
+                  { label: "Assigned To", value: assignedTo },
+                  { label: "Approval Due", value: dueValue, overdue: isOverdue },
+                  configuredTatField,
+                  { label: "Created At", value: formatDateTime(ticket.created_at) },
+                ];
+              } else if (kind === TICKET_KIND.PP_APPROVAL) {
+                kindLabel = "PP Approval";
+                Icon = FaClipboardCheck;
+                fields = [
+                  { label: "Entry ID", value: details.entry_id || "-" },
+                  { label: "Last Completed", value: details.notebook_label || "-" },
+                  { label: "Assigned To", value: assignedTo },
+                  { label: "Approval Due", value: dueValue, overdue: isOverdue },
+                  configuredTatField,
+                  { label: "Created At", value: formatDateTime(ticket.created_at) },
+                ];
+              } else {
+                kindLabel = "Acknowledgement";
+                Icon = FaBell;
+                const entryRef = ticket?.actual_value?.entry_id || details.notebook_submission_id || "-";
+                const ackBy = details.ack_due_at || ticket?.threshold_value?.acknowledge_by || null;
+                const ackByOverdue = ackBy ? new Date(ackBy).getTime() < Date.now() : false;
+                const ackByValue = ackBy ? formatDateTime(ackBy) : "-";
+                fields = [
+                  { label: "Notebook / Screen", value: ticket.notebook || ticket.machine_name || "-" },
+                  { label: "Submitted By", value: ticket.user_name || "-" },
+                  { label: "Entry Reference", value: entryRef },
+                  { label: "Acknowledge By", value: ackByValue, overdue: ackByOverdue },
+                  { label: "Assigned To", value: assignedTo },
+                  configuredTatField,
+                ];
+              }
+
+              return (
+                <div
+                  className={styles.resolveSummary}
+                  style={{
+                    "--resolve-accent": kind === TICKET_KIND.WHEEL_CHANGE ? "#2563eb" : kind === TICKET_KIND.PP_APPROVAL ? "#7c3aed" : "#b45309",
+                    "--resolve-accent-tint": kind === TICKET_KIND.WHEEL_CHANGE ? "#eff6ff" : kind === TICKET_KIND.PP_APPROVAL ? "#f5f3ff" : "#fffbeb",
+                  }}
+                >
+                  <div className={styles.resolveSummaryHead}>
+                    <div className={styles.resolveSummaryKind}>
+                      <Icon />
+                      {kindLabel}
+                    </div>
+                  </div>
+                  {details.message && <p className={styles.resolveSummaryMessage}>{details.message}</p>}
+                  {thresholdActive === false && (
+                    <p className={styles.resolveSummaryMessage} style={{ color: "#b45309" }}>
+                      Note: the threshold config this was raised under is currently switched off - it won't fire again until re-enabled.
+                    </p>
+                  )}
+                  <div className={styles.resolveGrid}>
+                    {fields.map((field) => (
+                      <div className={styles.resolveItem} key={field.label}>
+                        <span>{field.label}</span>
+                        <strong className={field.overdue ? styles.overdue : ""}>{field.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()
           ) : (
             <>
               <div className={styles.tableWrap}>
@@ -744,6 +983,42 @@ export default function SupervisorDetails() {
           </div>
         )}
 
+        {showFixModal && (
+          <div className={styles.modalOverlay}>
+            <div className={styles.modalBox}>
+              <h3 className={styles.modalTitle}>Fix &amp; Submit</h3>
+
+              <p className={styles.modalDesc}>
+                Resolve Ticket <b>{displayTicketId}</b> at L1 and submit it for review.
+              </p>
+
+              <label className={styles.modalLabel}>
+                Resolution Comment <span>*</span>
+              </label>
+
+              <textarea
+                placeholder="Enter resolution details..."
+                value={fixComment}
+                maxLength={500}
+                onChange={(e) => setFixComment(e.target.value)}
+              />
+
+              <div className={styles.modalFooterText}>
+                <span>{fixComment.length} / 500 characters</span>
+              </div>
+
+              <div className={styles.modalActions}>
+                <button onClick={() => setShowFixModal(false)} disabled={fixSubmitting}>
+                  Cancel
+                </button>
+                <button onClick={handleFixResubmit} disabled={fixSubmitting}>
+                  Submit
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className={styles.bottom}>
           <div className={styles.timeline}>
             <div className={styles.timelineHeader}>
@@ -767,12 +1042,20 @@ export default function SupervisorDetails() {
           </div>
 
           <div className={styles.resolution}>
-            <h3>Resolution Submission</h3>
-
-            <label>{resolutionCommentLabel}</label>
-            <div className={styles.comment}>
-              {resolutionComment}
-            </div>
+            {liveStatusPanel ? (
+              <>
+                <h3>Live Status</h3>
+                {liveStatusPanel}
+              </>
+            ) : (
+              <>
+                <h3>Resolution Submission</h3>
+                <label>{resolutionCommentLabel}</label>
+                <div className={styles.comment}>
+                  {resolutionComment}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -898,15 +1181,22 @@ export default function SupervisorDetails() {
         </div>
 
         <div className={styles.resolutionCard}>
-          <h4>Resolution Submission</h4>
-
-          <span className={styles.commentLabel}>
-            {resolutionCommentLabel}
-          </span>
-
-          <div className={styles.commentBox}>
-            {resolutionComment}
-          </div>
+          {liveStatusPanel ? (
+            <>
+              <h4>Live Status</h4>
+              {liveStatusPanel}
+            </>
+          ) : (
+            <>
+              <h4>Resolution Submission</h4>
+              <span className={styles.commentLabel}>
+                {resolutionCommentLabel}
+              </span>
+              <div className={styles.commentBox}>
+                {resolutionComment}
+              </div>
+            </>
+          )}
         </div>
 
         {!isClosedTicket && (
@@ -917,7 +1207,23 @@ export default function SupervisorDetails() {
                 onClick={handleAcknowledge}
                 disabled={actionLoading}
               >
-                Acknowledge
+                Fix &amp; Submit
+              </button>
+            ) : isL1OwnedTicket ? (
+              <button
+                className={styles.accept}
+                onClick={() => setShowFixModal(true)}
+                disabled={fixSubmitting}
+              >
+                Fix &amp; Submit
+              </button>
+            ) : isL4SelfResolveOwnedTicket ? (
+              <button
+                className={styles.accept}
+                onClick={handleApprove}
+                disabled={actionLoading}
+              >
+                Fix &amp; Submit
               </button>
             ) : (
               <>
@@ -999,6 +1305,66 @@ export default function SupervisorDetails() {
                   onClick={() => setShowRejectModal(false)}
                 >
                   Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showFixModal && (
+          <div
+            className={styles.modalOverlay}
+            onClick={() => setShowFixModal(false)}
+          >
+            <div
+              className={styles.modalBox}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={styles.modalHeader}>
+                <div className={styles.modalTitle}>Fix &amp; Submit</div>
+
+                <span
+                  className={styles.closeBtn}
+                  onClick={() => setShowFixModal(false)}
+                >
+                  ×
+                </span>
+              </div>
+
+              <p className={styles.modalDesc}>
+                Resolve Ticket <b>{displayTicketId}</b> at L1 and submit it for review.
+              </p>
+
+              <label className={styles.modalLabel}>
+                Resolution Comment <span>*</span>
+              </label>
+
+              <textarea
+                placeholder="Enter resolution details..."
+                value={fixComment}
+                maxLength={500}
+                onChange={(e) => setFixComment(e.target.value)}
+              />
+
+              <div className={styles.modalFooterText}>
+                <span>{fixComment.length} / 500</span>
+              </div>
+
+              <div className={styles.modalActions}>
+                <button
+                  className={styles.rejectBtn}
+                  onClick={() => setShowFixModal(false)}
+                  disabled={fixSubmitting}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  className={styles.cancelbtn}
+                  onClick={handleFixResubmit}
+                  disabled={fixSubmitting}
+                >
+                  Submit
                 </button>
               </div>
             </div>

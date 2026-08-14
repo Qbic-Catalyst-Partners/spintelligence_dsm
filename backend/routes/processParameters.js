@@ -37,7 +37,8 @@ const ensureProcessParameterMasterTableImpl = async () => {
       ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'in_progress',
       ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
       ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS review_remarks TEXT
+      ADD COLUMN IF NOT EXISTS review_remarks TEXT,
+      ADD COLUMN IF NOT EXISTS pending_approval_notebook_label TEXT
   `);
 };
 
@@ -266,6 +267,15 @@ const getPpFullDetailsForEntryId = async (entry_id) => {
 // below) - only in_progress is eligible to auto-advance. Called reactively
 // whenever PP status is read/listed, rather than hooked into every
 // department's own save route.
+//
+// This used to raise the PP Approval ticket right here, the moment the PP
+// became ready - but a ticket is supposed to mean "L4 missed this," not
+// "this is now pending," matching how Acknowledgement already only raises a
+// ticket once its own deadline has passed. `updated_at` (stamped below) is
+// the pending_approval start time and `pending_approval_notebook_label` is
+// kept so the later overdue check can still resolve the right notebook's L4
+// approvers/TAT - runPpApprovalOverdueCheck (below) is what actually raises
+// the ticket, once truly overdue.
 const refreshProcessParameterStatus = async (entry_id) => {
   const current = await client.query(
     `SELECT status FROM process_parameters.master WHERE entry_id = $1`,
@@ -278,13 +288,14 @@ const refreshProcessParameterStatus = async (entry_id) => {
   const allComplete = Object.keys(completion).length > 0 && Object.values(completion).every(Boolean);
   if (!allComplete) return status;
 
-  await client.query(
-    `UPDATE process_parameters.master SET status = 'pending_approval', updated_at = NOW() WHERE entry_id = $1`,
-    [entry_id]
-  );
   const lastCompletedDeptKey = await getLastCompletedDepartmentKey(entry_id);
   const lastCompletedNotebookLabel = PP_DEPARTMENT_KEY_TO_NOTEBOOK_LABEL[lastCompletedDeptKey] || null;
-  await createPpApprovalTicket(entry_id, lastCompletedNotebookLabel);
+  await client.query(
+    `UPDATE process_parameters.master
+     SET status = 'pending_approval', updated_at = NOW(), pending_approval_notebook_label = $2
+     WHERE entry_id = $1`,
+    [entry_id, lastCompletedNotebookLabel]
+  );
   return 'pending_approval';
 };
 
@@ -381,9 +392,12 @@ const createPpApprovalTicket = async (entry_id, notebookLabel = null) => {
   const notebookL4UserIds = Array.isArray(notebookConfig?.approval_l4_user_ids) ? notebookConfig.approval_l4_user_ids : [];
 
   const approvalConfig = await getPpApprovalConfig();
-  const l4UserIds = notebookL4UserIds.length
-    ? notebookL4UserIds
-    : (approvalConfig.l4_user_ids.length ? approvalConfig.l4_user_ids : await getUsersAtLevel('L4'));
+  // No L4 approver configured anywhere (neither this notebook's own PP
+  // Threshold config nor the global PP Approval config) - no ticket should
+  // be raised blindly notifying every L4 user system-wide (the
+  // getUsersAtLevel('L4') fallback this used to have).
+  const l4UserIds = notebookL4UserIds.length ? notebookL4UserIds : approvalConfig.l4_user_ids;
+  if (!l4UserIds.length) return null;
   const tatHours = Number(notebookConfig?.approve_within_hours) > 0
     ? Number(notebookConfig.approve_within_hours)
     : (Number(approvalConfig.tat_hours) > 0 ? Number(approvalConfig.tat_hours) : PP_APPROVAL_TAT_HOURS);
@@ -430,6 +444,47 @@ const createPpApprovalTicket = async (entry_id, notebookLabel = null) => {
   return insertedTicketId;
 };
 
+// A PP ticket means "L4 missed this," not "this is now pending" - matching
+// Acknowledgement, no ticket is raised the moment a PP becomes
+// pending_approval (see refreshProcessParameterStatus above). This runs
+// periodically and raises the real PP_APPROVAL ticket only once the
+// notebook's own configured TAT window has actually elapsed since
+// pending_approval started (updated_at), using the exact same
+// notebook-threshold-first, global-config-fallback resolution
+// createPpApprovalTicket itself uses - if nothing is configured for it,
+// nothing is raised (same "no threshold, no ticket" rule as everywhere
+// else), and it just stays silently pending until someone configures an L4
+// approver for it.
+const runPpApprovalOverdueCheck = async () => {
+  await ensureProcessParameterMasterTable();
+  const pending = await client.query(
+    `SELECT entry_id, updated_at, pending_approval_notebook_label
+     FROM process_parameters.master
+     WHERE status = 'pending_approval'`
+  );
+
+  const created = [];
+  for (const row of pending.rows) {
+    const notebookLabel = row.pending_approval_notebook_label;
+    // eslint-disable-next-line no-await-in-loop
+    const notebookThresholds = notebookLabel ? await getPpNotebookThresholds() : null;
+    const notebookConfig = notebookThresholds?.get(notebookLabel) || null;
+    // eslint-disable-next-line no-await-in-loop
+    const approvalConfig = await getPpApprovalConfig();
+    const tatHours = Number(notebookConfig?.approve_within_hours) > 0
+      ? Number(notebookConfig.approve_within_hours)
+      : (Number(approvalConfig.tat_hours) > 0 ? Number(approvalConfig.tat_hours) : PP_APPROVAL_TAT_HOURS);
+
+    const dueAt = new Date(row.updated_at).getTime() + tatHours * 60 * 60 * 1000;
+    if (Date.now() < dueAt) continue; // eslint-disable-line no-continue
+
+    // eslint-disable-next-line no-await-in-loop
+    const ticketId = await createPpApprovalTicket(row.entry_id, notebookLabel);
+    if (ticketId) created.push(ticketId);
+  }
+  return created;
+};
+
 const closePpApprovalTicket = async (entry_id) => {
   await ensureApprovalTicketSchema();
   await client.query(
@@ -440,53 +495,16 @@ const closePpApprovalTicket = async (entry_id) => {
   );
 };
 
-// L4 -> L5 escalation once the L4 TAT elapses without action - L5 is the
-// final escalation authority per the PDF, so there's nowhere further to go;
-// this just makes the ticket visible to L5 and marks it as such.
-const runPpApprovalTatCheck = async () => {
-  await ensureApprovalTicketSchema();
-
-  const dueTickets = await client.query(
-    `SELECT ticket_id FROM ticketing_system.operator_tickets
-     WHERE ticket_type = 'PP_APPROVAL'
-       AND tat_current_level = 'L4'
-       AND l4_tat_due_at IS NOT NULL
-       AND l4_tat_due_at <= NOW()
-       AND status <> 'Closed'`
-  );
-  if (!dueTickets.rowCount) return [];
-
-  const l5UserIds = await getUsersAtLevel('L5');
-  const escalated = [];
-  for (const row of dueTickets.rows) {
-    // eslint-disable-next-line no-await-in-loop
-    const result = await client.query(
-      `UPDATE ticketing_system.operator_tickets
-       SET tat_current_level = 'L5', approval_l5_user_ids = $1, l5_tat_due_at = NOW()
-       WHERE ticket_id = $2
-       RETURNING *`,
-      [l5UserIds, row.ticket_id]
-    );
-    const escalatedTicket = result.rows[0];
-    if (escalatedTicket) {
-      escalated.push(escalatedTicket);
-      const entryId = escalatedTicket.violation_details?.entry_id || row.ticket_id;
-      // eslint-disable-next-line no-await-in-loop
-      await createNotificationsForUsers(l5UserIds, {
-        ticketId: escalatedTicket.ticket_id,
-        type: 'PP_APPROVAL',
-        category: 'Tickets',
-        priority: 'High',
-        title: (user) => `Hi ${user.full_name || 'there'} (L5), PP entry ${entryId} escalated to you`,
-        body: (user) =>
-          `${user.full_name || 'You'} (L5) - PP entry ${entryId} was not approved at L4 in time and has escalated to you. Please approve it.`,
-        linkUrl: `/supervisor-tickets/${escalatedTicket.ticket_id}`,
-        payload: { ticket_id: escalatedTicket.ticket_id, entry_id: entryId }
-      });
-    }
-  }
-  return escalated;
-};
+// PP Approval is owned by L4 fully and directly - there's no configured L5
+// approver anywhere in PP Notebook Threshold (only L1/L4), so a missed L4
+// TAT used to escalate to "any current L5 user" system-wide - the exact
+// blind-notify-everyone pattern removed from every other threshold type this
+// session. A ticket past its TAT just stays at L4 and shows Overdue
+// (computed client-side from l4_tat_due_at) - L5 already has full oversight
+// visibility via its Mapped-only view without needing a fake reassignment.
+// Kept as a no-op (rather than removed) so the worker registration in
+// server.js doesn't need touching.
+const runPpApprovalTatCheck = async () => [];
 
 router.get('/approval-config', async (req, res, next) => {
   try {
@@ -787,6 +805,7 @@ module.exports.PP_DEPARTMENTS = PP_DEPARTMENTS;
 module.exports.ensureProcessParameterMasterTable = ensureProcessParameterMasterTable;
 module.exports.refreshProcessParameterStatus = refreshProcessParameterStatus;
 module.exports.runPpApprovalTatCheck = runPpApprovalTatCheck;
+module.exports.runPpApprovalOverdueCheck = runPpApprovalOverdueCheck;
 module.exports.createPpApprovalTicket = createPpApprovalTicket;
 module.exports.closePpApprovalTicket = closePpApprovalTicket;
 module.exports.ensurePpApprovalConfigTable = ensurePpApprovalConfigTable;

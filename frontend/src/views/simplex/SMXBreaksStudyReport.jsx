@@ -7,6 +7,7 @@ import NotebookCustomFields from "@/components/NotebookCustomFields";
 import useEmployeeOptions from "@/hooks/useEmployeeOptions";
 import { submitSimplexStudyReport } from "@/store/slices/simplex";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -640,6 +641,21 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
         } catch (customFieldError) {
           console.error("Failed to save custom field values:", customFieldError);
         }
+      }
+
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Simplex",
+          screenName: selectedTypeName || form.type,
+          machineName: form.simplexNo || selectedTypeName || form.type,
+          entryId,
+          values: formFields
+            .filter((f) => f.field && f.field !== "entryId")
+            .map((f) => ({ label: f.label, value: f.value ?? form[f.field] ?? "" })),
+        });
+      } catch (thresholdError) {
+        console.error("Failed to evaluate value thresholds:", thresholdError);
       }
 
       clear();

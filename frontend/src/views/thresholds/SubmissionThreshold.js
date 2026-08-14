@@ -658,7 +658,6 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
           frequency: frequencyValue,
           is_active: rule.isActive,
           approval_l1: selectedL1,
-          approval_l1_name: selectedL1,
           criticality: criticality || null,
         };
       });
@@ -1067,7 +1066,7 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                             <ExpandableCell values={item.screen_name} />
                           </td>
                           <td>
-                            <ExpandableCell values={item.approval_l1_name || item.approval_l1} />
+                            <ExpandableCell values={item.approval_l1} />
                           </td>
                           <td>
                             <span
@@ -1215,15 +1214,15 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
               </div>
             </div>
             <p style={{ marginTop: 0, color: "#0f172a", textAlign: "center", lineHeight: 1.7, fontWeight: 700 }}>
-              You have selected submission frequency of{" "}
+              You have selected a submission frequency of{" "}
               <span style={{ whiteSpace: "nowrap" }}>
-                {previewFrequency} times {previewDays} {previewDaysLabel}
+                {previewFrequency} time{Number(previewFrequency) === 1 ? "" : "s"} every {previewDays} {previewDaysLabel}
               </span>{" "}
-              to{" "}
-              <span style={{ fontWeight: 800, color: "#2563eb" }}>
-                {previewPayload.rows[0]?.approval_l1_name || "L1 user"}
-              </span>{" "}
-              {previewPayload.department} &gt; {previewPayload.subDepartment} &gt; {previewPayload.notebook}
+              for
+              <br />
+              <span style={{ fontSize: 13, fontWeight: 800, color: "#4f63b6" }}>
+                {previewPayload.department} &gt; {previewPayload.subDepartment} &gt; {previewPayload.notebook}
+              </span>
             </p>
 
             <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 24 }}>
@@ -1231,12 +1230,12 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                 Cancel
               </button>
               <button
-                type="button"
-                className={styles.saveButton}
-                onClick={confirmSave}
-                disabled={saving}
-                style={{ background: "#2563eb", color: "#fff", borderColor: "#2563eb" }}
-              >
+              type="button"
+              className={styles.saveButton}
+              onClick={confirmSave}
+              disabled={saving}
+              style={{ background: "#4f63b6", color: "#fff", borderColor: "#4f63b6" }}
+            >
                 {saving ? "Saving..." : "Confirm"}
               </button>
             </div>

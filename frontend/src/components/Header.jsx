@@ -54,6 +54,26 @@ import styles from "../styles/header.module.css";
 
 const defaultNavLinks = [];
 
+// Notification link_url values are written by the backend as
+// /operator-tickets/<id> or /supervisor-tickets/<id>, but no such Next.js
+// pages exist - clicking them 404s. Map those to the real ticket detail
+// pages (/operatordetail for L1, /supervisordetails for L2+), matching the
+// ?ticketId= shape handleTicketClick uses elsewhere. Any other link_url
+// (already a valid app route) is passed through untouched.
+const resolveNotificationTarget = (linkUrl, user) => {
+    const raw = String(linkUrl || "").trim();
+    if (!raw) return "/activity-log";
+
+    const match = raw.match(/^\/(?:operator|supervisor)-tickets\/(.+)$/);
+    if (!match) return raw;
+
+    const ticketId = decodeURIComponent(match[1]);
+    const normalizedId = ticketId.startsWith("#") ? ticketId : `#${ticketId}`;
+    const level = String(user?.level ?? user?.user_details?.level ?? "").trim().toUpperCase();
+    const detailRoute = level === "L1" ? "/operatordetail" : "/supervisordetails";
+    return `${detailRoute}?ticketId=${encodeURIComponent(normalizedId)}&ticketType=Value`;
+};
+
 const sidebarLinks = [
     { href: "/", label: "Dashboard", icon: FiHome },
     { href: "/departments", label: "Department", icon: FiGrid },
@@ -457,7 +477,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
 
     const handleMarkNotificationRead = async (notification) => {
         if (!notification?.id || !notification?.source) return;
-        const targetUrl = notification?.link_url || "/activity-log";
+        const targetUrl = resolveNotificationTarget(notification?.link_url, user);
         try {
             await markNotificationReadApi({ source: notification.source, id: notification.id });
             setNotifications((current) =>

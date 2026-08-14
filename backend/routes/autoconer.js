@@ -3,7 +3,7 @@ const router = express.Router();
 const client = require('../connection');
 const sqlServer = require('../config/sqlserver');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
-const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, findExistingPpIdForCombo } = require('../utils/processParameterEntryId');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, findExistingPpIdForCombo, isEntryIdAlreadyClaimed } = require('../utils/processParameterEntryId');
 const SCREEN_ID_PREFIXES = {
   process: 'AP',
   q2: 'A2',
@@ -60,6 +60,13 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
   const entry_id = formatScreenEntryId(screenKey, record[idField]);
   return entry_id ? { ...record, entry_id } : { ...record };
 };
+const getAuthenticatedOperatorName = (req) =>
+  String(
+    req.user?.full_name ||
+    req.user?.name ||
+    req.user?.employee_id ||
+    ''
+  ).trim() || null;
 
 const isUniqueViolation = (err) => err && err.code === '23505';
 
@@ -319,7 +326,8 @@ const ensureAutoconerEntryIdColumns = async () => {
   await ensureAutoconerTimestampColumnsHaveTimezone();
   await client.query(`
     ALTER TABLE autoconer.autoconer_process_parameter
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS autoconer_process_parameter_entry_id_uq
@@ -329,7 +337,8 @@ const ensureAutoconerEntryIdColumns = async () => {
 
   await client.query(`
     ALTER TABLE autoconer.autoconer_q2_inspection
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS autoconer_q2_inspection_entry_id_uq
@@ -339,7 +348,25 @@ const ensureAutoconerEntryIdColumns = async () => {
 
   await client.query(`
     ALTER TABLE autoconer.autoconer_q3_inspection
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT;
+  `);
+  await client.query(`
+    ALTER TABLE autoconer.autoconer_q4_inspection
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT;
+  `);
+  await client.query(`
+    ALTER TABLE autoconer.lycra_checking_inspections
+      ADD COLUMN IF NOT EXISTS operator TEXT;
+  `);
+  await client.query(`
+    ALTER TABLE autoconer.cone_packing_audit
+      ADD COLUMN IF NOT EXISTS operator TEXT;
+  `);
+  await client.query(`
+    ALTER TABLE autoconer.inspections
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS autoconer_q3_inspection_entry_id_uq
@@ -354,6 +381,7 @@ const ensureAutoconerEntryIdColumns = async () => {
     CREATE TABLE IF NOT EXISTS autoconer.autoconer_q4_inspection (
       id SERIAL PRIMARY KEY,
       entry_id TEXT,
+      operator TEXT,
       count_name VARCHAR(100) NOT NULL,
       consignee_name VARCHAR(100) NOT NULL,
       creation_date DATE NOT NULL,
@@ -424,7 +452,8 @@ const ensureAutoconerEntryIdColumns = async () => {
 
   await client.query(`
     ALTER TABLE autoconer.drum_wise
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS drum_wise_entry_id_uq
@@ -477,6 +506,11 @@ const ensureAutoconerEntryIdColumns = async () => {
     CREATE UNIQUE INDEX IF NOT EXISTS cone_density_notebook_entry_id_uq
     ON autoconer.cone_density_notebook (entry_id)
     WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.cone_density_notebook
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
 
   // Rewinding study (inspection_data_entry) header never stored the drum-reading totals,
@@ -596,6 +630,7 @@ router.post('/lycra-checking', async (req, res) => {
       readings,
       summary
     } = req.body;
+    const operatorName = getAuthenticatedOperatorName(req);
 
     if (!inspection_type || !entry_date) {
       return res.status(400).json({ message: "Missing required fields" });
@@ -607,9 +642,9 @@ router.post('/lycra-checking', async (req, res) => {
     const header = await client.query(`
             INSERT INTO autoconer.lycra_checking_inspections
             (entry_id, inspection_type, test_no, entry_date, lycra_draft,
-             count_name, no_of_readings,
+             count_name, no_of_readings, operator,
              lycra_weight, fabric_weight, total_weight, lycra_percent)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             RETURNING id
         `, [
       entry_id || null,
@@ -619,6 +654,7 @@ router.post('/lycra-checking', async (req, res) => {
       lycra_draft,
       count_name,
       no_of_readings,
+      operatorName,
       lycra_weight,
       fabric_weight,
       total_weight,
@@ -945,10 +981,10 @@ router.post('/drum-wise', async (req, res) => {
     // that drum_wise already has for exactly this purpose.
     const drumWiseResult = await client.query(
       `INSERT INTO autoconer.drum_wise
-            (entry_id, test_no, entry_date, type, machine_code, count_name, drum_from, drum_to, remarks)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            (entry_id, test_no, entry_date, type, machine_code, count_name, drum_from, drum_to, operator, remarks)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING id`,
-      [entry_id || null, test_no, entry_date, type, machine_code || null, count_name || null, drum_from, drum_to, remarks]
+      [entry_id || null, test_no, entry_date, type, machine_code || null, count_name || null, drum_from, drum_to, getAuthenticatedOperatorName(req), remarks]
     );
 
     const drum_wise_id = drumWiseResult.rows[0].id;
@@ -1253,10 +1289,10 @@ router.post('/splice-strength', async (req, res) => {
 
     const inspectionResult = await client.query(
       `INSERT INTO autoconer.inspections
-            (entry_id, type, test_no, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            (entry_id, type, test_no, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average, operator)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             RETURNING id`,
-      [entry_id || null, type, parsedTestNo, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average]
+      [entry_id || null, type, parsedTestNo, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average, getAuthenticatedOperatorName(req)]
     );
 
     const inspection_id = inspectionResult.rows[0].id;
@@ -1812,10 +1848,10 @@ router.post('/cone-density-notebook', async (req, res) => {
 
     const headerResult = await client.query(
       `INSERT INTO autoconer.cone_density_notebook
-        (entry_id, entry_date, type, count_name, cntcode, auto_coner_no, drum_from, drum_to, cone_tip, remarks)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        (entry_id, entry_date, type, count_name, cntcode, auto_coner_no, drum_from, drum_to, cone_tip, operator, remarks)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
         RETURNING id`,
-      [entry_id, entry_date, type || 'Cone Density', count_name, cntcode || null, auto_coner_no, drum_from, drum_to, cone_tip, remarks || null]
+      [entry_id, entry_date, type || 'Cone Density', count_name, cntcode || null, auto_coner_no, drum_from, drum_to, cone_tip, getAuthenticatedOperatorName(req), remarks || null]
     );
     const notebook_id = headerResult.rows[0].id;
 
@@ -2277,8 +2313,9 @@ router.post('/cone-packing-audit', async (req, res) => {
             (entry_id, inspection_date, packed_date, count_name, gross_weight_std, gross_weight_actual,
              box_colour, cone_colour, gum_tape_colour, count_label, cone_damage,
              cover_missing, cone_hardness, stap_cone, disk, barcode, center_pad,
+             operator,
              net_weight, tare_weight, strap_colour)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
             RETURNING id`,
       [
         entry_id || null,
@@ -2298,6 +2335,7 @@ router.post('/cone-packing-audit', async (req, res) => {
         disk,
         barcode,
         center_pad,
+        getAuthenticatedOperatorName(req),
         net_weight,
         tare_weight,
         strap_colour
@@ -3065,6 +3103,7 @@ router.post('/process', async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO autoconer.autoconer_process_parameter (
         entry_id,
+        operator,
         count_name, consignee_name, creation_date,
         machine_no, drum_no,
         speed, p_cone_identification, cone_weight, initial_winding_tension,
@@ -3074,17 +3113,18 @@ router.post('/process', async (req, res, next) => {
         cradle_pressure, cone_density, cone_cops
       )
       VALUES (
-        $1,$2,$3,$4,
-        $5,$6,
-        $7,$8,$9,$10,
-        $11,$12,$13,
-        $14,$15,$16,
-        $17,$18,$19,$20,
-        $21,$22,$23
+        $1,$2,$3,$4,$5,
+        $6,$7,
+        $8,$9,$10,$11,
+        $12,$13,$14,
+        $15,$16,$17,
+        $18,$19,$20,$21,
+        $22,$23,$24
       )
       RETURNING *`,
       [
         resolvedEntryId,
+        getAuthenticatedOperatorName(req),
         data.count_name,
         data.consignee_name,
         data.creation_date,
@@ -3586,16 +3626,21 @@ router.post('/q2', async (req, res, next) => {
     // trusting it verbatim - otherwise the sequence never moves and every
     // department keeps previewing/claiming the same "next" PP id.
     //
-    // When no entry_id is supplied at all (a "Create New PP"-style submission),
-    // check first whether an already in-progress PP has this exact count_name +
-    // consignee_name combo elsewhere - otherwise a submission for a batch that's
-    // already underway silently mints a duplicate PP id instead of joining it.
-    // Check for an existing PP match FIRST, before trusting whatever entry_id was sent - the
-    // frontend proactively fills entry_id with a client-guessed "next id" preview even on a
-    // fresh "Create New PP" (not just when the user explicitly continues an existing one), so
-    // data.entry_id is essentially never actually empty and a fallback-only check here would
-    // never run.
-    const requestedEntryId = (await findExistingPpIdForCombo(data.count_name, data.consignee_name)) || data.entry_id;
+    // The combo-based match (same count_name + consignee_name already
+    // in-progress elsewhere) only exists to catch "Create New PP" submissions
+    // that are secretly continuing a batch someone else already started -
+    // it must NOT run when data.entry_id already names a real, previously-
+    // issued PP id, since the same count_name/consignee_name legitimately
+    // recurs across separate PP batches for the same recurring yarn/customer
+    // over time. Previously this always preferred the combo match, so
+    // "Update Existing PP" -> a specific PP id could silently get overridden
+    // by an unrelated older/newer PP that happened to share that combo,
+    // producing "duplicate count name" or "duplicate entry_id" errors that
+    // named the wrong PP entirely.
+    const providedEntryIdIsRealPp = await isEntryIdAlreadyClaimed(data.entry_id);
+    const requestedEntryId = providedEntryIdIsRealPp
+      ? data.entry_id
+      : (await findExistingPpIdForCombo(data.count_name, data.consignee_name)) || data.entry_id;
     const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(requestedEntryId);
 
     const conflictingCountName = await getCountNameConflict(resolvedEntryId, data.count_name);
@@ -3606,6 +3651,7 @@ router.post('/q2', async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO autoconer.autoconer_q2_inspection (
         entry_id,
+        operator,
         count_name, consignee_name, creation_date,
         n_value, s_value, l_value,
         lh1, lh2, lh3, lh4, lh5, lh6,
@@ -3617,19 +3663,20 @@ router.post('/q2', async (req, res, next) => {
         reference_length, measurement, upper_alarm_limit, lower_alarm_limit, action
       )
       VALUES (
-        $1,$2,$3,$4,
-        $5,$6,$7,
-        $8,$9,$10,$11,$12,$13,
-        $14,$15,$16,$17,$18,$19,$20,
-        $21,$22,$23,$24,$25,
-        $26,$27,$28,$29,$30,$31,
-        $32,$33,$34,$35,
-        $36,$37,$38,$39,$40,$41,
-        $42,$43,$44,$45,$46
+        $1,$2,$3,$4,$5,
+        $6,$7,$8,
+        $9,$10,$11,$12,$13,$14,
+        $15,$16,$17,$18,$19,$20,$21,
+        $22,$23,$24,$25,$26,
+        $27,$28,$29,$30,$31,$32,
+        $33,$34,$35,$36,
+        $37,$38,$39,$40,$41,$42,
+        $43,$44,$45,$46,$47
       )
       RETURNING *`,
       [
         resolvedEntryId,
+        getAuthenticatedOperatorName(req),
         data.count_name, data.consignee_name, data.creation_date,
         data.n_value, data.s_value, data.l_value,
         data.lh1, data.lh2, data.lh3, data.lh4, data.lh5, data.lh6,
@@ -4102,16 +4149,21 @@ router.post('/q3', async (req, res, next) => {
     // trusting it verbatim - otherwise the sequence never moves and every
     // department keeps previewing/claiming the same "next" PP id.
     //
-    // When no entry_id is supplied at all (a "Create New PP"-style submission),
-    // check first whether an already in-progress PP has this exact count_name +
-    // consignee_name combo elsewhere - otherwise a submission for a batch that's
-    // already underway silently mints a duplicate PP id instead of joining it.
-    // Check for an existing PP match FIRST, before trusting whatever entry_id was sent - the
-    // frontend proactively fills entry_id with a client-guessed "next id" preview even on a
-    // fresh "Create New PP" (not just when the user explicitly continues an existing one), so
-    // data.entry_id is essentially never actually empty and a fallback-only check here would
-    // never run.
-    const requestedEntryId = (await findExistingPpIdForCombo(data.count_name, data.consignee_name)) || data.entry_id;
+    // The combo-based match (same count_name + consignee_name already
+    // in-progress elsewhere) only exists to catch "Create New PP" submissions
+    // that are secretly continuing a batch someone else already started -
+    // it must NOT run when data.entry_id already names a real, previously-
+    // issued PP id, since the same count_name/consignee_name legitimately
+    // recurs across separate PP batches for the same recurring yarn/customer
+    // over time. Previously this always preferred the combo match, so
+    // "Update Existing PP" -> a specific PP id could silently get overridden
+    // by an unrelated older/newer PP that happened to share that combo,
+    // producing "duplicate count name" or "duplicate entry_id" errors that
+    // named the wrong PP entirely.
+    const providedEntryIdIsRealPp = await isEntryIdAlreadyClaimed(data.entry_id);
+    const requestedEntryId = providedEntryIdIsRealPp
+      ? data.entry_id
+      : (await findExistingPpIdForCombo(data.count_name, data.consignee_name)) || data.entry_id;
     const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(requestedEntryId);
 
     const conflictingCountName = await getCountNameConflict(resolvedEntryId, data.count_name);
@@ -4122,6 +4174,7 @@ router.post('/q3', async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO autoconer.autoconer_q3_inspection (
         entry_id,
+        operator,
         count_name, consignee_name, creation_date,
         nsl1, nsl2, nsl3, nsl4, nsl5, nsl6, nsl7,
         t1, t2, t3, t4, t5,
@@ -4134,20 +4187,21 @@ router.post('/q3', async (req, res, next) => {
         action, suction_status, blocking
       )
       VALUES (
-        $1,$2,$3,$4,
-        $5,$6,$7,$8,$9,$10,$11,
-        $12,$13,$14,$15,$16,
-        $17,$18,
-        $19,$20,$21,$22,$23,$24,$25,
-        $26,$27,$28,$29,$30,$31,$32,
-        $33,$34,$35,
-        $36,$37,$38,$39,$40,$41,
-        $42,$43,$44,$45,$46,
-        $47,$48,$49
+        $1,$2,$3,$4,$5,
+        $6,$7,$8,$9,$10,$11,$12,
+        $13,$14,$15,$16,$17,
+        $18,$19,
+        $20,$21,$22,$23,$24,$25,$26,
+        $27,$28,$29,$30,$31,$32,$33,
+        $34,$35,$36,
+        $37,$38,$39,$40,$41,$42,
+        $43,$44,$45,$46,$47,
+        $48,$49,$50
       )
       RETURNING *`,
       [
         resolvedEntryId,
+        getAuthenticatedOperatorName(req),
         data.count_name, data.consignee_name, data.creation_date,
         data.nsl1, data.nsl2, data.nsl3, data.nsl4, data.nsl5, data.nsl6, data.nsl7,
         data.t1, data.t2, data.t3, data.t4, data.t5,
@@ -4417,6 +4471,7 @@ router.post('/q4', async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO autoconer.autoconer_q4_inspection (
         entry_id,
+        operator,
         count_name, consignee_name, creation_date,
         nsl1, nsl2, nsl3, nsl4, nsl5, nsl6, nsl7,
         t1, t2, t3, t4, t5,
@@ -4431,22 +4486,23 @@ router.post('/q4', async (req, res, next) => {
         nsl_max_event, t_max_event, fd_max_events, fl_max_events
       )
       VALUES (
-        $1,$2,$3,$4,
-        $5,$6,$7,$8,$9,$10,$11,
-        $12,$13,$14,$15,$16,
-        $17,$18,
-        $19,$20,$21,$22,$23,$24,$25,
-        $26,$27,$28,$29,$30,$31,$32,
-        $33,$34,$35,
-        $36,$37,$38,$39,$40,$41,
-        $42,$43,$44,$45,$46,
-        $47,$48,$49,$50,
-        $51,$52,$53,$54,$55,$56,
-        $57,$58,$59,$60
+        $1,$2,$3,$4,$5,
+        $6,$7,$8,$9,$10,$11,$12,
+        $13,$14,$15,$16,$17,
+        $18,$19,
+        $20,$21,$22,$23,$24,$25,$26,
+        $27,$28,$29,$30,$31,$32,$33,
+        $34,$35,$36,
+        $37,$38,$39,$40,$41,$42,
+        $43,$44,$45,$46,$47,
+        $48,$49,$50,$51,
+        $52,$53,$54,$55,$56,$57,
+        $58,$59,$60,$61
       )
       RETURNING *`,
       [
         resolvedEntryId,
+        getAuthenticatedOperatorName(req),
         data.count_name, data.consignee_name, data.creation_date,
         data.nsl1, data.nsl2, data.nsl3, data.nsl4, data.nsl5, data.nsl6, data.nsl7,
         data.t1, data.t2, data.t3, data.t4, data.t5,

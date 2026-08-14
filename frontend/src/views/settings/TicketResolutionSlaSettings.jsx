@@ -102,15 +102,13 @@ export default function TicketResolutionSlaSettings() {
   return (
     <div className={styles.stack}>
       <section className={styles.sectionPlain}>
-        <div className={styles.sectionHeader}>
-          <h2>Set the Ticket Resolution SLA</h2>
-        </div>
+        <div className={styles.sectionHeader} />
 
         <div className={styles.rulesTable}>
           <div className={styles.ruleCard}>
             <div className={styles.ruleGrid} style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto" }}>
               <label className={styles.field} style={{ gridColumn: "1 / 2", gridRow: "1" }}>
-                <span>Ticket Created On</span>
+                <span>Level Type</span>
                 <select value={selectedLevel} onChange={(event) => setSelectedLevel(event.target.value)}>
                   {LEVELS.map((level) => (
                     <option key={level} value={level}>{level}</option>
@@ -119,7 +117,7 @@ export default function TicketResolutionSlaSettings() {
               </label>
 
               <label className={styles.field} style={{ gridColumn: "2 / 3", gridRow: "1" }}>
-                <span>Ticket Resolution Time</span>
+                <span>Resolution Time</span>
                 <select value={selectedHours} onChange={(event) => setSelectedHours(event.target.value)}>
                   {HOUR_OPTIONS.map((hour) => (
                     <option key={hour} value={hour}>{hour} Hrs</option>
@@ -137,54 +135,49 @@ export default function TicketResolutionSlaSettings() {
               </div>
             </div>
           </div>
-        </div>
-      </section>
 
-      <section className={styles.existingThresholdSection}>
-        <div className={styles.sectionHeader}>
-          <h2>Existing Thresholds</h2>
-        </div>
-
-        <article className={styles.existingThresholdListItem}>
-          <div className={styles.existingThresholdListMain}>
-            <div>
-              <h3 className={styles.existingThresholdListTitle}>{selectedExistingRow.level}</h3>
-              <p className={styles.existingThresholdListSubtitle}>Ticket Created On</p>
-            </div>
+          <div className={styles.slaTableWrap}>
+            <table className={styles.slaTable}>
+              <thead>
+                <tr>
+                  <th>Level Type</th>
+                  <th>Resolution Time</th>
+                  <th>Status</th>
+                  <th>Created At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.level}>
+                    <td>{row.level}</td>
+                    <td>{row.hours} Hrs</td>
+                    <td>
+                      <div className={styles.slaStatusToggle} role="group" aria-label={`${row.level} SLA status`}>
+                        <button
+                          type="button"
+                          className={`${styles.slaStatusToggleButton} ${row.is_active ? styles.slaStatusToggleButtonActive : ""}`}
+                          onClick={() => toggleStatus(row.level, true)}
+                          disabled={busyLevel === row.level || row.is_active}
+                        >
+                          Active
+                        </button>
+                        <button
+                          type="button"
+                          className={`${styles.slaStatusToggleButton} ${!row.is_active ? styles.slaStatusToggleButtonInactive : ""}`}
+                          onClick={() => toggleStatus(row.level, false)}
+                          disabled={busyLevel === row.level || !row.is_active}
+                        >
+                          Inactive
+                        </button>
+                      </div>
+                    </td>
+                    <td>{formatTimestamp(row.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-
-          <div className={styles.existingThresholdListMeta}>
-            <div className={styles.existingThresholdMetaCell}>
-              <span className={styles.existingThresholdListLabel}>Ticket Resolution Time</span>
-              <strong className={styles.existingThresholdListValue}>{selectedExistingRow.hours} Hrs</strong>
-            </div>
-            <div className={styles.existingThresholdMetaCell}>
-              <span className={styles.existingThresholdListLabel}>Status</span>
-              <div className={styles.slaStatusToggle} role="group" aria-label="Ticket resolution SLA status">
-                <button
-                  type="button"
-                  className={`${styles.slaStatusToggleButton} ${selectedExistingRow.is_active ? styles.slaStatusToggleButtonActive : ""}`}
-                  onClick={() => toggleStatus(selectedExistingRow.level, true)}
-                  disabled={busyLevel === selectedExistingRow.level || selectedExistingRow.is_active}
-                >
-                  Active
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.slaStatusToggleButton} ${!selectedExistingRow.is_active ? styles.slaStatusToggleButtonInactive : ""}`}
-                  onClick={() => toggleStatus(selectedExistingRow.level, false)}
-                  disabled={busyLevel === selectedExistingRow.level || !selectedExistingRow.is_active}
-                >
-                  Inactive
-                </button>
-              </div>
-            </div>
-            <div className={styles.existingThresholdMetaCell}>
-              <span className={styles.existingThresholdListLabel}>Created At</span>
-              <strong className={styles.existingThresholdListValue}>{formatTimestamp(selectedExistingRow.createdAt)}</strong>
-            </div>
-          </div>
-        </article>
+        </div>
 
         {message ? <p className={styles.successMessage}>{message}</p> : null}
         {error ? <p className={styles.errorMessage}>{error}</p> : null}

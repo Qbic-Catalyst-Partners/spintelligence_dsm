@@ -132,8 +132,9 @@ const FibreDataEntry = forwardRef(function FibreDataEntry({ date, entryId, lotNo
             await createThresholdViolationTickets({
                 department: "Quality Control",
                 subDepartment: "Mixing",
-                screenName: selectedTypeName || "Fibre",
-                machineName: selectedTypeName || "Fibre",
+                screenName: selectedTypeName || "Fibre Data Entry",
+                machineName: selectedTypeName || "Fibre Data Entry",
+                entryId: linkedEntryId,
                 values: [
                     { label: "Cut Length", value: formData.cutLength },
                     { label: "Length CV", value: formData.lengthCV },

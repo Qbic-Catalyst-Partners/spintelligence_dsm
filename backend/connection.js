@@ -621,87 +621,32 @@ const initPromise = (async () => {
   `);
 
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.threshold_master (
+    CREATE TABLE IF NOT EXISTS ticketing_system.value_threshold_rules (
       id bigserial PRIMARY KEY,
-      management_field varchar(100),
-      erp_product_code varchar(100),
-      machine_name varchar(100) NOT NULL,
-      parameter_name varchar(100),
-      threshold_value numeric,
-      department varchar(100),
-      sub_department varchar(100),
-      input_screen varchar(150),
-      input_field varchar(100),
-      condition_level varchar(30) NOT NULL DEFAULT 'More Than',
-      plus_threshold numeric,
-      minus_threshold numeric,
-      actual_value varchar(100),
+      department varchar(100) NOT NULL,
+      sub_department varchar(100) NOT NULL,
+      notebook varchar(150) NOT NULL,
+      field varchar(150) NOT NULL,
+      l1_user_id integer NOT NULL REFERENCES users.user_details(id),
+      l1_user_name varchar(255),
+      criticality varchar(50) NOT NULL,
+      typical_value text NOT NULL,
+      value_mode varchar(20) NOT NULL,
+      plus_value numeric,
+      minus_value numeric,
+      unique_ticket_key text NOT NULL,
       is_active boolean NOT NULL DEFAULT true,
       created_at timestamptz NOT NULL DEFAULT NOW(),
-      updated_at timestamptz NOT NULL DEFAULT NOW()
+      updated_at timestamptz NOT NULL DEFAULT NOW(),
+      UNIQUE (unique_ticket_key)
     );
   `);
 
   await pool.query(`
-    ALTER TABLE ticketing_system.threshold_master
-      ADD COLUMN IF NOT EXISTS management_field varchar(100),
-      ADD COLUMN IF NOT EXISTS erp_product_code varchar(100),
-      ADD COLUMN IF NOT EXISTS machine_name varchar(100),
-      ADD COLUMN IF NOT EXISTS parameter_name varchar(100),
-      ADD COLUMN IF NOT EXISTS threshold_value numeric,
-      ADD COLUMN IF NOT EXISTS department varchar(100),
-      ADD COLUMN IF NOT EXISTS sub_department varchar(100),
-      ADD COLUMN IF NOT EXISTS input_screen varchar(150),
-      ADD COLUMN IF NOT EXISTS input_field varchar(100),
-      ADD COLUMN IF NOT EXISTS condition_level varchar(30) DEFAULT 'More Than',
-      ADD COLUMN IF NOT EXISTS plus_threshold numeric,
-      ADD COLUMN IF NOT EXISTS minus_threshold numeric,
-      ADD COLUMN IF NOT EXISTS actual_value varchar(100),
-      ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true,
-      ADD COLUMN IF NOT EXISTS approval_l1_user_id integer REFERENCES users.user_details(id),
-      ADD COLUMN IF NOT EXISTS approval_l2_user_id integer REFERENCES users.user_details(id),
-      ADD COLUMN IF NOT EXISTS approval_l3_user_id integer,
-      ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT NOW(),
-      ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT NOW();
+    CREATE INDEX IF NOT EXISTS value_threshold_rules_lookup_idx
+    ON ticketing_system.value_threshold_rules (department, sub_department, notebook, field, l1_user_id, criticality, value_mode, is_active)
   `);
 
-  await pool.query(`
-    UPDATE ticketing_system.threshold_master
-    SET threshold_value = COALESCE(threshold_value, plus_threshold, minus_threshold),
-        updated_at = COALESCE(updated_at, NOW())
-    WHERE threshold_value IS NULL
-      AND (plus_threshold IS NOT NULL OR minus_threshold IS NOT NULL);
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.threshold_master_l1_approvers (
-      id bigserial PRIMARY KEY,
-      threshold_master_id bigint NOT NULL,
-      approver_user_id integer NOT NULL,
-      created_at timestamptz NOT NULL DEFAULT NOW(),
-      UNIQUE (threshold_master_id, approver_user_id)
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.threshold_master_l2_approvers (
-      id bigserial PRIMARY KEY,
-      threshold_master_id bigint NOT NULL,
-      approver_user_id integer NOT NULL,
-      created_at timestamptz NOT NULL DEFAULT NOW(),
-      UNIQUE (threshold_master_id, approver_user_id)
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.threshold_master_l3_approvers (
-      id bigserial PRIMARY KEY,
-      threshold_master_id bigint NOT NULL,
-      approver_user_id integer NOT NULL,
-      created_at timestamptz NOT NULL DEFAULT NOW(),
-      UNIQUE (threshold_master_id, approver_user_id)
-    );
-  `);
 })().catch(err => {
   console.error('[DB Init] Initialization warning (non-fatal):', err.message);
   // Don't throw - let queries attempt despite init failure

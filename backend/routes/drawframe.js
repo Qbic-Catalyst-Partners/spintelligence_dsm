@@ -6,7 +6,6 @@ const sqlServerPrep = require('../config/sqlserverPrep');
 const { fetchPrepVarieties, isDatabaseAccessDenied } = require('../utils/prepVariety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
-const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const { createWheelChangeApprovalTicket, closeWheelChangeApprovalTicket } = require('./spinning');
 const SCREEN_ID_PREFIXES = {
   yarn_cv: 'DY',
@@ -188,6 +187,7 @@ const ensureWrappingComberNoilPercentTable = async () => {
       id BIGSERIAL PRIMARY KEY,
       entry_id TEXT,
       entry_type TEXT,
+      operator TEXT,
       schema_name TEXT,
       table_name TEXT,
       pdf_file TEXT,
@@ -204,6 +204,7 @@ const ensureWrappingComberNoilPercentTable = async () => {
     ALTER TABLE wrapping.comber_noil_percent
       ADD COLUMN IF NOT EXISTS entry_id TEXT,
       ADD COLUMN IF NOT EXISTS entry_type TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT,
       ADD COLUMN IF NOT EXISTS schema_name TEXT,
       ADD COLUMN IF NOT EXISTS table_name TEXT,
       ADD COLUMN IF NOT EXISTS pdf_file TEXT,
@@ -289,7 +290,8 @@ const ensureDrawframeEntryIdColumns = async () => {
 
   await client.query(`
     ALTER TABLE drawframe.cots_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
   await client.query(`
     ALTER TABLE drawframe.cots_breaker_data
@@ -625,14 +627,15 @@ const saveWrappingComberNoilPercent = async (req, res, next) => {
 
     const result = await client.query(
       `INSERT INTO wrapping.comber_noil_percent (
-        entry_id, entry_type, schema_name, table_name, pdf_file,
+        entry_id, entry_type, operator, schema_name, table_name, pdf_file,
         meta, sample_rows, summary_rows, rows, raw_ocr_rows
       )
-      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb)
+      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb)
       RETURNING *`,
       [
         payload.entry_id ?? null,
         payload.entry_type ?? 'Comber Noil Percent',
+        String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null,
         payload.schema_name ?? 'wrapping',
         payload.table_name ?? 'comber_noil_percent',
         payload.pdf_file ?? payload.pdfFile ?? null,
@@ -1632,14 +1635,15 @@ router.post('/cots', async (req, res) => {
             return res.status(400).json({ message: "entry_id is required and must be unique" });
         }
 
+        const operatorName = getAuthenticatedOperatorName(req);
         await client.query('BEGIN');
 
         const entry = await client.query(
             `INSERT INTO drawframe.cots_data_entry
-            (entry_id, entry_date, shift, sub_type)
-            VALUES ($1,$2,$3,$4)
+            (entry_id, entry_date, shift, sub_type, operator)
+            VALUES ($1,$2,$3,$4,$5)
             RETURNING id`,
-            [entry_id, entry_date, shift, sub_type]
+            [entry_id, entry_date, shift, sub_type, operatorName]
         );
 
         const createdEntryId = entry.rows[0].id;
@@ -2280,7 +2284,9 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
       ]
     );
 
-    await createWheelChangeApprovalTicket('drawframe.wheel_change', result.rows[0].id);
+    // No ticket raised here anymore - see runWheelChangeApprovalOverdueCheck
+    // in spinning.js, which raises it once this row's configured TAT window
+    // actually elapses with approval_status still 'pending'.
 
     res.status(201).json({
       message: 'Drawframe wheel change entry created successfully',
@@ -2624,21 +2630,14 @@ router.put('/header/:ins_id', async (req, res, next) => {
       return res.status(404).json({ message: 'Drawframe entry not found' });
     }
 
-    // PP_SUB_DEPARTMENTS (ticketing_system's completion tracking) expects Breaker and
-    // Finisher to be logged as two distinct notebooks — hardcoding 'Drawframe QC Header'
-    // for both meant a real Finisher submission was indistinguishable from a Breaker one,
-    // so the batch-completion checker could never see "Drawframe Finisher Drawing
-    // Inspection" as actually done.
-    recordPpNotebookSubmission({
-      notebook: entry_scope === 'finisher' ? 'Drawframe Finisher Drawing Inspection' : 'Drawframe QC Header',
-      department: 'Drawframe',
-      entryId: entry_id,
-      sourceSchema: 'drawframe',
-      sourceTable: 'drawframe_qc_header',
-      submittedByUserId: req.user?.id,
-      submittedByName: req.user?.employee_id,
-      submittedPayload: { count_name, consignee_name, creation_date }
-    }).catch((err) => console.warn('[pp-notebook-log] Drawframe QC Header failed:', err.message));
+    // PP Batch completion tracking reads entry_scope directly off this table
+    // (see PP_BATCH_NOTEBOOKS in submittedNotebooks.routes.js), so it doesn't
+    // need this row logged into submitted_notebooks. The frontend
+    // (DrawFrameHeaderEntry.jsx) already calls recordSubmittedNotebook after
+    // every save, create or update - doing it here too created a second
+    // submitted_notebooks row per edit and, once overdue, a duplicate
+    // acknowledgement-overdue ticket for the same entry (the same bug fixed
+    // for AFIS Data Entry in mixing.js).
 
     res.status(200).json({
       message: 'Drawframe entry updated successfully',

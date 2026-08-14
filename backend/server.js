@@ -412,7 +412,7 @@ const helpContentRouter = require('./routes/helpContent.routes');
 const inAppNotificationsRouter = require('./routes/inAppNotifications.routes');
 const supervisorAssignmentsRouter = require('./routes/supervisorAssignments.routes');
 const delegationsRouter = require('./routes/delegations.routes');
-const { router: submittedNotebooksRouter, generateOverdueNotebookTickets, runPpBatchCompletionCheck } = require('./routes/submittedNotebooks.routes');
+const { router: submittedNotebooksRouter, generateOverdueNotebookTickets, runPpBatchCompletionCheck, runPpBatchTatCheck } = require('./routes/submittedNotebooks.routes');
 const processParametersRoutes = require('./routes/processParameters');
 const spinningRoutes = require('./routes/spinning');
 const { router: reportSchedulesRouter, startReportScheduleWorker } = require('./routes/reportSchedules.routes');
@@ -627,6 +627,15 @@ const startThresholdTicketWorker = () => {
     }
 
     try {
+      const escalated = await runPpBatchTatCheck();
+      if (escalated.length) {
+        console.log(`[pp-batch] escalated ${escalated.length} ticket(s) to the next tier`);
+      }
+    } catch (error) {
+      console.warn('[pp-batch] TAT worker skipped:', error.message);
+    }
+
+    try {
       const created = await operatorTicketRoutes.runSubmissionFrequencyCheck();
       if (created.length) {
         console.log(`[submission-frequency] generated ${created.length} missed-frequency ticket(s)`);
@@ -642,12 +651,30 @@ const startThresholdTicketWorker = () => {
     }
 
     try {
+      const created = await processParametersRoutes.runPpApprovalOverdueCheck();
+      if (created.length) {
+        console.log(`[pp-approval] raised ${created.length} ticket(s) - TAT window elapsed: ${created.join(', ')}`);
+      }
+    } catch (error) {
+      console.warn('[pp-approval] overdue worker skipped:', error.message);
+    }
+
+    try {
       const escalated = await processParametersRoutes.runPpApprovalTatCheck();
       if (escalated.length) {
         console.log(`[pp-approval] escalated ${escalated.length} ticket(s) to L5`);
       }
     } catch (error) {
       console.warn('[pp-approval] TAT worker skipped:', error.message);
+    }
+
+    try {
+      const created = await spinningRoutes.runWheelChangeApprovalOverdueCheck();
+      if (created.length) {
+        console.log(`[wheel-change-approval] raised ${created.length} ticket(s) - TAT window elapsed: ${created.join(', ')}`);
+      }
+    } catch (error) {
+      console.warn('[wheel-change-approval] overdue worker skipped:', error.message);
     }
 
     try {
@@ -658,6 +685,18 @@ const startThresholdTicketWorker = () => {
     } catch (error) {
       console.warn('[wheel-change-approval] TAT worker skipped:', error.message);
     }
+
+    try {
+      const { closed, reopened } = await supervisorTicketRoutes.runL4SelfResolveReconciliationCheck();
+      if (closed.length) {
+        console.log(`[l4-self-resolve] confirmed and closed ${closed.length} ticket(s): ${closed.join(', ')}`);
+      }
+      if (reopened.length) {
+        console.log(`[l4-self-resolve] not actually completed, reopened ${reopened.length} ticket(s): ${reopened.join(', ')}`);
+      }
+    } catch (error) {
+      console.warn('[l4-self-resolve] reconciliation worker skipped:', error.message);
+    }
   };
 
   setTimeout(run, 8000);
@@ -665,5 +704,15 @@ const startThresholdTicketWorker = () => {
 };
 
 startThresholdTicketWorker();
+
+// value_threshold_rules' comparison_mode column (and the table itself) was
+// previously only migrated lazily, the first time someone hit the
+// /operator-tickets/thresholds routes - notebook submit routes that evaluate
+// against it (mixing.js's autoCreateTicket) never triggered that migration
+// themselves, so a fresh deploy's very first threshold breach could 500 on a
+// missing column. Ensure it once at boot instead.
+db.initPromise
+  .then(() => operatorTicketRoutes.ensureValueThresholdRulesTable())
+  .catch((error) => console.warn('[value-threshold-rules] schema ensure skipped:', error.message));
 
 

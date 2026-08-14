@@ -633,14 +633,15 @@ router.post('/lap-cv', async (req, res) => {
         if (!samples || !samples.length) {
             return res.status(400).json({ message: 'Samples required' });
         }
+        const operatorName = String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null;
 
         const qc_id = await withTransaction(async () => {
 
             const main = await client.query(
                 `INSERT INTO comber.ribbon_lap_cv_qc
                 (entry_id, entry_type, sample_count, record_date, machine_name, variety, type, lap_weight,
-                 lap_length, grams_per_meter, average, minimum, maximum, std_deviation, cv_percent)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                 lap_length, grams_per_meter, average, minimum, maximum, std_deviation, cv_percent, operator)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
                 RETURNING id`,
                 [
                     entry_id,
@@ -657,7 +658,8 @@ router.post('/lap-cv', async (req, res) => {
                     minimum,
                     maximum,
                     std_deviation,
-                    cv_percent
+                    cv_percent,
+                    operatorName
                 ]
             );
 

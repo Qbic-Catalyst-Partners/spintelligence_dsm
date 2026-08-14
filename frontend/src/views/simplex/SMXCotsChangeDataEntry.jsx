@@ -9,6 +9,7 @@ import {
   submitSimplexCotsChange,
 } from "@/store/slices/simplex";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 
 const detailItems = [
   "Front Cots Damage",
@@ -195,6 +196,19 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
         } catch (customFieldError) {
           console.error("Failed to save custom field values:", customFieldError);
         }
+      }
+
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Simplex",
+          screenName: selectedTypeName || form.type,
+          machineName: form.mcName || selectedTypeName || form.type,
+          entryId,
+          values: details.map((detail) => ({ label: detail.item, value: detail.value })),
+        });
+      } catch (thresholdError) {
+        console.error("Failed to evaluate value thresholds:", thresholdError);
       }
 
       return true;

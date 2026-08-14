@@ -2303,12 +2303,19 @@ const inferFields = (rows) => {
 };
 
 const toReportField = (fieldName) => {
-  const label = String(fieldName || "").trim();
-  if (!label) return null;
+  const rawLabel = String(fieldName || "").trim();
+  if (!rawLabel) return null;
+
+  const normalized = rawLabel.trim().toLowerCase();
+  const normalizedField =
+    normalized === "scn_gms" || normalized === "scngms" || normalized === "scngm" ||
+    normalized === "scn gm" || normalized === "scn gms"
+      ? "SCN/gm"
+      : rawLabel;
 
   return {
-    key: label,
-    label,
+    key: normalizedField,
+    label: normalizedField,
   };
 };
 
@@ -2327,6 +2334,9 @@ const reportFieldAliases = {
   "Guide Roll": ["guide_roll_total"],
   "Lycra Missing": ["lycra_missing_total"],
   "Others": ["others_total"],
+  // AFIS stores this field in the backend as scn_gms, but reports should only expose the user-facing
+  // label "SCN/gm" instead of the raw DB column name.
+  "SCN/gm": ["scn_gms", "scnGms", "SCN Gms", "SCN gm"],
   // Spinning Wheel Change Type 1/2 name their machine reference column "fm_no", Type 3 names it
   // "fr_no" — the form itself labels all three "R/F No." identically.
   "R/F No.": ["fm_no", "fr_no"],

@@ -158,21 +158,23 @@ export const fetchTicketApprovalsApi = async (ticketId) => {
   }
 };
 
-// GET Value Threshold L2 approval queue - one row per ticket_approvals L2 entry
-// (not one row per ticket), so rejected+resubmitted tickets show every cycle separately.
-export const fetchL2ApprovalQueueApi = async (params = {}) => {
+// GET approval queue for the requested supervisor level - one row per
+// ticket_approvals entry, so rejected+resubmitted tickets show every cycle separately.
+export const fetchApprovalQueueApi = async (params = {}) => {
   try {
-    const response = await apiConfig.get("/operator-tickets/approvals/l2-queue", params, {
+    const response = await apiConfig.get("/operator-tickets/approvals/queue", params, {
       skipGlobalErrorModal: true,
     });
     return response.data;
   } catch (error) {
     if (error?.response?.data) {
-      throw new Error(error.response.data.message || "Failed to fetch L2 approval queue");
+      throw new Error(error.response.data.message || "Failed to fetch approval queue");
     }
     throw new Error(error.message || "Server error occurred");
   }
 };
+
+export const fetchL2ApprovalQueueApi = async (params = {}) => fetchApprovalQueueApi({ ...params, level: "L2" });
 
 export const createOperatorTicket = async (payload) => {
   try {

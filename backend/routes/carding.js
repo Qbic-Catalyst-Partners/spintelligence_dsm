@@ -304,6 +304,7 @@ const ensureCardWasteStudyTable = async () => {
       entry_id TEXT,
       waste_study_id TEXT,
       date DATE,
+      operator TEXT,
       variety TEXT,
       study_type TEXT,
       carding_production_kg NUMERIC(12,4),
@@ -331,6 +332,7 @@ const ensureCardWasteStudyTable = async () => {
     ALTER TABLE carding.card_waste_study
       ADD COLUMN IF NOT EXISTS entry_id TEXT,
       ADD COLUMN IF NOT EXISTS entry_type TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT,
       ADD COLUMN IF NOT EXISTS waste_type_entries NUMERIC(12,4);
   `);
 
@@ -501,6 +503,7 @@ const ensureCardThickPlaceTables = async () => {
       entry_code TEXT,
       entry_date DATE NOT NULL,
       entry_time TIME,
+      operator TEXT,
       remarks TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -530,7 +533,8 @@ const ensureCardThickPlaceTables = async () => {
 
   await client.query(`
     ALTER TABLE carding.card_thick_place_header
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
 
   await client.query(`
@@ -1540,10 +1544,17 @@ router.post('/card-thick-place', async (req, res) => {
 
         const headerResult = await client.query(
           `INSERT INTO carding.card_thick_place_header
-           (entry_id, entry_code, entry_date, entry_time, remarks)
-           VALUES ($1, $2, $3, $4, $5)
+           (entry_id, entry_code, entry_date, entry_time, operator, remarks)
+           VALUES ($1, $2, $3, $4, $5, $6)
            RETURNING *`,
-          [entry_id || null, entry_id || null, resolvedEntryDate, entry_time || null, remarks || null]
+          [
+            entry_id || null,
+            entry_id || null,
+            resolvedEntryDate,
+            entry_time || null,
+            String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null,
+            remarks || null
+          ]
         );
 
         const header = headerResult.rows[0];
@@ -1814,14 +1825,15 @@ router.post('/between-within-card', async (req, res) => {
 
         const id = entry_id;
         const num_entries = sample_weights.length;
+        const operatorName = String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null;
 
         await client.query('BEGIN');
 
         await client.query(
             `INSERT INTO carding.inspections
-            (id, type_category, inspection_type, mc_name, inspection_date, num_entries)
-            VALUES ($1,$2,$3,$4,$5,$6)`,
-            [id, type_category, inspection_type, mc_name, inspection_date, num_entries]
+            (id, type_category, inspection_type, mc_name, inspection_date, num_entries, operator)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+            [id, type_category, inspection_type, mc_name, inspection_date, num_entries, operatorName]
         );
 
         for (let i = 0; i < sample_weights.length; i++) {
@@ -2121,7 +2133,7 @@ router.post('/nati-data-entry', async (req, res) => {
             (entry_id, type, entry_date, variety, operator)
             VALUES ($1,$2,$3,$4,$5)
             RETURNING id`,
-            [entry_id, type, entry_date, variety, user_name || null]
+            [entry_id, type, entry_date, variety, user_name || String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null]
         );
 
         const qc_id = main.rows[0].id;
@@ -3412,7 +3424,10 @@ router.post('/change-control', async (req, res, next) => {
       ]
     );
 
-    await createWheelChangeApprovalTicket('carding.carding_change_request', result.rows[0].id);
+    // No ticket raised here anymore - a ticket means "L4 missed this," not
+    // "this is now pending" (matching Acknowledgement). Only runWheelChangeApprovalOverdueCheck
+    // (spinning.js), once this row's configured TAT window has actually
+    // elapsed with approval_status still 'pending', raises it for real.
 
     res.status(201).json({
       message: 'Carding change control entry created successfully',
@@ -3647,19 +3662,20 @@ router.post('/card-waste-study', async (req, res, next) => {
 
     const result = await client.query(
       `INSERT INTO carding.card_waste_study (
-        entry_id, waste_study_id, date, variety, entry_type, study_type,
+        entry_id, waste_study_id, date, operator, variety, entry_type, study_type,
         carding_production_kg, type_entries, waste_type_entries,
         waste_type, waste_kg, waste_percent, overall_percent,
         remarks
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15
       )
       RETURNING *`,
       [
         entry_id || null,
         null,
         resolvedDate,
+        String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null,
         variety,
         type || 'Card Waste Study',
         study_type,
