@@ -51,7 +51,7 @@ function PreviewModal({
             <h2 className={styles.title}>{title}</h2>
           </div>
           <div className={styles.headerRight}>
-            <button
+            {/* <button
               type="button"
               className={styles.printButton}
               onClick={handlePrint}
@@ -60,7 +60,7 @@ function PreviewModal({
             >
               <AiOutlinePrinter size={16} />
               Print
-            </button>
+            </button> */}
             {typeValue ? (
               <div className={styles.typePill}>
                 <div className={styles.typeLabel}>{typeLabel}</div>

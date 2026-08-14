@@ -19,11 +19,9 @@ import {
     FiLogOut,
     FiMoon,
     FiSettings,
-    FiShield,
     FiSliders,
     FiSun,
     FiTrash2,
-    FiUsers,
 } from "react-icons/fi";
 import { fetchUsersAPI } from "@/apis/userApi";
 import { logout, setAuthUser } from "../store/slices/authSlice";
@@ -81,8 +79,6 @@ const sidebarLinks = [
     { href: "/departments", label: "Department", icon: FiGrid },
     { href: "/departments/quality-control", label: "Sub-department", icon: FiGrid, section: "departments" },
     { href: "/process-parameter", label: "Process Parameter", icon: FiClipboard },
-    { href: "/usermanagement", label: "User Management", icon: FiUsers, admin: true },
-    { href: "/rolespermission", label: "Roles & Permissions", icon: FiShield, admin: true },
     { href: "/statistics-analysis", label: "Analytics Hub", icon: FiCalendar, section: "calendars" },
     { href: "/operator", label: "Ticketing System", icon: FiHeadphones, section: "tickets" },
     { href: "/submitted-notebooks", label: "Management Hub", icon: FiBriefcase, section: "management" },
@@ -107,6 +103,8 @@ const departmentLinks = [
 const settingsLinks = [
     { href: "/settings", label: "Dash Builder" },
     { href: "/ticket-resolution-sla", label: "Ticket Resolution SLA" },
+    { href: "/usermanagement", label: "User Management" },
+    { href: "/rolespermission", label: "Roles & Permissions" },
 ];
 const ticketingLinks = [
     { href: "__ticketingHome__", label: "Ticket System" },
@@ -566,7 +564,18 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath === "/l1-analysis" ||
             currentPath === "/l2-analysis"
         );
-        setIsSettingsMenuOpen(currentPath === "/settings" || currentPath.startsWith("/settings/"));
+        setIsSettingsMenuOpen(
+            currentPath === "/settings" ||
+            currentPath.startsWith("/settings/") ||
+            currentPath === "/ticket-resolution-sla" ||
+            currentPath === "/usermanagement" ||
+            currentPath.startsWith("/umadduser") ||
+            currentPath.startsWith("/umedit") ||
+            currentPath.startsWith("/umchangepassword") ||
+            currentPath === "/rolespermission" ||
+            currentPath.startsWith("/Createrole") ||
+            currentPath.startsWith("/editrole")
+        );
     }, [router.asPath, router.pathname]);
 
     return (
@@ -617,6 +626,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                         const isTicketingGroup = link.section === "tickets";
                         const isManagementGroup = link.section === "management";
                         const isAnalyticsHubGroup = link.section === "calendars";
+                        const isSettingsGroup = link.section === "settings";
                         const isTicketingGroupActive = isTicketingGroup && (
                             currentPath === "/operator" ||
                             currentPath.startsWith("/operator/") ||
@@ -643,6 +653,18 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             currentPath === "/l1-analysis" ||
                             currentPath === "/l2-analysis"
                         );
+                        const isSettingsGroupActive = isSettingsGroup && (
+                            currentPath === "/settings" ||
+                            currentPath.startsWith("/settings/") ||
+                            currentPath === "/ticket-resolution-sla" ||
+                            currentPath === "/usermanagement" ||
+                            currentPath.startsWith("/umadduser") ||
+                            currentPath.startsWith("/umedit") ||
+                            currentPath.startsWith("/umchangepassword") ||
+                            currentPath === "/rolespermission" ||
+                            currentPath.startsWith("/Createrole") ||
+                            currentPath.startsWith("/editrole")
+                        );
                         const linkClassName = `${styles["side-nav-link"]} ${
                             (isTicketingGroup
                                 ? isTicketingGroupActive
@@ -650,7 +672,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                     ? isManagementGroupActive
                                     : isAnalyticsHubGroup
                                         ? isAnalyticsHubGroupActive
-                                        : isActiveLink(link.href))
+                                        : isSettingsGroup
+                                            ? isSettingsGroupActive
+                                            : isActiveLink(link.href))
                                 ? styles["side-nav-active"]
                                 : ""
                         }`;
