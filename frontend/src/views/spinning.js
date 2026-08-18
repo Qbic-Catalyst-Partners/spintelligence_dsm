@@ -386,10 +386,10 @@ function SpinningDepartment() {
     const isBottomApronChecking = checkingType === "Bottom Apron Checking";
     const isLycraOutOfCentering = checkingType === "Lycra Out of Centering";
     const type2OptionsByType = {
-        "Bottom Apron Checking": ["Apron Damage", "Apron Position Not Center", "Nil", "Aprin Nil Idle", "Apron Nil Running"],
-        "Lycra Out of Centering": ["Lycra Out of Center", "Lycra Not Center", "Nil", "Both"],
-        "RSM & Lycrasensor Checking Online": ["RSM Not Working", "RSM Working but Roving Run", "Cable Problem", "Lycrasensor Not Working", "Nil"],
-        "RSM & Lycrasensor Checking Offline": ["RSM Not Working", "RSM Working but Roving Run", "Cable Problem", "Lycrasensor Not Working", "Nil", "RSM Half Open"],
+        "Bottom Apron Checking": [ "Nil", "Apron Damage", "Apron Position Not Center", "Apron Nil Idle", "Apron Nil Running"],
+        "Lycra Out of Centering": [ "Nil", "Both", "Lycra Out of Center", "Lycra Not Center"],
+        "RSM & Lycrasensor Checking Online": [ "Nil", "RSM Not Working", "RSM Working but Roving Run", "Cable Problem", "Lycrasensor Not Working"],
+        "RSM & Lycrasensor Checking Offline": ["Nil", "RSM Not Working", "RSM Working but Roving Run", "Cable Problem", "Lycrasensor Not Working", "RSM Half Open"],
     };
     const showType2Field = isBottomApronChecking || isLycraOutOfCentering || isRsmChecking;
     const useArrayLhsRhs = showType2Field || isCotsChecking || checkingType === "Speed Checking";
