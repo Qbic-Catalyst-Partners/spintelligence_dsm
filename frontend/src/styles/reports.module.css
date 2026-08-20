@@ -802,6 +802,35 @@
   text-transform: uppercase;
 }
 
+.sortableHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  padding: 2px;
+  margin: 0;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.45;
+  line-height: 0;
+}
+
+.sortButton:hover {
+  opacity: 0.8;
+}
+
+.sortButtonActive {
+  opacity: 1;
+  color: #2563eb;
+}
+
 .tableWrap tr:last-child td {
   border-bottom: 0;
 }
@@ -1368,6 +1397,10 @@
 :global(:root[data-theme="dark"]) .tableWrap th {
   background: #242424;
   color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .sortButtonActive {
+  color: #60a5fa;
 }
 
 :global(:root[data-theme="dark"]) .tableWrap td {
