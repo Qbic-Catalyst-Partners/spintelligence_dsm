@@ -1250,6 +1250,7 @@ const generateOverdueNotebookTickets = async () => {
       action_type: 'ACKNOWLEDGE_ONLY',
       submitted_notebook_id: submission.id,
       notebook_submission_id: submission.notebook_submission_id,
+      entry_id: submission.entry_id || null,
       ack_due_at: submission.ack_due_at,
       message: 'Submitted notebook was not acknowledged within the configured time.'
     };

@@ -89,6 +89,7 @@ export default function operatorboard() {
         );
             return {
                 id: transformedTicket.ticket_id || ticket.ticket_id,
+                entryId: ticket.entry_id || transformedTicket.entry_id || "-",
                 machine:
                     ticket.notebook ||
                     transformedTicket.notebook ||
@@ -215,6 +216,7 @@ export default function operatorboard() {
 
                     return {
                         id: transformedTicket.ticket_id,
+                        entryId: ticket.entry_id || transformedTicket.entry_id || "-",
                         machine: transformedTicket.machine_name,
                         notebookType:
                             resolveNotebookType(transformedTicket) ||
@@ -487,7 +489,7 @@ export default function operatorboard() {
                 />
 
                 <Filter
-                    label="Severity"
+                    label="Criticality"
                     value={severity}
                     onChange={setSeverity}
                     options={["All", "High", "Medium", "Low"]}
@@ -563,6 +565,7 @@ export default function operatorboard() {
                             ) : (
                                 <>
                                     <th>{activeTicketingView === "submission" ? "NOTEBOOK" : "NOTEBOOK TYPE"}</th>
+                                    <th>ENTRY ID</th>
                                     <th>PARAMETER</th>
                                     {activeTicketingView === "submission" ? (
                                         <>
@@ -608,6 +611,7 @@ export default function operatorboard() {
                                 ) : (
                                     <>
                                         <td>{t.machine}</td>
+                                        <td>{t.entryId || "-"}</td>
                                         <td>{t.parameter}</td>
                                         {activeTicketingView === "submission" ? (
                                             <>
@@ -645,7 +649,7 @@ export default function operatorboard() {
                         {currentTickets.length === 0 && (
                             <tr>
                                 <td
-                                    colSpan={activeTicketingView === "process_parameter" ? 10 : activeTicketingView === "submission" ? 9 : 11}
+                                    colSpan={activeTicketingView === "process_parameter" ? 10 : activeTicketingView === "submission" ? 10 : 12}
                                     style={{ textAlign: "center", color: "#667085" }}
                                 >
                                     No tickets found for the selected filters.
@@ -685,7 +689,7 @@ export default function operatorboard() {
                                     ))}
                                 </select>
 
-                                <label>Severity</label>
+                                <label>Criticality</label>
                                 <select value={severity} onChange={(e) => setSeverity(e.target.value)}>
                                     <option>All</option><option>High</option><option>Medium</option><option>Low</option>
                                 </select>
@@ -727,6 +731,9 @@ export default function operatorboard() {
                         <div className={styles["card-top"]}>
                             <div className={styles["left-section"]}>
                                 <div className={styles["card-id-machine"]}>{t.id} | {t.machine}</div>
+                                {t.entryId && t.entryId !== "-" ? (
+                                    <div className={styles["small-label"]}>Entry ID: {t.entryId}</div>
+                                ) : null}
                                 <div className={styles["card-date"]}>{t.createdAt}</div>
                             </div>
                             <span className={`${styles["severity-badge"]} ${t.severity?.toLowerCase() === "high" ? styles["severity-high"] : t.severity?.toLowerCase() === "medium" ? styles["severity-medium"] : styles["severity-low"]}`}>

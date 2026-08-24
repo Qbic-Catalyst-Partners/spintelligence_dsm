@@ -7,6 +7,7 @@ import styles from "@/styles/opennessDataEntry.module.css";
 import { mixingOpennessDataEntry } from "@/apis/mixing";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 
 const MACHINE_NAME_OPTIONS = [
   "Circular Bale Pulker",
@@ -298,6 +299,22 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       await mixingOpennessDataEntry(payload);
 
       const linkedEntryId = payload.entry_id;
+
+      // Registered here, immediately after the save itself succeeds — see cottonHVIDataEntry.jsx
+      // for why this can no longer live in the parent's post-submit/success-modal flow.
+      try {
+        await recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Mixing",
+          notebookName: "Openness Data Entry",
+          entryId: linkedEntryId,
+          registeredActions: { getPayload: () => payload },
+          user,
+        });
+      } catch (recordError) {
+        console.warn("Mixing submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+      }
+
       const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
       if (linkedEntryId && customFieldEntries.length) {
         try {

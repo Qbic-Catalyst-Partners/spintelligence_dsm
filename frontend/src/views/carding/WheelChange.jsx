@@ -12,9 +12,9 @@ import NotebookCustomFields from "@/components/NotebookCustomFields";
 import {
   fetchCardingChangeControlEntries,
   fetchCardingMasterMachines,
+  fetchCardingMasterVarieties,
   submitCardingChangeControlEntry,
 } from "@/apis/carding";
-import { fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "./cardingWheelChange.module.css";
 
@@ -264,8 +264,18 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
         : null
     );
 
-    const previousProposedCdgList = normalizeCdgProposedList(approved?.cdg_no_proposed);
-    setCdoNo(previousProposedCdgList[0] || trimValue(approved?.cdo_no ?? ""));
+    // Only auto-fill CDG No. (Existing) from the lookup when the lookup was
+    // driven by picking a Mixing (machineValue empty - the machine isn't
+    // known yet, so it needs to come from whatever record matched). When the
+    // user picked the machine directly, this effect still re-fires (it's
+    // keyed on cdoNo too, so it can re-check for a pending/rejected entry on
+    // that machine) - overwriting cdoNo here with the matched record's own
+    // value used to immediately revert or blank out the machine the user
+    // just selected, making the dropdown look like it "closed" on its own.
+    if (!trimmedMachine) {
+      const previousProposedCdgList = normalizeCdgProposedList(approved?.cdg_no_proposed);
+      setCdoNo(previousProposedCdgList[0] || trimValue(approved?.cdo_no ?? ""));
+    }
     setProposedCdgNos(unapproved ? normalizeCdgProposedList(unapproved.cdg_no_proposed) : []);
     setValues(() => {
       const baseline = buildExistingValuesFromEntry(approved || {});
@@ -281,14 +291,14 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     const loadVarieties = async () => {
       setLoadingVarietyOptions(true);
       try {
-        const dropdown = await fetchSimplexUqcMasterDropdown({ department: "SIMPLEX" });
+        const varietyNames = await fetchCardingMasterVarieties();
         if (!active) return;
-        setMixingOptions(Array.isArray(dropdown?.varietyNames) ? dropdown.varietyNames : []);
+        setMixingOptions(Array.isArray(varietyNames) ? varietyNames : []);
         setVarietyOptionsError("");
       } catch (error) {
         if (!active) return;
         setMixingOptions([]);
-        setVarietyOptionsError(error.message || "Unable to load simplex mixing options.");
+        setVarietyOptionsError(error.message || "Unable to load carding mixing options.");
       } finally {
         if (active) setLoadingVarietyOptions(false);
       }
@@ -368,7 +378,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
               value:
                 unapprovedEntry.status === "rejected"
                   ? "This mixing has a rejected entry still pending resubmission. Submitting will replace it — there is no undo."
-                  : "This mixing already has an entry awaiting L2 verification. Submitting will overwrite it — there is no undo.",
+                  : "This mixing already has an entry awaiting L4 verification. Submitting will overwrite it — there is no undo.",
               wide: true,
             },
           ]
@@ -600,7 +610,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
               unapprovedEntry.status === "rejected" ? styles.statusBadgeRejected : styles.statusBadgePending
             }`}
           >
-            {unapprovedEntry.status === "rejected" ? "Rejected" : "Awaiting L2"}
+            {unapprovedEntry.status === "rejected" ? "Rejected" : "Awaiting L4"}
           </span>
         )}
         <InputScreenUploadButton className="ml-auto" />
@@ -609,7 +619,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       <div className={styles.form}>
         {unapprovedEntry?.status === "pending" && (
           <div className={styles.pendingNotice}>
-            A proposed entry for this mixing is still awaiting L2 approval. The Proposed column below shows that
+            A proposed entry for this mixing is still awaiting L4 approval. The Proposed column below shows that
             pending submission — submitting again will overwrite it.
           </div>
         )}
@@ -617,7 +627,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
         {unapprovedEntry?.status === "rejected" && (
           <div className={styles.rejectedNotice}>
             <div>
-              This entry was rejected by L2{unapprovedEntry.reviewedBy ? ` (${unapprovedEntry.reviewedBy})` : ""}.
+              This entry was rejected by L4{unapprovedEntry.reviewedBy ? ` (${unapprovedEntry.reviewedBy})` : ""}.
               {unapprovedEntry.reviewedAt ? ` Reviewed ${unapprovedEntry.reviewedAt}.` : ""} The Proposed column
               below shows the rejected submission — resubmitting will overwrite it.
             </div>

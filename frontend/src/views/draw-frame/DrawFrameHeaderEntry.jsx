@@ -29,6 +29,7 @@ import {
   fetchDrawFrameHeaderEntries,
 } from "@/apis/draw-frame";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -675,6 +676,19 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
           "Draw frame submitted notebook record failed:",
           recordError?.response?.data || recordError?.message || recordError
         );
+      }
+
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Draw Frame",
+          screenName: activeType,
+          machineName: activeType,
+          entryId: paramId,
+          values: previewItems,
+        });
+      } catch (ticketError) {
+        console.error("Threshold ticket generation failed:", ticketError);
       }
 
       onSubmitSuccess?.(savedEntry);

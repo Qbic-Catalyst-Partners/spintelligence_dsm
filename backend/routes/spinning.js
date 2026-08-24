@@ -3317,8 +3317,8 @@ router.post('/count-change', async (req, res) => {
       const resolvedCsp = toNumberOrNull(row.csp) ?? calculateCsp(row.count, row.strength);
       await client.query(`
         INSERT INTO spinning.count_change_readings
-        (inspection_id, reading_no, reading_value, count, cv_percent, strength, strength_cv_percent, mean, cv_percent_2, csp)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        (inspection_id, reading_no, reading_value, count, cv_percent, strength, mean, cv_percent_2, csp)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       `, [
         inspection_id,
         row.reading_no,
@@ -3326,7 +3326,6 @@ router.post('/count-change', async (req, res) => {
         row.count,
         row.cv_percent,
         row.strength,
-        row.strength_cv_percent,
         row.mean,
         row.cv_percent_2,
         resolvedCsp
@@ -5047,7 +5046,7 @@ const ensureWheelChangeApprovalTicketSchema = async () => {
 // wheelChangeRowKey uniquely identifies the WC row this ticket is for
 // (table name + row id), since ticket_id-style composite ids
 // ("type1:123") aren't stable identifiers to search violation_details by.
-const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
+const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId, entryId) => {
   await ensureWheelChangeApprovalTicketSchema();
   const wheelChangeRowKey = `${tableName}:${wheelChangeRowId}`;
 
@@ -5081,6 +5080,7 @@ const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
     ticket_type: 'WHEEL_CHANGE_APPROVAL',
     wheel_change_row_key: wheelChangeRowKey,
     department,
+    entry_id: entryId || null,
     message: `A Wheel Change proposal is awaiting L4 approval.`
   };
 
@@ -5148,7 +5148,7 @@ const runWheelChangeApprovalOverdueCheck = async () => {
 
     // eslint-disable-next-line no-await-in-loop
     const pending = await client.query(
-      `SELECT id, created_at FROM ${tableName}
+      `SELECT id, created_at, entry_id FROM ${tableName}
        WHERE approval_status = 'pending'
          AND created_at <= NOW() - ($1 || ' hours')::interval`,
       [tatHours]
@@ -5156,34 +5156,135 @@ const runWheelChangeApprovalOverdueCheck = async () => {
 
     for (const row of pending.rows) {
       // eslint-disable-next-line no-await-in-loop
-      const ticketId = await createWheelChangeApprovalTicket(tableName, row.id);
+      const ticketId = await createWheelChangeApprovalTicket(tableName, row.id, row.entry_id);
       if (ticketId) created.push(ticketId);
     }
   }
   return created;
 };
 
-const closeWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
+const closeWheelChangeApprovalTicket = async (tableName, wheelChangeRowId, options = {}) => {
   await ensureWheelChangeApprovalTicketSchema();
   const wheelChangeRowKey = `${tableName}:${wheelChangeRowId}`;
-  await client.query(
+  const closed = await client.query(
     `UPDATE ticketing_system.operator_tickets
      SET status = 'Closed'
-     WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL' AND (violation_details->>'wheel_change_row_key') = $1 AND status <> 'Closed'`,
+     WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL' AND (violation_details->>'wheel_change_row_key') = $1 AND status <> 'Closed'
+     RETURNING ticket_id`,
     [wheelChangeRowKey]
   );
+
+  // The ticket list's Actual Res Time/Resolution Gap are read from a matching
+  // ticket_logs row (see supervisorTickets.routes.js's resolution_log join) -
+  // without logging the closing action here, a closed Wheel Change Approval
+  // ticket always showed "--:--" even though it really was resolved.
+  const action = options.decision === 'rejected' ? 'REJECTED' : 'APPROVED';
+  for (const row of closed.rows) {
+    // eslint-disable-next-line no-await-in-loop
+    await client.query(
+      `INSERT INTO ticketing_system.ticket_logs
+       (ticket_id, action, performed_by, role, created_at)
+       VALUES ($1, $2, $3, $4, NOW())`,
+      [row.ticket_id, action, options.performedBy || 'Supervisor', options.role || 'L4']
+    );
+  }
 };
 
 // Wheel Change Approval is owned by L4 fully and directly - there's no
 // configured L5 approver anywhere in Wheel Change Approval Threshold (only
-// L4/TAT), so a missed L4 TAT used to escalate to "any current L5 user"
-// system-wide - the exact blind-notify-everyone pattern removed from every
-// other threshold type this session. A ticket past its TAT just stays at L4
-// and shows Overdue (computed client-side from l4_tat_due_at) - L5 already
-// has full oversight visibility via its Mapped-only view without needing a
-// fake reassignment. Kept as a no-op (rather than removed) so the worker
-// registration in server.js doesn't need touching.
-const runWheelChangeApprovalTatCheck = async () => [];
+// L4/TAT), so this does not reassign to a different tier the way other
+// threshold types escalate (that would mean blindly notifying "any current
+// L5 user" system-wide, which every other threshold type deliberately
+// avoids too). Instead, once a WHEEL_CHANGE_APPROVAL ticket's L4 TAT has
+// elapsed with the ticket still open, a second reminder ticket is raised
+// against the same L4 approver(s) - same wheel_change_row_key, so
+// closeWheelChangeApprovalTicket (called on the real approve/reject) closes
+// both together once the underlying row is actually actioned.
+const runWheelChangeApprovalTatCheck = async () => {
+  await ensureWheelChangeApprovalTicketSchema();
+
+  const overdueTickets = await client.query(
+    `SELECT * FROM ticketing_system.operator_tickets
+     WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL'
+       AND tat_current_level = 'L4'
+       AND status <> 'Closed'
+       AND l4_tat_due_at IS NOT NULL
+       AND l4_tat_due_at <= NOW()`
+  );
+
+  const created = [];
+  for (const ticket of overdueTickets.rows) {
+    const wheelChangeRowKey = ticket.violation_details?.wheel_change_row_key;
+    if (!wheelChangeRowKey) continue; // eslint-disable-line no-continue
+
+    // eslint-disable-next-line no-await-in-loop
+    const existingReminder = await client.query(
+      `SELECT ticket_id FROM ticketing_system.operator_tickets
+       WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL'
+         AND (violation_details->>'wheel_change_row_key') = $1
+         AND (violation_details->>'escalation_of') = $2
+         AND status <> 'Closed'
+       LIMIT 1`,
+      [wheelChangeRowKey, ticket.ticket_id]
+    );
+    if (existingReminder.rows[0]?.ticket_id) continue; // eslint-disable-line no-continue
+
+    const l4UserIds = Array.isArray(ticket.approval_l4_user_ids) ? ticket.approval_l4_user_ids : [];
+    const department = ticket.violation_details?.department || null;
+    const violationDetails = {
+      category: 'MISSED_FREQUENCY',
+      ticket_type: 'WHEEL_CHANGE_APPROVAL',
+      wheel_change_row_key: wheelChangeRowKey,
+      escalation_of: ticket.ticket_id,
+      department,
+      entry_id: ticket.violation_details?.entry_id || null,
+      message: `A Wheel Change proposal was not approved by L4 within the configured time and is now overdue.`
+    };
+
+    // eslint-disable-next-line no-await-in-loop
+    const reminder = await client.query(
+      `INSERT INTO ticketing_system.operator_tickets
+       (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+        severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
+        violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
+       VALUES (
+         'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+         $1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+         'High', 'Open', NOW(), 'MISSING_VALUE', 'WHEEL_CHANGE_APPROVAL', 'wheel_change_approval',
+         $2::jsonb, $3::int[], 'L4', NULL
+       )
+       RETURNING ticket_id`,
+      [ticket.machine_name, JSON.stringify(violationDetails), l4UserIds]
+    );
+    const reminderTicketId = reminder.rows[0]?.ticket_id;
+    if (reminderTicketId) created.push(reminderTicketId);
+
+    // eslint-disable-next-line no-await-in-loop
+    await client.query(
+      `INSERT INTO ticketing_system.ticket_logs
+       (ticket_id, action, performed_by, role, created_at)
+       VALUES ($1, 'OVERDUE_REMINDER_RAISED', 'System', 'System', NOW())`,
+      [ticket.ticket_id]
+    );
+
+    if (reminderTicketId && l4UserIds.length) {
+      // eslint-disable-next-line no-await-in-loop
+      await createNotificationsForUsers(l4UserIds, {
+        ticketId: reminderTicketId,
+        type: 'WHEEL_CHANGE_APPROVAL',
+        category: 'Tickets',
+        priority: 'High',
+        title: (user) => `Hi ${user.full_name || 'there'} (L4), a Wheel Change approval is overdue`,
+        body: (user) =>
+          `${user.full_name || 'You'} (L4) - a Wheel Change proposal was not approved in time (ticket ${ticket.ticket_id}) and is now overdue.`,
+        linkUrl: `/supervisor-tickets/${reminderTicketId}`,
+        payload: { ticket_id: reminderTicketId, wheel_change_row_key: wheelChangeRowKey }
+      });
+    }
+  }
+
+  return created;
+};
 
 // Called right after a Wheel Change is approved (type1-4) - consumes the
 // Active PP for its Count + Consignee (flips it to Inactive) and stamps
@@ -5225,7 +5326,11 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
     // saved/pending. Until then the PP stays Active so it's clear the slot
     // hasn't actually been used yet.
     const savedRow = await consumeAndStampWheelChangeRow(resolved.tableName, result.rows[0]);
-    await closeWheelChangeApprovalTicket(resolved.tableName, resolved.id);
+    await closeWheelChangeApprovalTicket(resolved.tableName, resolved.id, {
+      decision: 'approved',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
 
     res.status(200).json({
       message: 'Spinning wheel change entry approved',
@@ -5260,7 +5365,11 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
     // Nothing to revert on the PP side any more - the PP only goes Inactive
     // on approval now, so a rejected (still-pending) entry never touched it.
     const rejectedRow = result.rows[0];
-    await closeWheelChangeApprovalTicket(resolved.tableName, resolved.id);
+    await closeWheelChangeApprovalTicket(resolved.tableName, resolved.id, {
+      decision: 'rejected',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
 
     res.status(200).json({
       message: 'Spinning wheel change entry rejected',

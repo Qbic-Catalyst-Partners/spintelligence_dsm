@@ -173,6 +173,7 @@ router.get('/', async (req, res, next) => {
         phone,
         level,
         role,
+        role_id,
         department,
         account_status,
         created_at,

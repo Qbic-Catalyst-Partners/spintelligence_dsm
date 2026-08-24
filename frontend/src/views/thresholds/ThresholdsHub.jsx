@@ -70,18 +70,19 @@ const THRESHOLD_TYPE_COLUMNS = {
     { key: "frequency", label: "Frequency" },
   ],
   pp: [
-    { key: "field", label: "Severity" },
+    { key: "field", label: "Criticality" },
     { key: "l1", label: "L1 Proposer" },
     { key: "l2", label: "L4 Approver" },
     { key: "entryWithin", label: "Entry Within" },
     { key: "approveWithin", label: "Approve Within" },
   ],
   acknowledgement: [
-    { key: "l2", label: "L4" },
+    { key: "field", label: "Criticality" },
+    { key: "l2", label: "L4 Approver" },
     { key: "detail", label: "Acknowledge Within" },
   ],
   "wheel-change-approval": [
-    { key: "field", label: "Severity" },
+    { key: "field", label: "Criticality" },
     { key: "l1", label: "L4 Approver" },
     { key: "detail", label: "Approve Within" },
   ],
@@ -119,6 +120,32 @@ const nameListToText = (value) => {
 
 const getRowId = (item) => item?.id || item?._id || item?.threshold_id || item?.thresholdId || "";
 
+// Builds the "Department > Sub Department > Notebook Type > Field Name"
+// breadcrumb shown in the delete-confirmation modal, using the same
+// normalized row shape (department/subDepartment/notebookType/field) every
+// threshold type already produces above.
+const getDeleteThresholdSummary = (row) =>
+  [row?.department, row?.subDepartment, row?.notebookType, row?.field]
+    .filter((part) => part && part !== "-")
+    .join(" > ");
+
+// The approver name shown on its own line below the breadcrumb, labeled
+// with whichever level ("L1"/"L1 Proposer"/"L4 Approver"/...) that type's
+// column config uses for the populated field.
+const getDeleteThresholdApprover = (row) => {
+  const columns = THRESHOLD_TYPE_COLUMNS[row?.type] || [];
+  const l1Column = columns.find((column) => column.key === "l1");
+  const l2Column = columns.find((column) => column.key === "l2");
+
+  if (row?.l1 && row.l1 !== "-") {
+    return `${row.l1} (${l1Column?.label || "L1"})`;
+  }
+  if (row?.l2 && row.l2 !== "-") {
+    return `${row.l2} (${l2Column?.label || "L4"})`;
+  }
+  return "";
+};
+
 // Normalizes each threshold type's row shape into one common display shape
 // so the merged "Existing Thresholds" tab can render every type in one table.
 const normalizeValueThresholdRow = (item, users) => {
@@ -140,7 +167,7 @@ const normalizeValueThresholdRow = (item, users) => {
   typicalValue: item?.typical_value ?? item?.actual_value ?? "-",
   detail: `${item?.plus_value ?? item?.plus_threshold ?? item?.positive_tolerance ?? "-"} / ${item?.minus_value ?? item?.minus_threshold ?? item?.negative_tolerance ?? "-"}`,
   isActive: getActiveValue(item),
-  createdAt: item?.created_at || item?.createdAt,
+  createdAt: item?.updated_at || item?.updatedAt || item?.created_at || item?.createdAt,
   });
 };
 
@@ -158,7 +185,7 @@ const normalizeSubmissionThresholdRow = (item) => ({
   frequency: item?.frequency ?? "-",
   detail: `Every ${item?.range ?? "-"}d x ${item?.frequency ?? "-"}`,
   isActive: getActiveValue(item),
-  createdAt: item?.created_at || item?.createdAt,
+  createdAt: item?.updated_at || item?.updatedAt || item?.created_at || item?.createdAt,
 });
 
 const resolveUserNames = (ids, users) =>
@@ -194,12 +221,12 @@ const normalizeAcknowledgementThresholdRow = (item) => ({
   department: item?.department || item?.department_name || "-",
   subDepartment: item?.sub_department || item?.subDepartment || "-",
   notebookType: item?.screen_name || item?.notebook || item?.notebook_name || "-",
-  field: "-",
+  field: item?.criticality || "-",
   l1: "-",
   l2: nameListToText(item?.approval_l4_name || item?.approval_l4),
   detail: `${item?.acknowledge_within_hours ?? item?.acknowledgeWithinHours ?? "-"} Hrs`,
   isActive: getActiveValue(item),
-  createdAt: item?.created_at || item?.createdAt,
+  createdAt: item?.updated_at || item?.updatedAt || item?.created_at || item?.createdAt,
 });
 
 // Wheel Change Approval is one row per department (Spinning/Drawframe/
@@ -586,7 +613,11 @@ function ExistingThresholdsTab({ onEditRow }) {
           >
             <option value="">All Departments</option>
             {availableDepartments.map((department) => (
-              <option key={department.slug} value={department.slug}>
+              <option
+                key={department.slug}
+                value={department.slug}
+                disabled={department.slug === "electrical" || department.slug === "mechanical"}
+              >
                 {department.name}
               </option>
             ))}
@@ -614,7 +645,8 @@ function ExistingThresholdsTab({ onEditRow }) {
           <select
             value={filters.notebookType}
             onChange={(event) => handleFilterChange("notebookType", event.target.value)}
-            disabled={!thresholdType}
+            disabled={!thresholdType || thresholdType === "wheel-change-approval"}
+            className={thresholdType === "wheel-change-approval" ? styles.notebookTypeDisabledForWc : ""}
           >
             <option value="">All Notebook Types</option>
             {notebookTypeOptions.map((option) => (
@@ -667,7 +699,7 @@ function ExistingThresholdsTab({ onEditRow }) {
                     <th key={column.key}>{column.label}</th>
                   ))}
                   <th>Status</th>
-                  <th>Created At</th>
+                  <th>Updated At</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -734,7 +766,13 @@ function ExistingThresholdsTab({ onEditRow }) {
             <div className={warningStyles.message}>
               Are you sure you want to delete this threshold?
               <br />
-              <strong>{pendingDeleteRow.notebookType}</strong>
+              <strong>{getDeleteThresholdSummary(pendingDeleteRow)}</strong>
+              {getDeleteThresholdApprover(pendingDeleteRow) ? (
+                <>
+                  <br />
+                  <strong>User - {getDeleteThresholdApprover(pendingDeleteRow)}</strong>
+                </>
+              ) : null}
             </div>
 
             <div className={styles.hubConfirmActions}>
@@ -1076,7 +1114,11 @@ function ResolutionTimeTab({ onEditRow }) {
           >
             <option value="">All Departments</option>
             {availableDepartments.map((department) => (
-              <option key={department.slug} value={department.slug}>
+              <option
+                key={department.slug}
+                value={department.slug}
+                disabled={department.slug === "electrical" || department.slug === "mechanical"}
+              >
                 {department.name}
               </option>
             ))}
@@ -1262,7 +1304,13 @@ function ResolutionTimeTab({ onEditRow }) {
             <div className={warningStyles.message}>
               Are you sure you want to delete this threshold?
               <br />
-              <strong>{pendingDeleteRow.notebookType}</strong>
+              <strong>{getDeleteThresholdSummary(pendingDeleteRow)}</strong>
+              {getDeleteThresholdApprover(pendingDeleteRow) ? (
+                <>
+                  <br />
+                  <strong>User - {getDeleteThresholdApprover(pendingDeleteRow)}</strong>
+                </>
+              ) : null}
             </div>
 
             <div className={styles.hubConfirmActions}>
