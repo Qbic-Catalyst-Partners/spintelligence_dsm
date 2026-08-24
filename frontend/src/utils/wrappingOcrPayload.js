@@ -146,6 +146,9 @@ export const buildWrappingOcrPayload = ({
         })
       : [];
 
+  const noilsOrStretchSamples = isNoils ? sampleRows.map(buildNoilsSample) : sampleRows.map(buildStretchSample);
+  const noilsOrStretchSummaries = isNoils ? summaryRows.map(buildNoilsSummary) : summaryRows.map(buildStretchSummary);
+
   return stripEmpty({
     entry_id: entryId,
     entry_type: selectedType,
@@ -157,9 +160,18 @@ export const buildWrappingOcrPayload = ({
     ocr_json: cleanRows,
     manual_json: cleanRows,
     rows: cleanRows,
-    meta: metaRows.map((row) => stripEmpty(buildMeta(row))),
-    samples: isNoils ? sampleRows.map(buildNoilsSample) : sampleRows.map(buildStretchSample),
-    summaries: isNoils ? summaryRows.map(buildNoilsSummary) : summaryRows.map(buildStretchSummary),
+    // The backend (saveWrappingAPercent / saveWrappingComberNoilPercent / the Stretch %
+    // equivalent) reads `meta` as a single object and `sample_rows`/`summary_rows`/
+    // `raw_ocr_rows` (not `samples`/`summaries`/an array `meta`) — those were the actual
+    // keys read on every wrapping-OCR backend route, so the array/plural versions below
+    // were always silently ignored, permanently saving those columns as empty.
+    meta: stripEmpty(firstMeta),
+    sample_rows: noilsOrStretchSamples,
+    summary_rows: noilsOrStretchSummaries,
+    raw_ocr_rows: cleanRows,
+    // Kept for any older/other consumer still reading the array-shaped versions.
+    samples: noilsOrStretchSamples,
+    summaries: noilsOrStretchSummaries,
     tables,
   });
 };

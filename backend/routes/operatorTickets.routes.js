@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const client = require('../connection');
 const { createNotificationsForUsers, ensureNotificationMetadataColumns } = require('../utils/notifications');
+const { generateTicketId } = require('../utils/ticketId');
 const { ensureDelegationsTable } = require('./delegations.routes');
 const { getManagerChain, ensureReportsToColumn } = require('./user.routes');
 const sendEmail = require('../email');
@@ -1085,19 +1086,21 @@ const checkSubmissionFrequencyValueBreach = async (config) => {
   const l1TatHours = Number(config.l1_tat_hours) > 0 ? Number(config.l1_tat_hours) : null;
   const l1TatDueAt = l1TatHours ? new Date(Date.now() + l1TatHours * 60 * 60 * 1000).toISOString() : null;
 
+  const ticketId = await generateTicketId(client);
   const ticket = await client.query(
     `INSERT INTO ticketing_system.operator_tickets
      (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
       severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type,
       violation_details, submission_frequency_config_id, tat_current_level, l1_tat_due_at)
      VALUES (
-       'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-       $1, $2::jsonb, $3::jsonb, $4::jsonb,
-       $5, 'Open', NOW(), $6, $7, 'THRESHOLD_BREACH', 'SUBMISSION_FREQUENCY',
-       $8::jsonb, $9, 'L1', $10
+       $1,
+       $2, $3::jsonb, $4::jsonb, $5::jsonb,
+       $6, 'Open', NOW(), $7, $8, 'THRESHOLD_BREACH', 'SUBMISSION_FREQUENCY',
+       $9::jsonb, $10, 'L1', $11
      )
      RETURNING *`,
     [
+      ticketId,
       config.screen_name,
       JSON.stringify([config.input_field]),
       JSON.stringify([Number(actualValue)]),
@@ -1210,19 +1213,22 @@ const runSubmissionFrequencyCheck = async () => {
       };
 
       // eslint-disable-next-line no-await-in-loop
+      const ticketId = await generateTicketId(client);
+      // eslint-disable-next-line no-await-in-loop
       const ticket = await client.query(
         `INSERT INTO ticketing_system.operator_tickets
          (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value,
           severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type,
           violation_details, approval_l1_user_ids, submission_frequency_config_id, tat_current_level, l1_tat_due_at)
          VALUES (
-           'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-           $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb,
-           'Medium', 'Open', NOW(), $7, $8, 'MISSING_VALUE', 'SUBMISSION_FREQUENCY',
-           $9::jsonb, $10::int[], $11, 'L1', $12
+           $1,
+           $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb,
+           'Medium', 'Open', NOW(), $8, $9, 'MISSING_VALUE', 'SUBMISSION_FREQUENCY',
+           $10::jsonb, $11::int[], $12, 'L1', $13
          )
          RETURNING *`,
         [
+          ticketId,
           l1UserId,
           userRow.rows[0]?.full_name || null,
           config.screen_name,
@@ -2105,6 +2111,7 @@ router.get('/', async (req, res, next) => {
           WHERE delegate_user_id = $${values.length}
             AND from_date <= CURRENT_DATE
             AND to_date >= CURRENT_DATE
+            AND revoked_at IS NULL
         )
       )`);
     }
@@ -2119,6 +2126,7 @@ router.get('/', async (req, res, next) => {
           SELECT owner_user_id FROM users.delegations
           WHERE from_date <= CURRENT_DATE
             AND to_date >= CURRENT_DATE
+            AND revoked_at IS NULL
         )`
       : viewerUserId
         ? `(ot.user_id != ${viewerUserId} AND ot.user_id IN (
@@ -2126,6 +2134,7 @@ router.get('/', async (req, res, next) => {
             WHERE delegate_user_id = ${viewerUserId}
               AND from_date <= CURRENT_DATE
               AND to_date >= CURRENT_DATE
+              AND revoked_at IS NULL
           ))`
         : 'false';
 
@@ -2366,6 +2375,7 @@ router.get('/process-parameter-ticketing', async (req, res, next) => {
           WHERE delegate_user_id = $${values.length}
             AND from_date <= CURRENT_DATE
             AND to_date >= CURRENT_DATE
+            AND revoked_at IS NULL
         )
       )`);
     }
@@ -2852,14 +2862,16 @@ router.post('/', async (req, res, next) => {
 
     const severity = deriveSeverity(violationDetails);
 
+    const ticketId = await generateTicketId(client);
     const insertQuery = `
       INSERT INTO ticketing_system.operator_tickets
       (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids)
-      VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3, $4, $5, $6, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, 'VALUE_THRESHOLD', 'value_threshold', $11::jsonb, $12::int[], $13::int[], $14::int[], $15::int[], $16::int[])
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Open', CURRENT_TIMESTAMP, $9, $10, $11, 'VALUE_THRESHOLD', 'value_threshold', $12::jsonb, $13::int[], $14::int[], $15::int[], $16::int[], $17::int[])
       RETURNING *;
     `;
 
     const result = await client.query(insertQuery, [
+      ticketId,
       assignedUserId,
       assignedUserName,
       machine_name,
@@ -3023,12 +3035,14 @@ router.post('/generate', async (req, res, next) => {
       }
       const severity = deriveSeverity(violationDetails);
 
+      const ticketId = await generateTicketId(client);
       const result = await client.query(
         `INSERT INTO ticketing_system.operator_tickets
          (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids)
-         VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3, $4, $5, $6, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, 'VALUE_THRESHOLD', 'value_threshold', $11::jsonb, $12::int[], $13::int[], $14::int[], $15::int[], $16::int[])
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Open', CURRENT_TIMESTAMP, $9, $10, $11, 'VALUE_THRESHOLD', 'value_threshold', $12::jsonb, $13::int[], $14::int[], $15::int[], $16::int[], $17::int[])
          RETURNING *;`,
         [
+          ticketId,
           assignedUserId,
           assignedUserName,
           machine_name,
@@ -4255,9 +4269,8 @@ const getApprovalQueue = async (req, res, next) => {
     const limit = Math.max(parseInt(req.query.limit, 10) || 25, 1);
     const offset = (page - 1) * limit;
 
-    const values = [levelFilter];
+    const values = [];
     const where = [
-      `ta.level = $1`,
       // This queue is for the L1 -> L2 -> L3... hierarchy-chain ticket types
       // only (Value Threshold, Submission Frequency) - PP Batch/PP Approval/
       // Wheel Change/Acknowledgement escalate straight L1 -> L4 and are
@@ -4301,6 +4314,17 @@ const getApprovalQueue = async (req, res, next) => {
       /^ADMIN\s*0*\d+$/.test(requesterEmployeeId) ||
       ['admin', 'super admin', 'superadmin'].includes(requesterRole) ||
       requesterLevel === 'L5';
+
+    // L5 (and admin) get the unscoped queue across every level - the
+    // frontend's "Mapped" tab for L5 always sends level=L5, but L5 is meant
+    // to oversee every level's tickets, not just the ones that literally
+    // reached the L5 approval stage. A plain L2/L3/L4 approver still only
+    // sees their own level's queue.
+    if (!canViewAllApprovals) {
+      values.push(levelFilter);
+      where.push(`ta.level = $${values.length}`);
+    }
+
     const approverColumnByLevel = {
       L2: 'approval_l2_user_ids',
       L3: 'approval_l3_user_ids',

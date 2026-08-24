@@ -287,6 +287,10 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
         apparent_specific_volume: Number(row.asv),
         actual_op_value: Number(row.aov),
         openness_percentage: stage.openness === "" ? null : Number(stage.openness),
+        avg_weight: stage.avgWeight === "" ? null : Number(stage.avgWeight),
+        avg_volume: stage.avgVol === "" ? null : Number(stage.avgVol),
+        avg_apparent_specific_volume: stage.avgAsv === "" ? null : Number(stage.avgAsv),
+        avg_actual_op_value: stage.avgAov === "" ? null : Number(stage.avgAov),
       }))
     ),
     user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",

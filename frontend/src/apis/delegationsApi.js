@@ -37,3 +37,24 @@ export const fetchDelegationsAPI = async (page = 1, limit = 10) => {
     throw new Error(extractApiError(error, "Unable to load delegations."));
   }
 };
+
+export const updateDelegationAPI = async (id, { fromDate, toDate }) => {
+  try {
+    const response = await apiConfig.patch(`/delegations/${id}`, {
+      from_date: fromDate,
+      to_date: toDate,
+    });
+    return response.data;
+  } catch (error) {
+    throw new Error(extractApiError(error, "Unable to update delegation."));
+  }
+};
+
+export const revokeDelegationAPI = async (id) => {
+  try {
+    const response = await apiConfig.delete(`/delegations/${id}`);
+    return response.data;
+  } catch (error) {
+    throw new Error(extractApiError(error, "Unable to revoke delegation."));
+  }
+};

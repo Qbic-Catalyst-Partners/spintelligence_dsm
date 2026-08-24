@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
+const { generateTicketId } = require('../utils/ticketId');
 const auth = require('../middleware/auth');
 const { createNotificationsForUsers, ensureNotificationMetadataColumns } = require('../utils/notifications');
 const { getManagerChain } = require('./user.routes');
@@ -576,19 +577,21 @@ const runPpBatchCompletionCheck = async () => {
     const l2TatHours = Number(config.l2_tat_hours) > 0 ? Number(config.l2_tat_hours) : null;
     const l1TatDueAt = l2TatHours ? new Date(Date.now() + l2TatHours * 60 * 60 * 1000).toISOString() : null;
 
+    const ticketId = await generateTicketId(client);
     const ticket = await client.query(
       `INSERT INTO ticketing_system.operator_tickets
        (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
         severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
         violation_details, approval_l1_user_ids, tat_current_level, l1_tat_due_at)
        VALUES (
-         'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-         $1, $2::jsonb, $3::jsonb, $4::jsonb,
-         $7, 'Open', NOW(), 'MISSING_VALUE', 'PP_BATCH_INCOMPLETE', 'pp_batch',
-         $5::jsonb, $6::int[], 'L1', $8
+         $1,
+         $2, $3::jsonb, $4::jsonb, $5::jsonb,
+         $8, 'Open', NOW(), 'MISSING_VALUE', 'PP_BATCH_INCOMPLETE', 'pp_batch',
+         $6::jsonb, $7::int[], 'L1', $9
        )
        RETURNING *`,
       [
+        ticketId,
         row.entry_id,
         toJson(overdueScreens, []),
         toJson(completedScreens, []),
@@ -1254,19 +1257,21 @@ const generateOverdueNotebookTickets = async () => {
       message: 'Submitted notebook was not acknowledged within the configured time.'
     };
 
+    const ticketId = await generateTicketId(client);
     const ticket = await client.query(
       `INSERT INTO ticketing_system.operator_tickets
        (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value,
         severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type,
         violation_details, approval_l4_user_ids, tat_current_level)
        VALUES (
-         'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-         $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb,
-         $11, 'Open', NOW(), $7, $8, 'MISSING_VALUE', 'REVIEW',
-         $9::jsonb, $10::int[], 'L4'
+         $1,
+         $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb,
+         $12, 'Open', NOW(), $8, $9, 'MISSING_VALUE', 'REVIEW',
+         $10::jsonb, $11::int[], 'L4'
        )
        RETURNING *`,
       [
+        ticketId,
         submission.submitted_by_user_id,
         submission.submitted_by_name,
         submission.input_screen || submission.notebook,

@@ -588,7 +588,6 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,
-    process_parameter: "Mixing",
     status: "DONE",
     user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
     blends: form.rows.map((row, index) => ({
