@@ -520,7 +520,8 @@ const ensureAutoconerEntryIdColumns = async () => {
       ADD COLUMN IF NOT EXISTS total_cones INTEGER,
       ADD COLUMN IF NOT EXISTS total_faults INTEGER,
       ADD COLUMN IF NOT EXISTS total_weight NUMERIC(14, 4),
-      ADD COLUMN IF NOT EXISTS total_length_meters NUMERIC(14, 4);
+      ADD COLUMN IF NOT EXISTS total_length_meters NUMERIC(14, 4),
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
 };
 
@@ -816,7 +817,8 @@ router.get('/lycra-checking', async (req, res) => {
 router.post('/count-wise-cuts', async (req, res) => {
   try {
     await ensureAutoconerEntryIdColumns();
-    const { drum_from, drum_to, ...data } = req.body;
+    const data = { ...req.body };
+    data.operator = getAuthenticatedOperatorName(req);
 
     const columns = Object.keys(data);
     const values = Object.values(data);
@@ -1095,9 +1097,6 @@ router.get('/drum-wise', async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
-    // dw.machine_code/dw.count_name are the plain-text values the form actually sends and are now
-    // actually persisted (see POST above) — prefer them, falling back to the machine_id/count_id
-    // join only in case that ever gets populated by some other means.
     const dataQuery = `
             SELECT
                 dw.id,
@@ -1109,8 +1108,8 @@ router.get('/drum-wise', async (req, res) => {
                 dw.drum_to,
                 dw.remarks,
                 dw.created_at,
-                COALESCE(dw.machine_code, m.machine_code) AS machine_code,
-                COALESCE(dw.count_name, cm.count_name) AS count_name,
+                dw.machine_code,
+                dw.count_name,
                 COALESCE(
                     json_agg(
                         json_build_object(
@@ -1123,11 +1122,9 @@ router.get('/drum-wise', async (req, res) => {
                     '[]'
                 ) AS drum_inspections
             FROM autoconer.drum_wise dw
-            LEFT JOIN autoconer.machine m ON dw.machine_id = m.id
-            LEFT JOIN autoconer.count_master cm ON dw.count_id = cm.id
             LEFT JOIN autoconer.drum_inspection di ON dw.id = di.drum_wise_id
             LEFT JOIN autoconer.v_drum_summary vds ON dw.id = vds.drum_wise_id AND di.drum_no = vds.drum_no
-            GROUP BY dw.id, m.machine_code, cm.count_name
+            GROUP BY dw.id
             ORDER BY dw.entry_date DESC, dw.created_at DESC
             LIMIT $1 OFFSET $2
         `;
@@ -1556,10 +1553,10 @@ router.post('/inspection-data-entry', async (req, res) => {
     await client.query('BEGIN');
     const headerResult = await client.query(
       `INSERT INTO autoconer.inspection_data_entry
-        (entry_id, entry_date, type, count_name, actual_count, auto_coner_no, cone_tip, no_of_cuts, break_per_million_meter, remarks, total_cones, total_faults, total_weight, total_length_meters)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        (entry_id, entry_date, type, count_name, actual_count, auto_coner_no, cone_tip, no_of_cuts, break_per_million_meter, remarks, total_cones, total_faults, total_weight, total_length_meters, operator)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
         RETURNING id`,
-      [entry_id, entry_date, type || 'Rewinding Study', count_name, actual_count, auto_coner_no, cone_tip, no_of_cuts ?? 0, break_per_million_meter ?? 0, remarks, total_cones, total_faults, total_weight, total_length_meters]
+      [entry_id, entry_date, type || 'Rewinding Study', count_name, actual_count, auto_coner_no, cone_tip, no_of_cuts ?? 0, break_per_million_meter ?? 0, remarks, total_cones, total_faults, total_weight, total_length_meters, getAuthenticatedOperatorName(req)]
     );
 
     const inspection_data_entry_id = headerResult.rows[0].id;
@@ -2626,7 +2623,8 @@ router.post('/parameter-entries', async (req, res) => {
         neps_plus_400,
 
         inspection_phase,
-        payload
+        payload,
+        operator
       )
       VALUES (
         $1,$2,$3,
@@ -2637,7 +2635,8 @@ router.post('/parameter-entries', async (req, res) => {
         $18,$19,$20,$21,
         $22,$23,$24,$25,$26,
         $27,$28,
-        $29,$30
+        $29,$30,
+        $31
       )
       RETURNING *`,
       [
@@ -2677,7 +2676,8 @@ router.post('/parameter-entries', async (req, res) => {
         data.neps_plus_400,
 
         phase,
-        data.payload || null
+        data.payload || null,
+        getAuthenticatedOperatorName(req)
       ]
     );
 
@@ -3532,8 +3532,9 @@ router.put('/process/:id', async (req, res, next) => {
            cradle_pressure=$20,
            cone_density=$21,
            cone_cops=$22,
+           operator = COALESCE($23, operator),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id=$23
+       WHERE id=$24
        RETURNING *`,
       [
         data.count_name,
@@ -3558,6 +3559,7 @@ router.put('/process/:id', async (req, res, next) => {
         data.cradle_pressure,
         data.cone_density,
         data.cone_cops,
+        getAuthenticatedOperatorName(req),
         id
       ]
     );
@@ -3944,8 +3946,9 @@ router.put('/q2/:id', async (req, res, next) => {
            fd=$35, fdh1=$36, fdh2=$37, fdh3=$38, fdh4=$39, fdh5=$40,
            reference_length=$41, measurement=$42,
            upper_alarm_limit=$43, lower_alarm_limit=$44, action=$45,
+           operator = COALESCE($46, operator),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id=$46
+       WHERE id=$47
        RETURNING *`,
       [
         data.count_name, data.consignee_name, data.creation_date,
@@ -3958,6 +3961,7 @@ router.put('/q2/:id', async (req, res, next) => {
         data.fd, data.fdh1, data.fdh2, data.fdh3, data.fdh4, data.fdh5,
         data.reference_length, data.measurement,
         data.upper_alarm_limit, data.lower_alarm_limit, data.action,
+        getAuthenticatedOperatorName(req),
         id
       ]
     );
@@ -4408,8 +4412,9 @@ router.put('/q3/:id', async (req, res, next) => {
            fd1=$35, fd2=$36, fd3=$37, fd4=$38, fd5=$39, fd6=$40,
            reference_length=$41, suction=$42, measurement=$43, upper_limit=$44, lower_limit=$45,
            action=$46, suction_status=$47, blocking=$48,
+           operator = COALESCE($49, operator),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id=$49
+       WHERE id=$50
        RETURNING *`,
       [
         data.count_name, data.consignee_name, data.creation_date,
@@ -4422,6 +4427,7 @@ router.put('/q3/:id', async (req, res, next) => {
         data.fd1, data.fd2, data.fd3, data.fd4, data.fd5, data.fd6,
         data.reference_length, data.suction, data.measurement, data.upper_limit, data.lower_limit,
         data.action, data.suction_status, data.blocking,
+        getAuthenticatedOperatorName(req),
         id
       ]
     );
@@ -4589,8 +4595,9 @@ router.put('/q4/:id', async (req, res, next) => {
            action=$46, suction_status=$47, blocking=$48, x_status=$49,
            dp_plus_30=$50, sm_minus_30=$51, cdp1=$52, cdp2=$53, cdm1=$54, cdm2=$55,
            nsl_max_event=$56, t_max_event=$57, fd_max_events=$58, fl_max_events=$59,
+           operator = COALESCE($60, operator),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id=$60
+       WHERE id=$61
        RETURNING *`,
       [
         data.count_name, data.consignee_name, data.creation_date,
@@ -4605,6 +4612,7 @@ router.put('/q4/:id', async (req, res, next) => {
         data.action, data.suction_status, data.blocking, data.x_status,
         data.dp_plus_30, data.sm_minus_30, data.cdp1, data.cdp2, data.cdm1, data.cdm2,
         data.nsl_max_event, data.t_max_event, data.fd_max_events, data.fl_max_events,
+        getAuthenticatedOperatorName(req),
         id
       ]
     );

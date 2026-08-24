@@ -2110,7 +2110,6 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     const payload = {
       entry_id: entryId,
       type: selectedTypeName,
-      department: "Draw Frame",
       approval_status: "pending",
       operator: operatorName,
       line_type: lineType,

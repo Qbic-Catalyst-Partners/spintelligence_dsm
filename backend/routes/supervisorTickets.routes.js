@@ -136,7 +136,15 @@ const ensureNotificationRecipientColumn = async () => {
   await ensureNotificationMetadataColumns();
 };
 
-const canApproveOrRejectTicket = (req, ticket) => {
+// A delegate could already SEE a delegator's ticket in their list (the
+// ticket-list queries join users.delegations for that), but this is the
+// separate write-side gate every approve/reject/acknowledge/status-update
+// action goes through - it used to only check the requester's own id against
+// the ticket's approval_lX_user_ids arrays, so a delegate covering for one of
+// those reviewers got a 403 the moment they actually tried to act on a
+// ticket they could otherwise see. Delegation is active/non-revoked-scoped
+// the same way the read-side join is (from_date/to_date/revoked_at).
+const canApproveOrRejectTicket = async (req, ticket) => {
   if (isAdminUser(req)) return true;
   const requesterId = parsePositiveInt(req.user?.id);
   if (!requesterId) return false;
@@ -145,7 +153,20 @@ const canApproveOrRejectTicket = (req, ticket) => {
     const ids = ticket[`approval_${level.toLowerCase()}_user_ids`];
     return Array.isArray(ids) ? ids : [];
   });
-  return allReviewerIds.includes(requesterId);
+  if (allReviewerIds.includes(requesterId)) return true;
+  if (!allReviewerIds.length) return false;
+
+  const delegateResult = await client.query(
+    `SELECT 1 FROM users.delegations
+     WHERE delegate_user_id = $1
+       AND owner_user_id = ANY($2::int[])
+       AND from_date <= CURRENT_DATE
+       AND to_date >= CURRENT_DATE
+       AND revoked_at IS NULL
+     LIMIT 1`,
+    [requesterId, allReviewerIds]
+  );
+  return delegateResult.rows.length > 0;
 };
 
 const getPrivilegedSupervisorAccess = async (req) => {
@@ -447,6 +468,7 @@ router.get('/tickets', async (req, res, next) => {
       WHERE d.delegate_user_id = ${requesterId}
         AND d.from_date <= CURRENT_DATE
         AND d.to_date >= CURRENT_DATE
+        AND d.revoked_at IS NULL
         AND (${delegatedOwnerMatch})
     )`;
     // Only the specific delegate and admins/L5 (canViewAll) should see the
@@ -457,6 +479,7 @@ router.get('/tickets', async (req, res, next) => {
           SELECT 1 FROM users.delegations d
           WHERE d.from_date <= CURRENT_DATE
             AND d.to_date >= CURRENT_DATE
+            AND d.revoked_at IS NULL
             AND (${delegatedOwnerMatch})
         )`
       : requesterIsDelegateExpr;
@@ -1026,7 +1049,7 @@ router.get('/tickets/:id', async (req, res, next) => {
     const ticket = result.rows[0];
 
     const canViewAll = await getPrivilegedSupervisorAccess(req);
-    if (!canViewAll && !canApproveOrRejectTicket(req, ticket)) {
+    if (!canViewAll && !(await canApproveOrRejectTicket(req, ticket))) {
       return res.status(403).json({ message: 'You are not authorized to view this ticket' });
     }
 
@@ -1053,7 +1076,7 @@ router.get('/tickets/:id/timeline', async (req, res, next) => {
     let ticket = ticketRes.rows[0];
 
     const canViewAll = await getPrivilegedSupervisorAccess(req);
-    if (!canViewAll && !canApproveOrRejectTicket(req, ticket)) {
+    if (!canViewAll && !(await canApproveOrRejectTicket(req, ticket))) {
       return res.status(403).json({ message: 'You are not authorized to view this ticket timeline' });
     }
 
@@ -1163,7 +1186,7 @@ router.patch('/tickets/acknowledge/mark-submit', async (req, res, next) => {
     if (!ticketRes.rows.length) return res.status(404).json({ message: 'Acknowledgement review ticket not found' });
     const ticket = ticketRes.rows[0];
 
-    if (!canViewAll && !canApproveOrRejectTicket(req, ticket)) {
+    if (!canViewAll && !(await canApproveOrRejectTicket(req, ticket))) {
       return res.status(403).json({ message: 'You are not authorized to update this ticket' });
     }
 
@@ -1194,7 +1217,7 @@ router.patch('/tickets/acknowledge', async (req, res, next) => {
     if (!ticketRes.rows.length) return res.status(404).json({ message: 'Acknowledgement review ticket not found' });
     const ticket = ticketRes.rows[0];
 
-    if (!canViewAll && !canApproveOrRejectTicket(req, ticket)) {
+    if (!canViewAll && !(await canApproveOrRejectTicket(req, ticket))) {
       return res.status(403).json({ message: 'You are not authorized to acknowledge this ticket' });
     }
 
@@ -1268,7 +1291,7 @@ const updateSupervisorTicketStatusHandler = async (req, res, next) => {
     if (!ticketRes.rows.length) return res.status(404).json({ message: 'Ticket not found' });
 
     const ticket = ticketRes.rows[0];
-    if (!canViewAll && !canApproveOrRejectTicket(req, ticket)) {
+    if (!canViewAll && !(await canApproveOrRejectTicket(req, ticket))) {
       return res.status(403).json({ message: 'You are not authorized to update this ticket' });
     }
 
@@ -1514,7 +1537,7 @@ router.patch('/tickets/approve', async (req, res, next) => {
     if (!ticketRes.rows.length) return res.status(404).json({ message: 'Ticket not found' });
     const ticket = ticketRes.rows[0];
 
-    if (!canViewAll && !canApproveOrRejectTicket(req, ticket)) {
+    if (!canViewAll && !(await canApproveOrRejectTicket(req, ticket))) {
       return res.status(403).json({ message: 'You are not authorized to approve this ticket' });
     }
 
@@ -1612,7 +1635,7 @@ router.patch('/tickets/reject', async (req, res, next) => {
     if (!ticketRes.rows.length) return res.status(404).json({ message: 'Ticket not found' });
     const ticket = ticketRes.rows[0];
 
-    if (!canViewAll && !canApproveOrRejectTicket(req, ticket)) {
+    if (!canViewAll && !(await canApproveOrRejectTicket(req, ticket))) {
       return res.status(403).json({ message: 'You are not authorized to reject this ticket' });
     }
 

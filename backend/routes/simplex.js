@@ -344,8 +344,6 @@ const ensureSimplexWheelChangeTable = async () => {
       type TEXT NOT NULL DEFAULT 'Wheel Change',
       machine_no TEXT,
       proposed_sap_no TEXT,
-      wheel_change_type TEXT,
-      wheel_change_type_label TEXT,
       parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
       rows JSONB NOT NULL DEFAULT '{}'::jsonb,
       operator TEXT,
@@ -364,8 +362,6 @@ const ensureSimplexWheelChangeTable = async () => {
       ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'Wheel Change',
       ADD COLUMN IF NOT EXISTS machine_no TEXT,
       ADD COLUMN IF NOT EXISTS proposed_sap_no TEXT,
-      ADD COLUMN IF NOT EXISTS wheel_change_type TEXT,
-      ADD COLUMN IF NOT EXISTS wheel_change_type_label TEXT,
       ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
       ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '{}'::jsonb,
       ADD COLUMN IF NOT EXISTS operator TEXT,
@@ -426,8 +422,6 @@ router.post('/wheel-change', async (req, res, next) => {
     const type = String(payload.type ?? payload.notebook_type ?? 'Wheel Change').trim() || 'Wheel Change';
     const machine_no = String(payload.machine_no ?? payload.sap_no ?? '').trim() || null;
     const proposed_sap_no = String(payload.proposed_sap_no ?? payload.smxNoProposed ?? '').trim() || null;
-    const wheel_change_type = String(payload.wheel_change_type ?? '').trim() || null;
-    const wheel_change_type_label = String(payload.wheel_change_type_label ?? '').trim() || null;
     const parameters = normalizeParameterRows(payload.parameters ?? payload.rows);
     const rowsBlob = payload.rows && typeof payload.rows === 'object' ? payload.rows : {};
     const operator = String(payload.operator ?? '').trim() || null;
@@ -436,13 +430,13 @@ router.post('/wheel-change', async (req, res, next) => {
 
     const result = await client.query(
       `INSERT INTO simplex.wheel_change (
-         entry_id, type, machine_no, proposed_sap_no, wheel_change_type, wheel_change_type_label,
+         entry_id, type, machine_no, proposed_sap_no,
          parameters, rows, operator, remarks, approval_status
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9)
        RETURNING *`,
       [
-        entry_id, type, machine_no, proposed_sap_no, wheel_change_type, wheel_change_type_label,
+        entry_id, type, machine_no, proposed_sap_no,
         JSON.stringify(parameters), JSON.stringify(rowsBlob), operator, remarks, approval_status
       ]
     );
@@ -1233,7 +1227,6 @@ const saveSimplexCotsChange = async (req, res) => {
     const {
       entry_id,
       type,
-      s_no,
       entry_date,
       machine_name,
       items
@@ -1248,10 +1241,10 @@ const saveSimplexCotsChange = async (req, res) => {
     // ✅ Insert header
     const headerResult = await client.query(
       `INSERT INTO simplex.simplex_inspections
-       (entry_id, type, s_no, entry_date, machine_name)
-       VALUES ($1,$2,$3,$4,$5)
+       (entry_id, type, entry_date, machine_name)
+       VALUES ($1,$2,$3,$4)
        RETURNING id`,
-      [entry_id, type, s_no, entry_date, machine_name]
+      [entry_id, type, entry_date, machine_name]
     );
 
     const inspection_id = headerResult.rows[0].id;
@@ -1563,11 +1556,16 @@ router.post('/study', async (req, res, next) => {
       machine_name,
       operator_name,
       shift,
-      inspection_items,
+      study_type,
       user_fiber_parameters,
       epi_parameters,
       other_field_values
     } = req.body;
+    // The frontend (SMXBreaksStudyReport.jsx buildStudyPayload) sends the break matrix under
+    // `items`, not `inspection_items` — the destructure above used to only read `inspection_items`,
+    // so this was always undefined and the entire break matrix was silently discarded on every
+    // submission. Accept either key so existing/future callers using `inspection_items` still work.
+    const inspection_items = req.body.inspection_items || req.body.items;
 
     if (!entry_id) {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
@@ -1624,9 +1622,9 @@ router.post('/study', async (req, res, next) => {
         }
         await client.query(
           `INSERT INTO simplex.smx_breaks_inspection_items
-           (study_id, item_name, status_value, remarks)
-           VALUES ($1, $2, $3, $4)`,
-          [study_id, normalizedName, statusValue, item.remarks || null]
+           (study_id, item_name, status_value, remarks, length_range)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [study_id, normalizedName, statusValue, item.remarks || null, item.length_range || null]
         );
         normalizedItems.push({ item_name: normalizedName, status_value: statusValue });
       }
@@ -1672,12 +1670,24 @@ router.post('/study', async (req, res, next) => {
     if (!hasTotalBreakPercentRow) {
       derivedRows.push({ item_name: 'TOTAL BREAK (%)', status_value: overallBreakagePct });
     }
+    // "TOTAL No. OF BREAKS/100SH" on the frontend (grandTotalBreakPercent) uses the exact same
+    // formula as overallBreakagePct above — stored under its own matching label too so a report
+    // filtering by that exact name finds it, without duplicating the calculation.
+    derivedRows.push({ item_name: 'TOTAL No. OF BREAKS/100SH', status_value: overallBreakagePct });
 
     for (const col of breakTotalsByColumn) {
       const ratio = grandTotalBreaks > 0 ? toWholePercent((col.total / grandTotalBreaks) * 100) : 0;
       derivedRows.push({
         item_name: `${col.name} BREAKS (%)`,
         status_value: ratio
+      });
+      // "No. of breaks 100 spindles / hr" on the frontend (noOfBreaksPer100Spindles) — breaks in
+      // that column as a percentage of running spindles, distinct from the ratio above (which is
+      // that column's share of the grand total breaks, not spindle-relative).
+      const per100Sh = runningSpdl > 0 ? toWholePercent((col.total * 100) / runningSpdl) : 0;
+      derivedRows.push({
+        item_name: `${col.name} BREAKS/100SH`,
+        status_value: per100Sh
       });
     }
 
@@ -1741,7 +1751,11 @@ router.post('/study', async (req, res, next) => {
     // Insert other field values
     if (other_field_values) {
       const providedBreakArray = parseBreakArray(other_field_values.break_count);
-      const computedBreakCount = providedBreakArray.length || grandTotalBreaks || derivedBreakCount;
+      // grandTotalBreaks (the real per-cell sum from the break matrix, now populated by the
+      // inspection_items/items fix above) takes priority — providedBreakArray.length was always 1
+      // for any plain-number break_count value (parseBreakArray splits on ',', and a bare number
+      // has none), so it silently overrode the real total before this reorder.
+      const computedBreakCount = grandTotalBreaks || providedBreakArray.length || derivedBreakCount;
       const siderName = String(req.body?.s_name ?? other_field_values.s_name ?? other_field_values.sider_name ?? '').trim();
       const remarksBlock = [
         other_field_values.remarks || null,
@@ -1752,8 +1766,11 @@ router.post('/study', async (req, res, next) => {
       ].filter(Boolean).join(' | ') || null;
       await client.query(
         `INSERT INTO simplex.smx_other_field_values
-         (study_id, time, break_count, remarks)
-         VALUES ($1, $2, $3, $4)`,
+         (study_id, time, break_count, remarks,
+          study_type, end_time, total_minutes, start_hk, finish_hk, hank,
+          total_spdl, idle_spindles, running_spdl,
+          tpi, tpm, average_speed, mixing, roving_hk, doff_length, rh_percent, temp_percent)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
         [
           study_id,
           // `time` is a Postgres `time without time zone` column — it can't hold a "08:00-16:00"
@@ -1762,7 +1779,24 @@ router.post('/study', async (req, res, next) => {
           // remarksBlock below (START:/END:/TOTAL_MINUTES:), so only the start time goes here.
           startTime?.hhmm || other_field_values.time || null,
           toWholeNumberOrNull(computedBreakCount),
-          remarksBlock
+          remarksBlock,
+          study_type || other_field_values.study_type || null,
+          endTime?.hhmm || null,
+          totalMinutes,
+          startHk,
+          finishHk,
+          hank,
+          totalSpdl,
+          idleSpindles,
+          runningSpdl,
+          other_field_values.tpi || null,
+          other_field_values.tpm || null,
+          other_field_values.average_speed || null,
+          other_field_values.mixing || null,
+          other_field_values.roving_hk || null,
+          other_field_values.doff_length || null,
+          other_field_values.rh_percent || null,
+          other_field_values.temp_percent || null
         ]
       );
     }
@@ -1970,13 +2004,13 @@ router.post('/uqc', async (req, res) => {
             entry_date,
             shift,
             variety,
-            department,
             mc_no,
             u_percent,
             cvm,
             cvm_1m,
             cvm_3m,
-            remarks
+            remarks,
+            user_name
         } = req.body;
 
         if (!entry_id) {
@@ -1996,8 +2030,8 @@ router.post('/uqc', async (req, res) => {
 
         const result = await client.query(
             `INSERT INTO simplex.u_data_entry
-            (entry_id, entry_type, entry_date, shift, variety, department, mc_no,
-             u_percent, cvm, cvm_1m, cvm_3m, remarks)
+            (entry_id, entry_type, entry_date, shift, variety, mc_no,
+             u_percent, cvm, cvm_1m, cvm_3m, remarks, operator)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             RETURNING *`,
             [
@@ -2006,13 +2040,13 @@ router.post('/uqc', async (req, res) => {
                 entry_date,
                 shift,
                 variety,
-                department,
                 mc_no,
                 toNumber(u_percent),
                 toNumber(cvm),
                 toNumber(cvm_1m),
                 toNumber(cvm_3m),
-                remarks
+                remarks,
+                user_name || null
             ]
         );
 
@@ -2062,22 +2096,21 @@ const getSimplexUqcEntries = async (req, res, { forceGlobal = false } = {}) => {
             || String(req.query.limit || '').toLowerCase() === 'all';
         const limit = fetchAll ? null : Math.max(1, parseInt(req.query.limit) || 10);
         const offset = limit ? (page - 1) * limit : 0;
-        const department = String(req.query.department || '').trim();
         const globalMode = forceGlobal || String(req.query.global || '').toLowerCase() === 'true';
-        const whereClause = (!globalMode && department) ? 'WHERE department ILIKE $1' : '';
-        const baseParams = (!globalMode && department) ? [`%${department}%`] : [];
+        // u_data_entry has no `department` column — the U% Data Entry form never collects one, so
+        // department-scoped filtering here always matched zero rows. Removed rather than kept as
+        // dead code; this route now always returns the full unfiltered list.
+        const baseParams = [];
 
         const dataQuery = `
             SELECT *
             FROM simplex.u_data_entry
-            ${whereClause}
             ORDER BY entry_date DESC
             ${limit ? `LIMIT $${baseParams.length + 1} OFFSET $${baseParams.length + 2}` : ''}
         `;
 
         const countQuery = `
             SELECT COUNT(*) FROM simplex.u_data_entry
-            ${whereClause}
         `;
 
         const dataParams = limit ? [...baseParams, limit, offset] : baseParams;
@@ -2089,8 +2122,7 @@ const getSimplexUqcEntries = async (req, res, { forceGlobal = false } = {}) => {
         res.json({
             page,
             limit: limit || 'all',
-            global: globalMode || !department,
-            department: department || null,
+            global: true,
             total,
             totalPages: limit ? Math.ceil(total / limit) : 1,
             data: dataResult.rows.map((row) => withScreenEntryId('uqc', row))
@@ -2219,7 +2251,7 @@ router.post('/process_parameter', async (req, res, next) => {
         break_draft, total_draft, creel_draft,
         false_twist_grooves, spacer,
         top_arm_pressure, back_pressure, middle_pressure, front_pressure,
-        coil_inch, lifter_combination_wheel, lifter_wheel, tension_wheel
+        coil_inch, lifter_combination_wheel, lifter_wheel, tension_wheel, operator
       )
       VALUES (
         $1,$2,$3,$4,$5,
@@ -2229,7 +2261,7 @@ router.post('/process_parameter', async (req, res, next) => {
         $13,$14,$15,
         $16,$17,
         $18,$19,$20,$21,
-        $22,$23,$24,$25
+        $22,$23,$24,$25,$26
       )
       RETURNING *`,
       [
@@ -2257,7 +2289,8 @@ router.post('/process_parameter', async (req, res, next) => {
         data.coil_inch,
         data.lifter_combination_wheel,
         data.lifter_wheel,
-        data.tension_wheel
+        data.tension_wheel,
+        data.user_name || null
       ]
     );
 
@@ -2383,8 +2416,9 @@ router.put('/process_parameter/:id', async (req, res, next) => {
            lifter_combination_wheel=$22,
            lifter_wheel=$23,
            tension_wheel=$24,
+           operator = COALESCE($25, operator),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id=$25
+       WHERE id=$26
        RETURNING *`,
       [
         data.type || 'Process Parameter',
@@ -2411,6 +2445,7 @@ router.put('/process_parameter/:id', async (req, res, next) => {
         data.lifter_combination_wheel,
         data.lifter_wheel,
         data.tension_wheel,
+        data.user_name || null,
         id
       ]
     );

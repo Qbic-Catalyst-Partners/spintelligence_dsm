@@ -414,12 +414,16 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   const safeTickets = applyStoredTicketStatuses(sourceTickets)
     .filter((ticket) => isAdminUser || isSupervisorVisibleTicket(ticket))
     .map(transformTicket);
+  // The backend's /tickets endpoint doesn't recognize include_all/all_users/
+  // all_tickets/scope - those were silent no-ops, so with no page/limit sent
+  // it fell back to its default limit=25, and this page's own client-side
+  // merge/filter/pagination (across Value/Acknowledgement/PP/Wheel Change
+  // ticket types) then paginated over just those 25 rows instead of the real
+  // total. An explicit high limit actually works, same fix already used for
+  // fetchApprovalQueueApi below.
   const supervisorTicketQuery = isAdminUser
     ? {
-        include_all: true,
-        all_users: true,
-        all_tickets: true,
-        scope: "all",
+        limit: 1000,
       }
     : {};
 
@@ -439,6 +443,14 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   const [entrySearch, setEntrySearch] = useState("");
   const [page, setPage] = useState(1);
   const [showFilter, setShowFilter] = useState(false);
+  // Changing any filter shrinks/reshuffles the result set, but page never
+  // reset on its own (only selectTicketingView's tab switch did) - so
+  // picking e.g. a User Name while sitting on page 2+ left `page` pointing
+  // past the end of the new, smaller filtered set, showing "no tickets
+  // found" even though the selected person's tickets exist on page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [status, severity, userName, ticketType, level, startDate, endDate, search]);
   // L1-L4 each get an "Owned" tab (tickets currently escalated to their own
   // level right now); L5 is the final escalation authority with nothing
   // assigned directly to it, so it's Mapped-only. L1 has nothing escalating
@@ -616,12 +628,17 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
         return visibleStatuses.includes(normalizedStatus);
       })
       .map((ticket) => {
-        // Wheel Change Approval and PP Approval tickets carry no user_name
-        // either - like Acknowledgement, there's no "submitter", just
-        // whoever the ticket is currently sitting with, resolved from the
-        // approval_lX_user_ids the same way the L2-L5 REVIEWER column does.
+        // Wheel Change Approval and PP Approval tickets carry no user_name -
+        // there's genuinely no single "submitter", just whoever the ticket is
+        // currently sitting with, resolved from approval_lX_user_ids the same
+        // way the L2-L5 REVIEWER column does. Acknowledgement tickets are
+        // different: they always have a real submitter (the person whose
+        // notebook wasn't acknowledged in time) already populated in
+        // ticket.user_name - resolving to the current reviewer here instead
+        // collapsed every Acknowledgement ticket's User Name to whichever
+        // single approver they're all currently sitting with (e.g. one L4
+        // approver), hiding every real submitter from the column/filter.
         const resolvedUserName = (
-          isAcknowledgementReviewTicket(ticket) ||
           isWheelChangeApprovalTicketRecord(ticket) ||
           isPpApprovalTicketRecord(ticket)
         )
@@ -728,12 +745,22 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
     const normalizedFilterStatus = String(status || "").trim().toLowerCase();
     const statusMatch = !status || normalizedTicketStatus === normalizedFilterStatus;
 
+    // "PP" in the filter is the umbrella option for every process-parameter
+    // ticket - PP batch tickets are literally typed "PP", but PP Approval
+    // tickets carry the more specific "PP Approval" label (its own separate
+    // filter option too), so an exact match on "PP" alone always hid the
+    // Approval ones out of the list even though they're still PP tickets.
+    const ticketTypeMatch =
+      !ticketType ||
+      t.ticketType === ticketType ||
+      (ticketType === "PP" && t.ticketType === "PP Approval");
+
     return (
       dateMatch &&
       statusMatch &&
       (!severity || t.severity === severity) &&
       (!userName || (t.userNameList || [t.userName]).includes(userName)) &&
-      (!ticketType || t.ticketType === ticketType) &&
+      ticketTypeMatch &&
       (!level || t.levelType === level) &&
       (!search ||
         t.ticket_id?.toLowerCase().includes(search.toLowerCase()) ||

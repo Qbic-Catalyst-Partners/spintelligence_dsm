@@ -294,14 +294,6 @@ const ensureDrawframeEntryIdColumns = async () => {
       ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
   await client.query(`
-    ALTER TABLE drawframe.cots_breaker_data
-      ALTER COLUMN thick_place DROP NOT NULL;
-  `);
-  await client.query(`
-    ALTER TABLE drawframe.cots_finisher_data
-      ALTER COLUMN thick_place DROP NOT NULL;
-  `);
-  await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS cots_data_entry_entry_id_uq
     ON drawframe.cots_data_entry (entry_id)
     WHERE entry_id IS NOT NULL;
@@ -457,7 +449,13 @@ const saveWrappingAPercent = async (req, res, next) => {
     const sampleRows = normalizeJsonArray(payload.sample_rows ?? payload.sampleRows);
     const summaryRows = normalizeJsonArray(payload.summary_rows ?? payload.summaryRows);
     const rows = normalizeJsonArray(payload.rows);
-    const rawOcrRows = normalizeJsonArray(payload.raw_ocr_rows ?? payload.rawOcrRows);
+    // The frontend (buildAPercentPayload) sends the pre-edit OCR extraction as `ocr_json`,
+    // not `raw_ocr_rows`/`rawOcrRows` — those two keys were never actually sent, so this
+    // always normalized to [] and silently discarded the original OCR text on every save.
+    const rawOcrRows = normalizeJsonArray(
+      payload.raw_ocr_rows ?? payload.rawOcrRows ?? payload.ocr_json ?? payload.ocrJson
+    );
+    const operatorName = getAuthenticatedOperatorName(req);
 
     if (!sampleRows.length && !summaryRows.length && !rows.length && !rawOcrRows.length) {
       return res.status(400).json({ message: 'OCR rows are required' });
@@ -466,9 +464,9 @@ const saveWrappingAPercent = async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO wrapping.a_percent (
         entry_id, entry_type, schema_name, table_name, pdf_file,
-        meta, sample_rows, summary_rows, rows, raw_ocr_rows
+        meta, sample_rows, summary_rows, rows, raw_ocr_rows, operator
       )
-      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb)
+      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11)
       RETURNING *`,
       [
         payload.entry_id ?? null,
@@ -480,7 +478,8 @@ const saveWrappingAPercent = async (req, res, next) => {
         JSON.stringify(sampleRows),
         JSON.stringify(summaryRows),
         JSON.stringify(rows),
-        JSON.stringify(rawOcrRows)
+        JSON.stringify(rawOcrRows),
+        operatorName
       ]
     );
 
@@ -544,6 +543,14 @@ const saveWrappingStretchPercent = async (req, res, next) => {
     const summaryRows = normalizeJsonArray(payload.summary_rows ?? payload.summaryRows);
     const rows = normalizeJsonArray(payload.rows);
     const rawOcrRows = normalizeJsonArray(payload.raw_ocr_rows ?? payload.rawOcrRows);
+    // Stretch % can have multiple OCR "tables" (Table No 1, 2, ...), each with its own meta
+    // block + sample/summary rows (buildWrappingOcrPayload's `tables` array, wrappingOcrPayload.js
+    // lines 136-147). The flat `meta` column below only ever held the FIRST table's meta — every
+    // table after the first had its meta silently dropped (though the raw per-row data survived
+    // inside raw_ocr_rows/sample_rows since each row also carries its own "Table No"). Persist the
+    // full per-table breakdown too so nothing beyond the first table's meta is lost.
+    const tables = normalizeJsonArray(payload.tables);
+    const operatorName = getAuthenticatedOperatorName(req);
 
     if (!sampleRows.length && !summaryRows.length && !rows.length && !rawOcrRows.length) {
       return res.status(400).json({ message: 'OCR rows are required' });
@@ -552,9 +559,9 @@ const saveWrappingStretchPercent = async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO wrapping.stretch_percent (
         entry_id, entry_type, schema_name, table_name, pdf_file,
-        meta, sample_rows, summary_rows, rows, raw_ocr_rows
+        meta, sample_rows, summary_rows, rows, raw_ocr_rows, operator, tables
       )
-      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb)
+      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12::jsonb)
       RETURNING *`,
       [
         payload.entry_id ?? null,
@@ -566,7 +573,9 @@ const saveWrappingStretchPercent = async (req, res, next) => {
         JSON.stringify(sampleRows),
         JSON.stringify(summaryRows),
         JSON.stringify(rows),
-        JSON.stringify(rawOcrRows)
+        JSON.stringify(rawOcrRows),
+        operatorName,
+        JSON.stringify(tables)
       ]
     );
 
@@ -715,14 +724,15 @@ const saveWrappingDrawframeNotebook = async (req, res, next) => {
 
       const result = await client.query(
         `INSERT INTO wrapping.drawframe_notebook (
-          entry_id, ocr_id, date_text, entry_date, mac_name,
+          entry_id, ocr_id, serial_no, date_text, entry_date, mac_name,
           shift, std_hank, avg_hank, sd, cv, operator, user_name, remark
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         RETURNING *`,
         [
           submissionId,
           row.entry_id ?? row.id_no ?? row.sourceId ?? row.ID ?? row.id_value ?? row.notebook_id ?? null,
+          toNullableNumber(row.serial_no ?? row.s_no ?? row.sno ?? row['S.No'] ?? row.SNo ?? (index + 1)),
           dateText || null,
           entryDate,
           row.mac_name ?? row.machine_name ?? row.macName ?? row['Mac Name'] ?? null,
@@ -1482,21 +1492,25 @@ router.post('/yarn-cv', async (req, res) => {
             remarks,
             num_readings,
             readings,
-            results
+            results,
+            operator
         } = req.body;
 
         if (!entry_id) {
             return res.status(400).json({ message: "entry_id is required and must be unique" });
         }
 
+        const operatorName = operator || String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null;
+        const serialNo = s_no || entry_id;
+
         await client.query('BEGIN');
 
         const qc = await client.query(
             `INSERT INTO drawframe.yarn_cv_percent
-            (entry_id, type, s_no, entry_date, machine_number, remarks, num_readings, readings)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+            (entry_id, type, s_no, entry_date, machine_number, remarks, num_readings, readings, operator)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
             RETURNING id`,
-            [entry_id, type, s_no, entry_date, machine_number, remarks, num_readings, JSON.stringify(readings || {})]
+            [entry_id, type, serialNo, entry_date, machine_number, remarks, num_readings, JSON.stringify(readings || {}), operatorName]
         );
 
         const qc_id = qc.rows[0].id;
@@ -1666,7 +1680,7 @@ router.post('/cots', async (req, res) => {
                 await client.query(
                     `INSERT INTO drawframe.cots_finisher_data
                     (entry_id, mc_name, fan_waste, cot_change, stripper_w,
-                     auto_level, silver_worn, main_tin, scanning)
+                     auto_level, silver_worn, mass_thick_place, scanning)
                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
                     [
                         createdEntryId,
@@ -1762,8 +1776,7 @@ router.get('/cots', async (req, res) => {
                     'mc_name', b.mc_name,
                     'fan_waste', b.fan_waste,
                     'cot_change', b.cot_change,
-                    'stripper_w', b.stripper_w,
-                    'thick_place', b.thick_place
+                    'stripper_w', b.stripper_w
                 )) AS machines
                 FROM drawframe.cots_breaker_data b
                 WHERE b.entry_id = qc.id
@@ -1776,7 +1789,7 @@ router.get('/cots', async (req, res) => {
                     'stripper_w', f.stripper_w,
                     'auto_level', f.auto_level,
                     'silver_worn', f.silver_worn,
-                    'main_tin', f.main_tin,
+                    'main_tin', f.mass_thick_place,
                     'scanning', f.scanning
                 )) AS machines
                 FROM drawframe.cots_finisher_data f
@@ -1875,13 +1888,13 @@ router.post('/uqc', async (req, res) => {
             entry_date,
             shift,
             variety,
-            department,
             mc_no,
             u_percent,
             cvm,
             cvm_1m,
             cvm_3m,
-            remarks
+            remarks,
+            operator
         } = req.body;
 
         if (!entry_id) {
@@ -1901,8 +1914,8 @@ router.post('/uqc', async (req, res) => {
 
         const result = await client.query(
             `INSERT INTO drawframe.u_data_entry
-            (entry_id, entry_type, entry_date, shift, variety, department, mc_no,
-             u_percent, cvm, cvm_1m, cvm_3m, remarks)
+            (entry_id, entry_type, entry_date, shift, variety, mc_no,
+             u_percent, cvm, cvm_1m, cvm_3m, remarks, operator)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             RETURNING *`,
             [
@@ -1911,13 +1924,13 @@ router.post('/uqc', async (req, res) => {
                 entry_date,
                 shift,
                 variety,
-                department,
                 mc_no,
                 toNumber(u_percent),
                 toNumber(cvm),
                 toNumber(cvm_1m),
                 toNumber(cvm_3m),
-                remarks
+                remarks,
+                operator || String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null
             ]
         );
 
@@ -2560,7 +2573,8 @@ router.put('/header/:ins_id', async (req, res, next) => {
       delivery_hank,
       delivery_speed,
       pressure_bar,
-      scanning_rolls_size
+      scanning_rolls_size,
+      user_name
     } = req.body;
 
     // ✅ Required validation
@@ -2606,8 +2620,9 @@ router.put('/header/:ins_id', async (req, res, next) => {
            delivery_hank = $17,
            delivery_speed = $18,
            pressure_bar = $19,
-           scanning_rolls_size = $20
-       WHERE ins_id = $21
+           scanning_rolls_size = $20,
+           operator = COALESCE($21, operator)
+       WHERE ins_id = $22
        RETURNING *`,
       [
         entry_id,
@@ -2630,6 +2645,7 @@ router.put('/header/:ins_id', async (req, res, next) => {
         delivery_speed,
         pressure_bar,
         scanning_rolls_size,
+        user_name || null,
         id
       ]
     );

@@ -486,7 +486,7 @@ const GENERAL_REPORT_SOURCE_CANDIDATES = {
     udataentry: ['carding.u_data_entry'],
     upercentdataentry: ['carding.u_data_entry'],
     carddfkpressurechecking: ['carding.card_dfk_pressure_checking'],
-    wheelchange: ['carding.card_change_control']
+    wheelchange: ['carding.carding_change_request']
   },
   comber: {
     ribbonlapcvdataentry: ['comber.ribbon_lap_cv_qc'],
@@ -890,7 +890,6 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         LEFT JOIN blowroom.br_waste_study_waste_rows wr ON wr.study_id = w.id AND wr.row_no = t.row_no`,
       selectColumns: [
         'w.entry_id',
-        'w.waste_study_id',
         'w.date',
         'w.variety',
         'w.study_type',
@@ -1084,7 +1083,6 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'pv.machine',
         'pv.cv_value',
         'pv.cv_5m_value',
-        'pv.unit',
         'ph.remarks',
         'ph.created_at'
       ],
@@ -1184,7 +1182,6 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
       selectColumns: [
         'entry_id',
         'type',
-        'test_no',
         'entry_date',
         'cdo_no',
         'cdg_no_proposed',
@@ -1196,8 +1193,6 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'del_hank_proposed',
         'feed_weight_existing',
         'feed_weight_proposed',
-        'speed_existing',
-        'speed_proposed',
         'licker_in_speed_1_existing',
         'licker_in_speed_1_proposed',
         'licker_in_speed_2_existing',
@@ -1239,7 +1234,6 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         LEFT JOIN carding.card_waste_study_waste_rows wr ON wr.study_id = w.id AND wr.row_no = t.row_no`,
       selectColumns: [
         'w.entry_id',
-        'w.waste_study_id',
         'w.date',
         'w.variety',
         'w.study_type',
@@ -1343,7 +1337,7 @@ GENERAL_REPORT_CUSTOM_SOURCES.drawframe = {
       'd.stripper_w',
       'd.auto_level',
       'd.silver_worn',
-      'd.main_tin',
+      'd.mass_thick_place AS main_tin',
       'd.scanning',
       'e.created_at'
     ],

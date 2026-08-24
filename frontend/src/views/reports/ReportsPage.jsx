@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import {
+  FiArrowDown,
+  FiArrowUp,
   FiCalendar,
   FiChevronDown,
   FiChevronLeft,
@@ -1958,6 +1960,15 @@ const getRowDate = (row) =>
   row?.entry_date ||
   row?.date ||
   row?.created_at ||
+  // Some Spinning tables (speed_checking, cots_checking, lycra_missing, bottom_apron_checking,
+  // lycra_centering, rsm_and_lycrasensor_cheking_online/offline) name this column literally
+  // "createdat" (no separator) instead of "created_at" — same aliasing the "Created At" column
+  // display already accounts for below. Without these, rows from those tables have no date this
+  // function can find, so the date-range filter's "no date on row → include it" fallback let them
+  // through regardless of the selected range.
+  row?.createdAt ||
+  row?.CreatedAt ||
+  row?.createdat ||
   row?.generated_at;
 
 // Draw Frame's "A%" notebook's own single-value fields (as opposed to the sample/summary table
@@ -3084,7 +3095,7 @@ const getCellValue = (row, field, operatorByEntryKey = {}, context = {}) => {
     if (directOperatorName) return directOperatorName;
     const entryKey = getRowEntryKey(row);
     const joinedOperatorName = entryKey && operatorByEntryKey[entryKey];
-    return joinedOperatorName || "-";
+    return joinedOperatorName || getRowOperatorName(row) || "-";
   }
 
   if (getCanonicalReportFieldKey(field) === getCanonicalReportFieldKey(ENTRY_ID_FIELD)) {
@@ -3690,6 +3701,9 @@ function ReportsPage() {
   const [activeDatePicker, setActiveDatePicker] = useState("");
   const [calendarMonth, setCalendarMonth] = useState(toMonthKey(parseInputDate(toInputDate(today))));
   const [dateFilterActive, setDateFilterActive] = useState(false);
+  // Keyed by typeName since "All Type" renders one table per notebook type with its own column
+  // set — sorting one table's column shouldn't touch the others.
+  const [sortConfig, setSortConfig] = useState({ typeName: null, key: null, direction: null });
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleHour, setScheduleHour] = useState("08");
   const [scheduleMinute, setScheduleMinute] = useState("00");
@@ -4566,13 +4580,17 @@ function ReportsPage() {
 
   const filteredRows = useMemo(() => {
     if (isInvoiceDataReport) return rows;
-    if (!dateFilterActive) return rows;
 
     // Compare calendar days as "YYYY-MM-DD" strings rather than exact timestamps — several
     // backend tables store their date as a naive/shifted timestamp (see this session's many
     // timezone fixes), so a row logically submitted "on" the selected day could parse to a JS
     // Date a few hours either side of local midnight. Comparing by day-string is immune to that,
     // and correctly includes the whole day when From Date and To Date are the same date.
+    //
+    // Deliberately NOT gated on dateFilterActive (whether the user has actually touched the
+    // calendar) — the From/To fields always show a real, non-empty range (defaulting to the
+    // last 3 days), so the visible dates must always be enforced. dateFilterActive still exists
+    // to distinguish "explicit range" when snapshotting a schedule (see handleSaveSchedule).
     if (!startDate && !endDate) return rows;
 
     return rows.filter((row) => {
@@ -4585,14 +4603,13 @@ function ReportsPage() {
       if (endDate && rowDateKey > endDate) return false;
       return true;
     });
-  }, [dateFilterActive, endDate, isInvoiceDataReport, rows, startDate]);
+  }, [endDate, isInvoiceDataReport, rows, startDate]);
 
   // Same date-range filter as filteredRows above, parameterized by type name so it can also be
   // applied per-section for "All Type" reports (each section's own typeName decides whether it's
   // an invoice-style screen that skips date filtering, same as the single-type path does).
   const filterRowsForType = (typeRows, typeName) => {
     if (String(typeName || "").trim().toLowerCase().includes("invoice")) return typeRows;
-    if (!dateFilterActive) return typeRows;
     if (!startDate && !endDate) return typeRows;
 
     return typeRows.filter((row) => {
@@ -5526,6 +5543,63 @@ function ReportsPage() {
         },
       ];
 
+  // Column sorting works off the same formatted strings the cells already render (dates,
+  // numbers, text) rather than raw row data, since field values are resolved through a mix of
+  // aliasing/normalizing helpers (getCellValue) with no single raw accessor per column. Dates
+  // are displayed "DD-MM-YYYY" (formatDate), which sorts wrong lexicographically, so that shape
+  // is detected and rewritten to "YYYY-MM-DD" before comparing.
+  const getSortableCellValue = (row, field, context) => {
+    const raw = getCellValue(row, field, operatorByEntryKey, context);
+    if (raw === null || typeof raw === "undefined") return null;
+    const text = String(raw).trim();
+    if (text === "" || text === "-") return null;
+    const dateMatch = /^(\d{2})-(\d{2})-(\d{4})$/.exec(text);
+    if (dateMatch) {
+      const [, dd, mm, yyyy] = dateMatch;
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    const numeric = Number(text.replace(/,/g, ""));
+    if (!Number.isNaN(numeric) && text.replace(/,/g, "") !== "") return numeric;
+    return text.toLowerCase();
+  };
+
+  const compareSortableValues = (a, b, direction) => {
+    if (a === null && b === null) return 0;
+    if (a === null) return 1;
+    if (b === null) return -1;
+    let result;
+    if (typeof a === "number" && typeof b === "number") {
+      result = a - b;
+    } else {
+      result = String(a).localeCompare(String(b));
+    }
+    return direction === "desc" ? -result : result;
+  };
+
+  const getSortedSectionRows = (section) => {
+    if (sortConfig.typeName !== section.typeName || !sortConfig.key || !sortConfig.direction) {
+      return section.rows;
+    }
+    const field = section.fields.find((candidate) => candidate.key === sortConfig.key);
+    if (!field) return section.rows;
+    const context = { subDepartment, reportType: section.typeName };
+    return [...section.rows].sort((rowA, rowB) =>
+      compareSortableValues(
+        getSortableCellValue(rowA, field, context),
+        getSortableCellValue(rowB, field, context),
+        sortConfig.direction
+      )
+    );
+  };
+
+  const toggleSort = (typeName, key, direction) => {
+    setSortConfig((current) =>
+      current.typeName === typeName && current.key === key && current.direction === direction
+        ? { typeName: null, key: null, direction: null }
+        : { typeName, key, direction }
+    );
+  };
+
   const buildCsv = () => {
     const lines = exportSections.flatMap((section) => {
       const header = section.fields.map((field) => `"${String(field.label).replace(/"/g, '""')}"`).join(",");
@@ -5997,16 +6071,52 @@ function ReportsPage() {
                 </div>
               ) : null}
 
-              {exportSections.map((section, sectionIndex) => (
+              {exportSections.map((section, sectionIndex) => {
+                const sectionRows = getSortedSectionRows(section);
+                return (
                 <div key={section.typeName} style={sectionIndex > 0 ? { marginTop: 24 } : undefined}>
                   {isAllTypeSelected ? <h3 className={styles.reportSectionTitle}>{section.typeName}</h3> : null}
                   <div className={styles.tableWrap}>
                   <table>
                     <thead>
                       <tr>
-                        {section.fields.map((field) => (
-                          <th key={field.key}>{field.label}</th>
-                        ))}
+                        {section.fields.map((field) => {
+                          const isActiveAsc =
+                            sortConfig.typeName === section.typeName &&
+                            sortConfig.key === field.key &&
+                            sortConfig.direction === "asc";
+                          const isActiveDesc =
+                            sortConfig.typeName === section.typeName &&
+                            sortConfig.key === field.key &&
+                            sortConfig.direction === "desc";
+                          return (
+                            <th key={field.key}>
+                              <span className={styles.sortableHeader}>
+                                {field.label}
+                                <span>
+                                  <button
+                                    type="button"
+                                    className={`${styles.sortButton} ${isActiveAsc ? styles.sortButtonActive : ""}`}
+                                    aria-label={`Sort ${field.label} ascending`}
+                                    aria-pressed={isActiveAsc}
+                                    onClick={() => toggleSort(section.typeName, field.key, "asc")}
+                                  >
+                                    <FiArrowUp size={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`${styles.sortButton} ${isActiveDesc ? styles.sortButtonActive : ""}`}
+                                    aria-label={`Sort ${field.label} descending`}
+                                    aria-pressed={isActiveDesc}
+                                    onClick={() => toggleSort(section.typeName, field.key, "desc")}
+                                  >
+                                    <FiArrowDown size={12} />
+                                  </button>
+                                </span>
+                              </span>
+                            </th>
+                          );
+                        })}
                       </tr>
                     </thead>
                     <tbody>
@@ -6016,7 +6126,7 @@ function ReportsPage() {
                         </tr>
                       ) : null}
                       {section.fields.length > 0
-                        ? section.rows.map((row, rowIndex) => (
+                        ? sectionRows.map((row, rowIndex) => (
                             // rowIndex must always be part of the key, not just a fallback — rows
                             // exploded from a nested array (expandNestedRows, e.g. Blow Room Sync's
                             // per-entry Run/Idle/Sub Total Time or BR Waste Study's per-type_row
@@ -6030,7 +6140,7 @@ function ReportsPage() {
                             </tr>
                           ))
                         : null}
-                      {!loading && section.fields.length > 0 && section.rows.length === 0 ? (
+                      {!loading && section.fields.length > 0 && sectionRows.length === 0 ? (
                         <tr>
                           <td colSpan={section.fields.length || 1}>{error || "No report details found."}</td>
                         </tr>
@@ -6054,7 +6164,8 @@ function ReportsPage() {
                   </table>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </section>
           </section>
 

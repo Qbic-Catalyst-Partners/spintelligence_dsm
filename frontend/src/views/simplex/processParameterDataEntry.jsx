@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { useSelector } from "react-redux";
 import { createPortal } from "react-dom";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
@@ -291,6 +292,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   { selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], entryId = "", nextEntryIdPreview = "", tablePortalTargetId = "", lockedCountName = "", lockedConsigneeName = "" },
   ref
 ) {
+  const user = useSelector((state) => state.auth?.user);
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(createDefaultForm);
   const [errors, setErrors] = useState({});
@@ -529,6 +531,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
     lifter_combination_wheel: form.lifterCombinationWheel,
     lifter_wheel: form.lifterWheel,
     tension_wheel: form.tensionWheel,
+    user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
   });
 
   const getPreviewData = () => [

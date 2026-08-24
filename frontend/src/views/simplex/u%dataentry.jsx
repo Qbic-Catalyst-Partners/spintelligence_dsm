@@ -44,6 +44,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
 ) {
   const dispatch = useDispatch();
   const { isLoading } = useSelector((state) => state.simplex ?? {});
+  const user = useSelector((state) => state.auth?.user);
   const [form, setForm] = useState({
     ...initialForm(),
   });
@@ -156,6 +157,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         cvm_1m: form.im_cvm,
         cvm_3m: form.m3_cvm,
         remarks: form.remarks,
+        user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
       })
     );
 
