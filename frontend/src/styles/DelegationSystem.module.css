@@ -183,6 +183,81 @@
   padding: 24px !important;
 }
 
+/* ================= STATUS BADGE ================= */
+.statusBadge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.statusActive {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.statusExpired {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.statusRevoked {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* ================= ROW ACTIONS ================= */
+.actionsCell {
+  display: flex;
+  gap: 8px;
+}
+
+.actionBtn {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #3d539f;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.actionBtn:hover {
+  background: #f1f5f9;
+}
+
+.actionBtnDanger {
+  color: #b91c1c;
+}
+
+.editingBanner {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.btnSecondary {
+  background: transparent;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 /* ================= PAGINATION ================= */
 .pagination {
   display: flex;
@@ -317,4 +392,18 @@
 :global(:root[data-theme="dark"]) .pageBtn:hover,
 :global(:root[data-theme="dark"]) .navBtn:hover:not(:disabled) {
   background: #242424;
+}
+
+:global(:root[data-theme="dark"]) .actionBtn {
+  background: #3b3b3b;
+  border-color: #5f5f5f;
+  color: #93c5fd;
+}
+
+:global(:root[data-theme="dark"]) .actionBtn:hover {
+  background: #242424;
+}
+
+:global(:root[data-theme="dark"]) .actionBtnDanger {
+  color: #fca5a5;
 }

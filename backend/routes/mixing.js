@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
+const { generateTicketId } = require('../utils/ticketId');
 const sqlServer = require('../config/sqlserver');
 const { dedupeVarieties } = require('../utils/variety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
@@ -904,12 +905,14 @@ const autoCreateTicket = async ({
     l2Chains.flatMap((chain) => chain.filter((m) => m.level === 'L2').map((m) => m.id))
   ));
 
+  const ticketId = await generateTicketId(client);
   const result = await client.query(
     `INSERT INTO ticketing_system.operator_tickets
      (ticket_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind, violation_details, approval_l1_user_ids, approval_l2_user_ids)
-     VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, 'Open', CURRENT_TIMESTAMP, $7, $8, $9, 'VALUE_THRESHOLD', 'value_threshold', $10::jsonb, $11::int[], $12::int[])
+     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, 'VALUE_THRESHOLD', 'value_threshold', $11::jsonb, $12::int[], $13::int[])
      RETURNING *`,
     [
+      ticketId,
       user_name || 'ERP System',
       machine_name,
       JSON.stringify(relevantParamNames),
@@ -1844,7 +1847,7 @@ const AFIS6_MMF_NUMERIC_FIELDS = [
   'sc_nep_count_g', 'sc_nep_mean_size_um', 'l_w_mm', 'l_w_cv', 'sfc_w_percent', 'uql_w_mm',
   'l_n_mm', 'l_n_cv_percent', 'sfc_n_percent', 'five_pct_l_n_mm', 'fitness_index',
   'maturity_ratio_mat1', 'ifc_percent', 'fifty_pct_l_n_mm', 'cut_length_n_mm',
-  'cut_length_l_n_cv_percent', 'cut_length_sfc_w_percent', 'fineness_den', 'fineness_cv_percent',
+  'fineness_den', 'fineness_cv_percent',
   'long_fiber_gt_46_80_percent', 'long_fiber_count_gt_46_80',
   'long_fiber_gt_45_60_percent', 'long_fiber_count_gt_45_60'
 ];
@@ -1853,7 +1856,7 @@ router.post('/afis6-mmf', async (req, res, next) => {
   try {
     await ensureMixingEntryIdColumns();
     const {
-      entry_id, inspection_date, machine_name, material_class, comment,
+      entry_id, inspection_date, machine_name, comment, material_class,
       lot_no, variety, invoice_date, mc_name, blow_room, carding,
       breaker_drawing, finisher_drawing, comber,
       user_name
@@ -1879,7 +1882,7 @@ router.post('/afis6-mmf', async (req, res, next) => {
     }
 
     const afis6MmfValues = [
-      entry_id, toDateOnly(inspection_date), machine_name, material_class || null, comment || null,
+      entry_id, toDateOnly(inspection_date), machine_name, comment || null, material_class || null,
       lot_no || null, variety || null, toDateOnly(invoice_date), mc_name || null, blow_room || null, carding || null,
       breaker_drawing || null, finisher_drawing || null, comber || null,
       n.total_nep_count_g, n.total_nep_mean_size_um,
@@ -1888,7 +1891,7 @@ router.post('/afis6-mmf', async (req, res, next) => {
       n.l_w_mm, n.l_w_cv, n.sfc_w_percent, n.uql_w_mm, n.l_n_mm,
       n.l_n_cv_percent, n.sfc_n_percent, n.five_pct_l_n_mm,
       n.fitness_index, n.maturity_ratio_mat1, n.ifc_percent, n.fifty_pct_l_n_mm,
-      n.cut_length_n_mm, n.cut_length_l_n_cv_percent, n.cut_length_sfc_w_percent,
+      n.cut_length_n_mm,
       n.fineness_den, n.fineness_cv_percent,
       // Live form still labels/keys these as "45.60mm" while the DB column (and the newer
       // AFIS-6 MMF screen component) use "46.80mm" — same field, historical naming mismatch.
@@ -1899,7 +1902,7 @@ router.post('/afis6-mmf', async (req, res, next) => {
 
     const result = await client.query(
       `INSERT INTO mixing.afis6_mmf_data_entry (
-        entry_id, inspection_date, machine_name, material_class, comment,
+        entry_id, inspection_date, machine_name, comment, material_class,
         lot_no, variety, invoice_date, mc_name, blow_room, carding,
         breaker_drawing, finisher_drawing, comber,
         total_nep_count_g, total_nep_mean_size_um,
@@ -1908,13 +1911,13 @@ router.post('/afis6-mmf', async (req, res, next) => {
         l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm, l_n_mm,
         l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
         fitness_index, maturity_ratio_mat1, ifc_percent, fifty_pct_l_n_mm,
-        cut_length_n_mm, cut_length_l_n_cv_percent, cut_length_sfc_w_percent,
+        cut_length_n_mm,
         fineness_den, fineness_cv_percent,
         long_fiber_gt_46_80_percent, long_fiber_count_gt_46_80, operator
       )
       VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40
+        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38
       )
       RETURNING *`,
       afis6MmfValues
@@ -2293,14 +2296,23 @@ router.post('/openness', async (req, res, next) => {
       const opennessPercentage = e.openness_percentage === '' || e.openness_percentage == null
         ? null
         : Number(e.openness_percentage);
+      const avgWeight = e.avg_weight === '' || e.avg_weight == null ? null : Number(e.avg_weight);
+      const avgVolume = e.avg_volume === '' || e.avg_volume == null ? null : Number(e.avg_volume);
+      const avgApparentSpecificVolume = e.avg_apparent_specific_volume === '' || e.avg_apparent_specific_volume == null
+        ? null
+        : Number(e.avg_apparent_specific_volume);
+      const avgActualOpValue = e.avg_actual_op_value === '' || e.avg_actual_op_value == null
+        ? null
+        : Number(e.avg_actual_op_value);
 
       await client.query(
         `INSERT INTO mixing.openness_entries
         (inspection_id, entry_no, stage_no, machine_name,
          beater_type, beater_speed_rpm,
          weight, volume_1, volume_2, average_volume,
-         apparent_specific_volume, actual_op_value, openness_percentage)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+         apparent_specific_volume, actual_op_value, openness_percentage,
+         avg_weight, avg_volume, avg_apparent_specific_volume, avg_actual_op_value)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
         [
           inspectionId,
           entryNo,
@@ -2314,7 +2326,11 @@ router.post('/openness', async (req, res, next) => {
           averageVolume,
           e.apparent_specific_volume,
           e.actual_op_value,
-          opennessPercentage
+          opennessPercentage,
+          avgWeight,
+          avgVolume,
+          avgApparentSpecificVolume,
+          avgActualOpValue
         ]
       );
     }
@@ -2385,7 +2401,8 @@ router.get('/openness', async (req, res, next) => {
         `SELECT entry_no, stage_no, machine_name,
                 beater_type, beater_speed_rpm,
                 weight, volume_1, volume_2, average_volume,
-                apparent_specific_volume, actual_op_value, openness_percentage
+                apparent_specific_volume, actual_op_value, openness_percentage,
+                avg_weight, avg_volume, avg_apparent_specific_volume, avg_actual_op_value
          FROM mixing.openness_entries
          WHERE inspection_id = $1
          ORDER BY entry_no`,

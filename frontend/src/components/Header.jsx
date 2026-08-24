@@ -105,6 +105,8 @@ const settingsLinks = [
     { href: "/ticket-resolution-sla", label: "Ticket Resolution SLA" },
     { href: "/usermanagement", label: "User Management" },
     { href: "/rolespermission", label: "Roles & Permissions" },
+    { href: "/new-field-creation", label: "New Field Creation", submittedNotebookManager: true },
+    { href: "/activity-log", label: "Activity Log", submittedNotebookManager: true },
 ];
 const ticketingLinks = [
     { href: "__ticketingHome__", label: "Ticket System" },
@@ -114,8 +116,6 @@ const ticketingLinks = [
 ];
 const managementHubLinks = [
     { href: "/submitted-notebooks", label: "Submitted Notebooks", submittedNotebookView: true },
-    { href: "/new-field-creation", label: "New Field Creation" },
-    { href: "/activity-log", label: "Activity Log" },
     {
         label: "WC Approvals",
         wheelChangeApproval: true,
@@ -168,8 +168,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     // Broader than hasSubmittedNotebookAccess above: the Submitted Notebooks
     // link itself is open to every L1-L5 hierarchy account (each sees a
     // different server-scoped subset of rows), while the other Management
-    // Hub entries (New Field Creation, Activity Log, threshold config) stay
-    // limited to admin/supervisor.
+    // Hub entries (threshold config) stay limited to admin/supervisor.
     const hasSubmittedNotebookViewAccess = isSubmittedNotebookViewerUser(user);
     const hasWheelChangeApprovalAccess = isWheelChangeApproverUser(user);
     const hasManagementHubAccess = hasSubmittedNotebookAccess || hasSubmittedNotebookViewAccess || hasWheelChangeApprovalAccess;
@@ -226,7 +225,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         }
 
         if (link.section === "settings") {
-            return hasFullAccess;
+            return hasFullAccess || hasSubmittedNotebookAccess;
         }
 
         if (link.section === "thresholds") {
@@ -256,6 +255,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             if (link.submittedNotebookView) return hasSubmittedNotebookViewAccess;
             return hasSubmittedNotebookAccess;
         });
+    const visibleSettingsLinks = hasFullAccess
+        ? settingsLinks
+        : settingsLinks.filter((link) => link.submittedNotebookManager && hasSubmittedNotebookAccess);
     const currentPath = router.asPath?.split("?")[0] || router.pathname;
     const backTarget = null;
 
@@ -548,8 +550,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         );
         setIsManagementHubOpen(
             currentPath === "/submitted-notebooks" ||
-            currentPath === "/new-field-creation" ||
-            currentPath === "/activity-log" ||
             currentPath === "/wheel-change-approvals" ||
             currentPath === "/drawframe-wheel-change-approvals" ||
             currentPath === "/carding-change-control-approvals" ||
@@ -574,7 +574,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath.startsWith("/umchangepassword") ||
             currentPath === "/rolespermission" ||
             currentPath.startsWith("/Createrole") ||
-            currentPath.startsWith("/editrole")
+            currentPath.startsWith("/editrole") ||
+            currentPath === "/new-field-creation" ||
+            currentPath === "/activity-log"
         );
     }, [router.asPath, router.pathname]);
 
@@ -642,7 +644,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                         );
                         const isManagementGroupActive = isManagementGroup && (
                             currentPath === "/submitted-notebooks" ||
-                            currentPath === "/activity-log" ||
                             currentPath === "/wheel-change-approvals" ||
                             currentPath === "/drawframe-wheel-change-approvals" ||
                             currentPath === "/carding-change-control-approvals" ||
@@ -663,7 +664,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             currentPath.startsWith("/umchangepassword") ||
                             currentPath === "/rolespermission" ||
                             currentPath.startsWith("/Createrole") ||
-                            currentPath.startsWith("/editrole")
+                            currentPath.startsWith("/editrole") ||
+                            currentPath === "/new-field-creation" ||
+                            currentPath === "/activity-log"
                         );
                         const linkClassName = `${styles["side-nav-link"]} ${
                             (isTicketingGroup
@@ -721,7 +724,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                         <FiChevronDown className={`${styles["department-chevron"]} ${isSettingsMenuOpen ? styles["department-chevron-open"] : ""}`} />
                                     </button>
                                     <div className={`${styles["side-subnav"]} ${isSettingsMenuOpen ? styles["side-subnav-open"] : ""}`}>
-                                        {settingsLinks.map((settingsLink) => (
+                                        {visibleSettingsLinks.map((settingsLink) => (
                                             <Link
                                                 key={settingsLink.href}
                                                 href={settingsLink.href}

@@ -1,5 +1,6 @@
 const express = require('express');
 const client = require('../connection');
+const { generateTicketId } = require('../utils/ticketId');
 const {
   peekNextProcessParameterEntryId,
   normalizeProcessParameterEntryId,
@@ -411,19 +412,20 @@ const createPpApprovalTicket = async (entry_id, notebookLabel = null) => {
     message: `PP id ${entry_id} has completed all departments and is awaiting L4 approval.`
   };
 
+  const ticketId = await generateTicketId(client);
   const ticket = await client.query(
     `INSERT INTO ticketing_system.operator_tickets
      (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
       severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
       violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
      VALUES (
-       'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-       $1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
-       $5, 'Open', NOW(), 'MISSING_VALUE', 'PP_APPROVAL', 'pp_approval',
-       $2::jsonb, $3::int[], 'L4', $4
+       $1,
+       $2, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+       $6, 'Open', NOW(), 'MISSING_VALUE', 'PP_APPROVAL', 'pp_approval',
+       $3::jsonb, $4::int[], 'L4', $5
      )
      RETURNING ticket_id`,
-    [entry_id, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity]
+    [ticketId, entry_id, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity]
   );
   const insertedTicketId = ticket.rows[0]?.ticket_id || null;
 

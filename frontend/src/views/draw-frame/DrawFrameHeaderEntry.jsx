@@ -91,7 +91,6 @@ const TYPE_CONFIG = {
     buildPayload: (form, entryId) => ({
       entry_id: entryId || undefined,
       type: form.type,
-      entry_scope: "breaker",
       count_name: form.countName,
       consignee_name: form.consigneeName,
       creation_date: form.creationDate,
@@ -172,7 +171,6 @@ const TYPE_CONFIG = {
     buildPayload: (form, entryId) => ({
       entry_id: entryId || undefined,
       type: form.type,
-      entry_scope: "finisher",
       count_name: form.countName,
       consignee_name: form.consigneeName,
       creation_date: form.creationDate,
@@ -628,7 +626,6 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
       const payload = {
         ...activeConfig.buildPayload(form, entryId),
         entry_id: paramId,
-        param_id: paramId,
         // drawframe_qc_header now has its own "operator" column (see backend) — persist it
         // directly rather than relying solely on the submitted-notebook recording below, which
         // has proven fragile for this screen (some entries never got recorded).

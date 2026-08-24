@@ -192,7 +192,6 @@ const FINISHER_PREFIXES = String(
 
 const createMachineEntry = (machineName = "") => ({
   machineName,
-  mcNo: "",
   fanWaste: "",
   cotChange: "",
   stripperWaste: "",
@@ -751,7 +750,6 @@ function DrawFrame() {
   const aPercentFileInputRef = useRef(null);
   const [machineNameOptions, setMachineNameOptions] = useState([]);
   const [yarnCvMachineOptions, setYarnCvMachineOptions] = useState([]);
-  const [machineMasterByName, setMachineMasterByName] = useState({});
   const [aPercentFile, setAPercentFile] = useState(null);
   const [aPercentOcrBusy, setAPercentOcrBusy] = useState(false);
   const [aPercentOcrMessage, setAPercentOcrMessage] = useState("");
@@ -856,24 +854,19 @@ function DrawFrame() {
         if (!isMounted) return;
         const machines = Array.isArray(dropdown?.mcNos) ? dropdown.mcNos : [];
         const names = [];
-        const nextMasterByName = {};
         machines.forEach((item) => {
           const machineName = normalizeMachineName(item);
-          const mcNo = String(item?.mc_no || item?.value || item?.machine_no || item?.machineNo || item?.mcNo || "").trim();
           if (!machineName) return;
           names.push(machineName);
-          nextMasterByName[machineName] = { mcNo: mcNo || machineName };
         });
         setYarnCvMachineOptions(
           mergeUniqueMachineNames(names, [...cvMachineOptions, ...STATIC_BR_COTS_MACHINE_NAMES])
         );
-        setMachineMasterByName(nextMasterByName);
       } catch (_error) {
         if (isMounted) {
           setYarnCvMachineOptions(
             mergeUniqueMachineNames([], [...cvMachineOptions, ...STATIC_BR_COTS_MACHINE_NAMES])
           );
-          setMachineMasterByName({});
         }
       }
     };
@@ -1008,9 +1001,6 @@ function DrawFrame() {
           ? {
               ...item,
               [field]: value,
-              ...(field === "machineName"
-                ? { mcNo: machineMasterByName[value]?.mcNo || item.mcNo || "" }
-                : {}),
             }
           : item
       )
@@ -1639,7 +1629,6 @@ function DrawFrame() {
           operator: operatorName,
           machines: machineEntries.map((item) => ({
             mc_name: item.machineName,
-            mc_no: item.mcNo || item.machineName,
             fan_waste: item.fanWaste || "",
             cot_change: item.cotChange || "",
             stripper_w: item.stripperWaste || "",
