@@ -755,6 +755,14 @@ const ensureMixingEntryIdColumnsImpl = async () => {
     ON mixing.afis6_cotton_data_entry (entry_id)
     WHERE entry_id IS NOT NULL;
   `));
+  await runMixingSchemaStep('afis6_mmf_data_entry columns', () => client.query(`
+    ALTER TABLE mixing.afis6_mmf_data_entry
+      ADD COLUMN IF NOT EXISTS cut_length_l_n_cv_percent NUMERIC,
+      ADD COLUMN IF NOT EXISTS cut_length_sfc_w_percent NUMERIC,
+      ADD COLUMN IF NOT EXISTS material_class VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS comment VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS crimp_percent NUMERIC;
+  `));
   await runMixingSchemaStep('afis6_mmf_data_entry index', () => client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS afis6_mmf_data_entry_entry_id_uq
     ON mixing.afis6_mmf_data_entry (entry_id)
@@ -802,7 +810,8 @@ const autoCreateTicket = async ({
   department,
   sub_department,
   user_name,
-  values
+  values,
+  entry_id
 }) => {
   if (!machine_name || !department || !sub_department) return null;
 
@@ -922,7 +931,7 @@ const autoCreateTicket = async ({
       department,
       sub_department,
       ticketReason,
-      JSON.stringify({ missing_fields: missingFields, threshold_breaches: breaches }),
+      JSON.stringify({ missing_fields: missingFields, threshold_breaches: breaches, entry_id: entry_id || null }),
       approvalL1UserIds,
       approvalL2UserIds
     ]
@@ -2349,7 +2358,8 @@ router.post('/openness', async (req, res, next) => {
         department: req.body.department || req.body.management_field,
         sub_department: req.body.sub_department || req.body.erp_product_code,
         user_name: req.body.user_name,
-        values
+        values,
+        entry_id: savedEntryId
       });
     }
 

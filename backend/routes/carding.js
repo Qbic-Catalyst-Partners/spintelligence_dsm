@@ -3550,7 +3550,11 @@ router.post('/change-control/approvals/:id/approve', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
-    await closeWheelChangeApprovalTicket('carding.carding_change_request', id);
+    await closeWheelChangeApprovalTicket('carding.carding_change_request', id, {
+      decision: 'approved',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
     res.status(200).json({
       message: 'Carding change control entry approved',
       data: withScreenEntryId('card_change_control', result.rows[0])
@@ -3579,7 +3583,11 @@ router.post('/change-control/approvals/:id/reject', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
-    await closeWheelChangeApprovalTicket('carding.carding_change_request', id);
+    await closeWheelChangeApprovalTicket('carding.carding_change_request', id, {
+      decision: 'rejected',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
     res.status(200).json({
       message: 'Carding change control entry rejected',
       data: withScreenEntryId('card_change_control', result.rows[0])

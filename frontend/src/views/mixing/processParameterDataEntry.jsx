@@ -27,6 +27,7 @@ import {
   updateMixingProcessParameterEntry,
   getMixingProcessParameterEntries,
 } from "@/apis/mixing";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 
 const createBlankRow = (label) => ({
   label,
@@ -614,6 +615,22 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     setSavedProcessParameterId(nextParamId);
 
     const linkedEntryId = payload.entry_id || nextParamId;
+
+    // Registered here, immediately after the save itself succeeds — see cottonHVIDataEntry.jsx
+    // for why this can no longer live in the parent's post-submit/success-modal flow.
+    try {
+      await recordSubmittedNotebook({
+        department: "Quality Control",
+        subDepartment: "Mixing",
+        notebookName: "Process Parameter",
+        entryId: linkedEntryId,
+        registeredActions: { getPayload: () => payload },
+        user,
+      });
+    } catch (error) {
+      console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
+    }
+
     const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? "").trim() !== "");
     if (linkedEntryId && customFieldEntries.length > 0) {
       try {

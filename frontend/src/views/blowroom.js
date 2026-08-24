@@ -16,6 +16,7 @@ import SuccessModal from "@/components/SuccessModal";
 import { resetState as resetBlowroom } from "@/store/slices/blowroomSlice";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 
 const blowroomTypes = [
@@ -186,6 +187,18 @@ function BlowRoom() {
         previewItems,
         user,
       });
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Blow Room",
+          screenName: selectedTypeName,
+          machineName: selectedTypeName,
+          entryId,
+          values: previewItems,
+        });
+      } catch (ticketError) {
+        console.error("Threshold ticket generation failed:", ticketError);
+      }
       await reserveEntryId();
       showSuccessOnce();
     } catch (e) {

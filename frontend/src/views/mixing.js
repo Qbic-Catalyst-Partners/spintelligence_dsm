@@ -20,6 +20,7 @@ import SuccessModal from "@/components/SuccessModal";
 import { clearMixingState } from "@/store/slices/mixing";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import useMixingLotOptions from "@/hooks/useMixingLotOptions";
 import { fetchMixingLotDetails, fetchOpennessMachineOptions } from "@/apis/mixing";
@@ -670,6 +671,21 @@ function Mixing() {
         } catch (error) {
             console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
         }
+        try {
+            await createThresholdViolationTickets({
+                department: "Quality Control",
+                subDepartment: "Mixing",
+                screenName: "AFIS-6 Cotton",
+                machineName: "AFIS-6 Cotton",
+                entryId,
+                values: [
+                    ...afis6TextFieldDefs.map((field) => ({ label: field.label, value: afis6Form[field.key] })),
+                    ...afis6FieldDefs.map((field) => ({ label: field.label, value: afis6Form[field.key] })),
+                ],
+            });
+        } catch (ticketError) {
+            console.error("Threshold ticket generation failed:", ticketError);
+        }
         handleAfis6Clear();
     };
 
@@ -892,6 +908,21 @@ function Mixing() {
             });
         } catch (error) {
             console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
+        }
+        try {
+            await createThresholdViolationTickets({
+                department: "Quality Control",
+                subDepartment: "Mixing",
+                screenName: "AFIS-6 MMF",
+                machineName: "AFIS-6 MMF",
+                entryId,
+                values: [
+                    ...afis6MmfTextFieldDefs.map((field) => ({ label: field.label, value: afis6MmfForm[field.key] })),
+                    ...afis6MmfFieldDefs.map((field) => ({ label: field.label, value: afis6MmfForm[field.key] })),
+                ],
+            });
+        } catch (ticketError) {
+            console.error("Threshold ticket generation failed:", ticketError);
         }
         handleAfis6MmfClear();
     };

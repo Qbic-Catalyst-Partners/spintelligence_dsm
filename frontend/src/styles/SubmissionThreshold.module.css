@@ -303,6 +303,13 @@
   box-sizing: border-box;
 }
 
+.notebookTypeDisabledForWc:disabled {
+  background: #eef1f6;
+  color: #a5adba;
+  border-color: #e2e6ee;
+  cursor: not-allowed;
+}
+
 .actualValueRow {
   display: flex;
   align-items: center;
@@ -415,13 +422,14 @@
 
 .field select:focus,
 .field input:focus,
-.multiSelectButton:focus {
+.multiSelectButton:focus-within {
   border-color: #5b74c7;
   box-shadow: 0 0 0 3px rgba(91, 116, 199, 0.12);
 }
 
 .multiSelectWrap {
   position: relative;
+  width: 100%;
 }
 
 .multiSelectDisabled {
@@ -432,19 +440,35 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  cursor: pointer;
+  gap: 8px;
 }
 
-.multiSelectValue {
+.multiSelectButton .multiSelectValue {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  border: none;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  margin: 0;
 }
 
 .multiSelectChevron {
   flex-shrink: 0;
   color: #7d8797;
   font-size: 11px;
+  cursor: pointer;
 }
 
 .multiSelectMenu {
@@ -457,10 +481,12 @@
   border-radius: 10px;
   background: #ffffff;
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
-  max-height: 130px;
+  max-height: 170px;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 2px;
+  padding: 6px;
+  display: grid;
+  gap: 4px;
 }
 
 .singleSelectOption {
@@ -471,13 +497,13 @@
   border: none;
   margin: 0;
   background: #ffffff;
-  padding: 0 6px;
+  padding: 6px;
   color: #29374f;
-  font-size: 9px;
+  font-size: 12px;
   text-align: left;
   cursor: pointer;
   border-radius: 4px;
-  line-height: 1;
+  line-height: 1.3;
   display: block;
 }
 

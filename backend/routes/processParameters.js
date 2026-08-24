@@ -459,6 +459,19 @@ const createPpApprovalTicket = async (entry_id, notebookLabel = null) => {
 // approver for it.
 const runPpApprovalOverdueCheck = async () => {
   await ensureProcessParameterMasterTable();
+
+  // refreshProcessParameterStatus only ever runs reactively, off a GET to
+  // /master, /master/:entry_id, or /approvals - if nobody opens one of those
+  // pages after a batch's last department finishes, it stays 'in_progress'
+  // forever and this overdue check (which only looks at 'pending_approval'
+  // rows) would silently never see it, no matter how much time passes. This
+  // worker is the one guaranteed periodic entry point, so it has to do that
+  // same catch-up refresh itself rather than rely on a page view.
+  const inProgress = await client.query(
+    `SELECT entry_id FROM process_parameters.master WHERE status = 'in_progress'`
+  );
+  await Promise.all(inProgress.rows.map((row) => refreshProcessParameterStatus(row.entry_id)));
+
   const pending = await client.query(
     `SELECT entry_id, updated_at, pending_approval_notebook_label
      FROM process_parameters.master
@@ -487,26 +500,125 @@ const runPpApprovalOverdueCheck = async () => {
   return created;
 };
 
-const closePpApprovalTicket = async (entry_id) => {
+const closePpApprovalTicket = async (entry_id, options = {}) => {
   await ensureApprovalTicketSchema();
-  await client.query(
+  const closed = await client.query(
     `UPDATE ticketing_system.operator_tickets
      SET status = 'Closed'
-     WHERE ticket_type = 'PP_APPROVAL' AND (violation_details->>'entry_id') = $1 AND status <> 'Closed'`,
+     WHERE ticket_type = 'PP_APPROVAL' AND (violation_details->>'entry_id') = $1 AND status <> 'Closed'
+     RETURNING ticket_id`,
     [entry_id]
   );
+
+  // The ticket list's Actual Res Time/Resolution Gap are read from a matching
+  // ticket_logs row (see supervisorTickets.routes.js's resolution_log join) -
+  // without logging the closing action here, a closed PP Approval ticket
+  // always showed "--:--" even though it really was resolved.
+  const action = options.decision === 'rejected' ? 'REJECTED' : 'APPROVED';
+  for (const row of closed.rows) {
+    // eslint-disable-next-line no-await-in-loop
+    await client.query(
+      `INSERT INTO ticketing_system.ticket_logs
+       (ticket_id, action, performed_by, role, created_at)
+       VALUES ($1, $2, $3, $4, NOW())`,
+      [row.ticket_id, action, options.performedBy || 'Supervisor', options.role || 'L4']
+    );
+  }
 };
 
 // PP Approval is owned by L4 fully and directly - there's no configured L5
-// approver anywhere in PP Notebook Threshold (only L1/L4), so a missed L4
-// TAT used to escalate to "any current L5 user" system-wide - the exact
-// blind-notify-everyone pattern removed from every other threshold type this
-// session. A ticket past its TAT just stays at L4 and shows Overdue
-// (computed client-side from l4_tat_due_at) - L5 already has full oversight
-// visibility via its Mapped-only view without needing a fake reassignment.
-// Kept as a no-op (rather than removed) so the worker registration in
-// server.js doesn't need touching.
-const runPpApprovalTatCheck = async () => [];
+// approver anywhere in PP Notebook Threshold (only L1/L4), so this does not
+// reassign to a different tier the way other threshold types escalate (that
+// would mean blindly notifying "any current L5 user" system-wide, which
+// every other threshold type deliberately avoids too). Instead, once a
+// PP_APPROVAL ticket's L4 TAT has elapsed with the ticket still open, a
+// second reminder ticket is raised against the same L4 approver(s) - same
+// entry_id, so closePpApprovalTicket (called on the real approve/reject)
+// closes both together once the PP is actually actioned.
+const runPpApprovalTatCheck = async () => {
+  await ensureApprovalTicketSchema();
+
+  const overdueTickets = await client.query(
+    `SELECT * FROM ticketing_system.operator_tickets
+     WHERE ticket_type = 'PP_APPROVAL'
+       AND tat_current_level = 'L4'
+       AND status <> 'Closed'
+       AND l4_tat_due_at IS NOT NULL
+       AND l4_tat_due_at <= NOW()`
+  );
+
+  const created = [];
+  for (const ticket of overdueTickets.rows) {
+    const entryId = ticket.violation_details?.entry_id;
+    if (!entryId) continue; // eslint-disable-line no-continue
+
+    // eslint-disable-next-line no-await-in-loop
+    const existingReminder = await client.query(
+      `SELECT ticket_id FROM ticketing_system.operator_tickets
+       WHERE ticket_type = 'PP_APPROVAL'
+         AND (violation_details->>'entry_id') = $1
+         AND (violation_details->>'escalation_of') = $2
+         AND status <> 'Closed'
+       LIMIT 1`,
+      [entryId, ticket.ticket_id]
+    );
+    if (existingReminder.rows[0]?.ticket_id) continue; // eslint-disable-line no-continue
+
+    const l4UserIds = Array.isArray(ticket.approval_l4_user_ids) ? ticket.approval_l4_user_ids : [];
+    const notebookLabel = ticket.violation_details?.notebook_label || null;
+    const violationDetails = {
+      category: 'MISSED_FREQUENCY',
+      ticket_type: 'PP_APPROVAL',
+      entry_id: entryId,
+      notebook_label: notebookLabel,
+      escalation_of: ticket.ticket_id,
+      message: `PP id ${entryId} was not approved by L4 within the configured time and is now overdue.`
+    };
+
+    // eslint-disable-next-line no-await-in-loop
+    const reminder = await client.query(
+      `INSERT INTO ticketing_system.operator_tickets
+       (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+        severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
+        violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
+       VALUES (
+         'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+         $1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+         'High', 'Open', NOW(), 'MISSING_VALUE', 'PP_APPROVAL', 'pp_approval',
+         $2::jsonb, $3::int[], 'L4', NULL
+       )
+       RETURNING ticket_id`,
+      [ticket.machine_name, JSON.stringify(violationDetails), l4UserIds]
+    );
+    const reminderTicketId = reminder.rows[0]?.ticket_id;
+    if (reminderTicketId) created.push(reminderTicketId);
+
+    // eslint-disable-next-line no-await-in-loop
+    await client.query(
+      `INSERT INTO ticketing_system.ticket_logs
+       (ticket_id, action, performed_by, role, created_at)
+       VALUES ($1, 'OVERDUE_REMINDER_RAISED', 'System', 'System', NOW())`,
+      [ticket.ticket_id]
+    );
+
+    if (reminderTicketId && l4UserIds.length) {
+      // eslint-disable-next-line no-await-in-loop
+      await createNotificationsForUsers(l4UserIds, {
+        ticketId: reminderTicketId,
+        type: 'PP_APPROVAL',
+        category: 'Tickets',
+        priority: 'High',
+        title: (user) => `Hi ${user.full_name || 'there'} (L4), a PP approval is overdue`,
+        body: (user) =>
+          `${user.full_name || 'You'} (L4) - PP entry ${entryId} was not approved in time (ticket ${ticket.ticket_id}) and is now overdue.`,
+        linkUrl: `/supervisor-tickets/${reminderTicketId}`,
+        payload: { ticket_id: reminderTicketId, entry_id: entryId }
+      });
+    }
+  }
+
+  return created;
+};
 
 router.get('/approval-config', async (req, res, next) => {
   try {
@@ -764,7 +876,11 @@ router.post('/:entry_id/approve', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(409).json({ message: 'This PP id is not awaiting approval (already actioned, or not yet complete).' });
     }
-    await closePpApprovalTicket(entry_id);
+    await closePpApprovalTicket(entry_id, {
+      decision: 'approved',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
 
     res.status(200).json({ message: 'PP id approved — now Active', data: result.rows[0] });
   } catch (error) {
@@ -794,7 +910,11 @@ router.post('/:entry_id/reject', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(409).json({ message: 'This PP id is not awaiting approval (already actioned, or not yet complete).' });
     }
-    await closePpApprovalTicket(entry_id);
+    await closePpApprovalTicket(entry_id, {
+      decision: 'rejected',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
 
     res.status(200).json({ message: 'PP id rejected — back to In Progress', data: result.rows[0] });
   } catch (error) {

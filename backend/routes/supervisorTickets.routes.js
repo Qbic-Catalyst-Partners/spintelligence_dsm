@@ -536,6 +536,7 @@ router.get('/tickets', async (req, res, next) => {
          ot.ticket_kind,
          ot.ticket_reason,
          ot.violation_details,
+         ot.violation_details->>'entry_id' AS entry_id,
          ot.approval_l1_user_ids,
          ot.approval_l2_user_ids,
          ot.approval_l3_user_ids,
@@ -1407,7 +1408,11 @@ const applyRealUnderlyingDecision = async (ticket, decision, req) => {
         return { ok: false, message: 'This PP id is not awaiting approval (already actioned, or not yet complete).' };
       }
     }
-    await closePpApprovalTicket(entryId);
+    await closePpApprovalTicket(entryId, {
+      decision: decision === 'approve' ? 'approved' : 'rejected',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
     return { ok: true, handled: true };
   }
 
@@ -1426,7 +1431,11 @@ const applyRealUnderlyingDecision = async (ticket, decision, req) => {
        WHERE id = $3`,
       [status, reviewedBy, rowId]
     );
-    await closeWheelChangeApprovalTicket(tableName, rowId);
+    await closeWheelChangeApprovalTicket(tableName, rowId, {
+      decision: status,
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
     return { ok: true, handled: true };
   }
 

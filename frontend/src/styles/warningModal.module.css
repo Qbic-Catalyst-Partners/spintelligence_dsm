@@ -25,7 +25,7 @@
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: #d92d20;
+  background: #f47066;
   color: #fff;
   display: grid;
   place-items: center;
@@ -47,14 +47,14 @@
   height: 46px;
   border-radius: 10px;
   border: none;
-  background: #d92d20;
+  background: #f47066;
   color: #fff;
   font-weight: 700;
   cursor: pointer;
 }
 
 .button:hover {
-  background: #b42318;
+  background: #ee5a4f;
 }
 
 :global(:root[data-theme="dark"]) .overlay {

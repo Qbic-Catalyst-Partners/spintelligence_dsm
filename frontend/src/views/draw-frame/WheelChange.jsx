@@ -2152,7 +2152,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
             value:
               unapprovedEntry.status === "rejected"
                 ? "This mixing has a rejected entry still pending resubmission. Submitting will replace it — there is no undo."
-                : "This mixing already has an entry awaiting L2 verification. Submitting will overwrite it — there is no undo.",
+                : "This mixing already has an entry awaiting L4 verification. Submitting will overwrite it — there is no undo.",
             wide: true,
           },
         ]
@@ -2302,7 +2302,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
               unapprovedEntry.status === "rejected" ? styles.statusBadgeRejected : styles.statusBadgePending
             }`}
           >
-            {unapprovedEntry.status === "rejected" ? "Rejected" : "Awaiting L2"}
+            {unapprovedEntry.status === "rejected" ? "Rejected" : "Awaiting L4"}
           </span>
         )}
         <InputScreenUploadButton className="ml-auto" />
@@ -2311,7 +2311,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
       <div className={styles.form}>
         {unapprovedEntry?.status === "pending" && (
           <div className={styles.pendingNotice}>
-            A proposed entry for this mixing is still awaiting L2 approval. The Proposed column below shows that
+            A proposed entry for this mixing is still awaiting L4 approval. The Proposed column below shows that
             pending submission — submitting again will overwrite it.
           </div>
         )}
@@ -2319,7 +2319,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
         {unapprovedEntry?.status === "rejected" && (
           <div className={styles.rejectedNotice}>
             <div>
-              This entry was rejected by L2{unapprovedEntry.reviewedBy ? ` (${unapprovedEntry.reviewedBy})` : ""}.
+              This entry was rejected by L4{unapprovedEntry.reviewedBy ? ` (${unapprovedEntry.reviewedBy})` : ""}.
               {unapprovedEntry.reviewedAt ? ` Reviewed ${unapprovedEntry.reviewedAt}.` : ""} The Proposed column
               below shows the rejected submission — resubmitting will overwrite it.
             </div>

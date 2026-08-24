@@ -28,6 +28,7 @@ export const fetchUsers = createAsyncThunk("users/fetch", async () => {
     phone: user.phone,
     level: user.level,
     role: user.role,
+    roleId: user.role_id,
     dept: user.department,
     status: user.account_status,
   }));
