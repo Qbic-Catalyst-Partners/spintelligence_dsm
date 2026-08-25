@@ -21,42 +21,6 @@ const router = express.Router();
 // "Rejected" by L4 is not a separate stored stage - it sends the PP back to
 // in_progress (departments need to fix and resubmit), with the reason kept
 // in review_remarks for context.
-const ensureProcessParameterMasterTableImpl = async () => {
-  await client.query('CREATE SCHEMA IF NOT EXISTS process_parameters');
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS process_parameters.master (
-      id BIGSERIAL PRIMARY KEY,
-      entry_id TEXT NOT NULL UNIQUE,
-      created_by_user_id INTEGER NULL,
-      created_by_name TEXT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await client.query(`
-    ALTER TABLE process_parameters.master
-      ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'in_progress',
-      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
-      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS review_remarks TEXT,
-      ADD COLUMN IF NOT EXISTS pending_approval_notebook_label TEXT
-  `);
-};
-
-// This is a one-time schema migration, but every caller (across spinning.js,
-// processParameters.js, etc.) awaits it on every request - memoize the
-// promise so the actual CREATE/ALTER statements only ever run once per
-// server process; every call after that resolves immediately.
-let ensureProcessParameterMasterTablePromise = null;
-const ensureProcessParameterMasterTable = () => {
-  if (!ensureProcessParameterMasterTablePromise) {
-    ensureProcessParameterMasterTablePromise = ensureProcessParameterMasterTableImpl().catch((error) => {
-      ensureProcessParameterMasterTablePromise = null;
-      throw error;
-    });
-  }
-  return ensureProcessParameterMasterTablePromise;
-};
 
 // One entry per department/type screen that shares the PP entry_id system.
 // Each maps to the table + column that already exists today; nothing here
@@ -324,26 +288,7 @@ const getUsersAtLevel = async (level) => {
 // responsible... TAT: configurable." This table holds that per-instance
 // config; when no specific L4 user is configured, ticket creation falls back
 // to the previous "any current L4 user" behavior so existing setups keep working.
-const ensurePpApprovalConfigTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.pp_approval_config (
-      config_key TEXT PRIMARY KEY DEFAULT 'global',
-      l4_user_id INTEGER NULL,
-      tat_hours INTEGER NOT NULL DEFAULT 24,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  // Admin can assign as many L4 approvers as needed, not just one - l4_user_ids
-  // is now the source of truth; the older single l4_user_id column is kept
-  // (and folded into the array) so existing saved configs keep working.
-  await client.query(`
-    ALTER TABLE ticketing_system.pp_approval_config
-      ADD COLUMN IF NOT EXISTS l4_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]
-  `);
-};
-
 const getPpApprovalConfig = async () => {
-  await ensurePpApprovalConfigTable();
   const result = await client.query(
     `SELECT * FROM ticketing_system.pp_approval_config WHERE config_key = 'global'`
   );
@@ -357,29 +302,12 @@ const getPpApprovalConfig = async () => {
   return { ...row, l4_user_ids: l4UserIds };
 };
 
-const ensureApprovalTicketSchema = async () => {
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-      ADD COLUMN IF NOT EXISTS approval_l1_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l2_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l3_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l4_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l5_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS tat_current_level text NULL,
-      ADD COLUMN IF NOT EXISTS l4_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS l5_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
-  `);
-};
-
 // notebookLabel is the last-completed department's PP notebook (see
 // getLastCompletedDepartmentKey) - when it has its own per-notebook config
 // (approval_l4_user_ids/approve_within_hours/severity, set from the
 // combined PP Threshold + Approval config screen), that governs this
 // ticket; otherwise falls back to the old single global pp_approval_config.
 const createPpApprovalTicket = async (entry_id, notebookLabel = null) => {
-  await ensureApprovalTicketSchema();
-
   const existing = await client.query(
     `SELECT ticket_id FROM ticketing_system.operator_tickets
      WHERE ticket_type = 'PP_APPROVAL' AND (violation_details->>'entry_id') = $1 AND status <> 'Closed'
@@ -458,7 +386,6 @@ const createPpApprovalTicket = async (entry_id, notebookLabel = null) => {
 // else), and it just stays silently pending until someone configures an L4
 // approver for it.
 const runPpApprovalOverdueCheck = async () => {
-  await ensureProcessParameterMasterTable();
   const pending = await client.query(
     `SELECT entry_id, updated_at, pending_approval_notebook_label
      FROM process_parameters.master
@@ -488,7 +415,6 @@ const runPpApprovalOverdueCheck = async () => {
 };
 
 const closePpApprovalTicket = async (entry_id) => {
-  await ensureApprovalTicketSchema();
   await client.query(
     `UPDATE ticketing_system.operator_tickets
      SET status = 'Closed'
@@ -519,8 +445,6 @@ router.get('/approval-config', async (req, res, next) => {
 
 router.post('/approval-config', async (req, res, next) => {
   try {
-    await ensurePpApprovalConfigTable();
-
     const l4UserIds = (Array.isArray(req.body?.l4_user_ids) ? req.body.l4_user_ids : [])
       .map((id) => Number(id))
       .filter((id) => Number.isInteger(id) && id > 0);
@@ -563,7 +487,6 @@ router.get('/next-id', async (req, res, next) => {
 // department's own form is actually saved against this entry_id.
 router.post('/master', async (req, res, next) => {
   try {
-    await ensureProcessParameterMasterTable();
     // createProcessParameterEntryId() already inserts the master row for this
     // entry_id (via ensureProcessParameterMasterRow) as part of minting the id
     // - so this must UPDATE that existing row rather than INSERT a second one,
@@ -593,7 +516,6 @@ router.post('/master', async (req, res, next) => {
 // completion and its current lifecycle status.
 router.get('/master', async (req, res, next) => {
   try {
-    await ensureProcessParameterMasterTable();
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
@@ -644,7 +566,6 @@ router.get('/master', async (req, res, next) => {
 // "pick a PP id, go fill its remaining sub-forms" flow.
 router.get('/master/:entry_id', async (req, res, next) => {
   try {
-    await ensureProcessParameterMasterTable();
     const entry_id = normalizeProcessParameterEntryId(req.params.entry_id);
 
     const result = await client.query(
@@ -701,7 +622,6 @@ const canActOnPpApproval = (req) => {
 // active/inactive.
 router.get('/approvals', async (req, res, next) => {
   try {
-    await ensureProcessParameterMasterTable();
     if (!canActOnPpApproval(req)) {
       return res.status(200).json({ data: [] });
     }
@@ -747,7 +667,6 @@ router.get('/approvals', async (req, res, next) => {
 
 router.post('/:entry_id/approve', async (req, res, next) => {
   try {
-    await ensureProcessParameterMasterTable();
     if (!canActOnPpApproval(req)) {
       return res.status(403).json({ message: 'Only L4, L5, or Admin can approve a PP id' });
     }
@@ -774,7 +693,6 @@ router.post('/:entry_id/approve', async (req, res, next) => {
 
 router.post('/:entry_id/reject', async (req, res, next) => {
   try {
-    await ensureProcessParameterMasterTable();
     if (!canActOnPpApproval(req)) {
       return res.status(403).json({ message: 'Only L4, L5, or Admin can reject a PP id' });
     }
@@ -804,11 +722,9 @@ router.post('/:entry_id/reject', async (req, res, next) => {
 
 module.exports = router;
 module.exports.PP_DEPARTMENTS = PP_DEPARTMENTS;
-module.exports.ensureProcessParameterMasterTable = ensureProcessParameterMasterTable;
 module.exports.refreshProcessParameterStatus = refreshProcessParameterStatus;
 module.exports.runPpApprovalTatCheck = runPpApprovalTatCheck;
 module.exports.runPpApprovalOverdueCheck = runPpApprovalOverdueCheck;
 module.exports.createPpApprovalTicket = createPpApprovalTicket;
 module.exports.closePpApprovalTicket = closePpApprovalTicket;
-module.exports.ensurePpApprovalConfigTable = ensurePpApprovalConfigTable;
 module.exports.getPpApprovalConfig = getPpApprovalConfig;

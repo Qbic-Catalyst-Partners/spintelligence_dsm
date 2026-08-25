@@ -7,7 +7,6 @@ const { dedupeVarieties } = require('../utils/variety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { createNotificationsForUsers } = require('../utils/notifications');
 const {
-  ensureProcessParameterMasterTable,
   refreshProcessParameterStatus
 } = require('./processParameters');
 const SCREEN_ID_PREFIXES = {
@@ -150,39 +149,6 @@ const withFieldAliases = (payload, aliasMap) => {
   return normalized;
 };
 
-const ensureRingFrameLogBookTables = async () => {
-  await ensureSpinningEntryIdColumns();
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS spinning.ring_frame_checkers (
-      id BIGSERIAL PRIMARY KEY,
-      checker_name TEXT NOT NULL UNIQUE,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  for (const checkerName of RING_FRAME_CHECKER_NAMES) {
-    await client.query(
-      `INSERT INTO spinning.ring_frame_checkers (checker_name)
-       VALUES ($1)
-       ON CONFLICT (checker_name) DO NOTHING`,
-      [checkerName]
-    );
-  }
-
-  await client.query(`
-    ALTER TABLE spinning.ring_frame_summary
-      ADD COLUMN IF NOT EXISTS out_of_center_ac INTEGER,
-      ADD COLUMN IF NOT EXISTS out_of_center_rf INTEGER,
-      ADD COLUMN IF NOT EXISTS lycra_missing_rf INTEGER,
-      ADD COLUMN IF NOT EXISTS fault_cops_ac NUMERIC,
-      ADD COLUMN IF NOT EXISTS fault_cops_rf NUMERIC,
-      ADD COLUMN IF NOT EXISTS total_cops_ac NUMERIC,
-      ADD COLUMN IF NOT EXISTS total_cops_rf NUMERIC;
-  `);
-};
-
 const normalizeRingFrameRow = (row = {}) => ({
   mc_no: row.mc_no ?? row.mcNo ?? row.machine_no ?? row['Mc No'] ?? null,
   lycra: row.lycra ?? row.Lycra ?? row.txtLycra ?? null,
@@ -216,384 +182,6 @@ const normalizeRingFrameSummary = (summary = {}) => ({
   comments: summary.comments ?? summary.comment ?? summary.txtdesc ?? null
 });
 
-// These tables store their submission timestamp as `timestamp WITHOUT time zone` (some under
-// `created_at`, the older ones under `createdat` with no separator) with a bare default — on this
-// DB, that silently writes a different offset than what gets displayed back, shifting "Created
-// At" by several hours (sometimes onto the wrong calendar day) in Custom Report. Same root cause
-// and same fix as every other department's equivalent tables: convert to timestamptz so new rows
-// store an unambiguous absolute instant.
-const ensureSpinningTimestampColumnsHaveTimezone = async () => {
-  const tablesAndColumn = [
-    ['spinning.speed_checking', 'createdat'],
-    ['spinning.cots_checking', 'createdat'],
-    ['spinning.lycra_missing', 'createdat'],
-    ['spinning.bottom_apron_checking', 'createdat'],
-    ['spinning.lycra_centering', 'createdat'],
-    ['spinning.rsm_and_lycrasensor_cheking_online', 'createdat'],
-    ['spinning.rsm_and_lycrasensor_cheking_offline', 'createdat'],
-    ['spinning.ring_frame_inspections', 'created_at'],
-    ['spinning.count_change_inspections', 'created_at'],
-    ['spinning.spinning_qc_header', 'created_at'],
-    ['spinning.wheel_change_inspection', 'created_at'],
-    ['spinning.wheel_change_inspection', 'updated_at'],
-    ['spinning.wheel_change_v2', 'created_at'],
-    ['spinning.wheel_change_v2', 'updated_at'],
-    ['spinning.wheel_change', 'created_at'],
-    ['spinning.wheel_change', 'updated_at']
-  ];
-  for (const [tableName, column] of tablesAndColumn) {
-    const [schemaName, relationName] = tableName.split('.');
-    await client.query(`
-      DO $$
-      BEGIN
-        IF EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_schema = '${schemaName}' AND table_name = '${relationName}' AND column_name = '${column}'
-            AND data_type = 'timestamp without time zone'
-        ) THEN
-          ALTER TABLE ${tableName}
-            ALTER COLUMN ${column} TYPE timestamptz USING ${column} AT TIME ZONE 'UTC';
-          ALTER TABLE ${tableName}
-            ALTER COLUMN ${column} SET DEFAULT now();
-        END IF;
-      END $$;
-    `);
-  }
-};
-
-const ensureSpinningEntryIdColumnsImpl = async () => {
-  await ensureSpinningTimestampColumnsHaveTimezone();
-  const tables = [
-    'spinning.speed_checking',
-    'spinning.cots_checking',
-    'spinning.lycra_missing',
-    'spinning.bottom_apron_checking',
-    'spinning.lycra_centering',
-    'spinning.RSM_and_lycrasensor_cheking_online',
-    'spinning.RSM_and_lycrasensor_cheking_offline',
-    'spinning.ring_frame_inspections',
-    'spinning.count_change_inspections',
-    'spinning.spinning_qc_header',
-    'spinning.wheel_change_inspection',
-    'spinning.wheel_change_v2',
-    'spinning.wheel_change'
-  ];
-
-  for (const tableName of tables) {
-    const indexName = tableName.split('.').pop().toLowerCase() + '_entry_id_uq';
-    await client.query(`
-      ALTER TABLE ${tableName}
-        ADD COLUMN IF NOT EXISTS entry_id TEXT;
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS ${indexName}
-      ON ${tableName} (entry_id)
-      WHERE entry_id IS NOT NULL;
-    `);
-  }
-
-  // Count Change's footer "Avg Reading"/"Avg Count"/"Avg Strength"/"Overall CSP" were only ever
-  // computed in the browser (spinning.js's averageReadingValue/averageCountValue/
-  // averageStrengthValue/overallAverageCsp) for the on-screen table footer — never sent in the
-  // submit payload, no column to land in. Persist all four on the inspection header.
-  await client.query(`
-    ALTER TABLE spinning.count_change_inspections
-      ADD COLUMN IF NOT EXISTS avg_reading NUMERIC(12,2),
-      ADD COLUMN IF NOT EXISTS avg_count NUMERIC(12,2),
-      ADD COLUMN IF NOT EXISTS avg_strength NUMERIC(12,2),
-      ADD COLUMN IF NOT EXISTS overall_csp NUMERIC(12,2);
-  `);
-
-  // EmployeeName is dropped outright below on every Spinning checking table that has it —
-  // no route in this codebase (frontend or backend) has ever collected or read this field, and
-  // Ring Frame Log Book was asked to be the only Spinning screen that keeps a person's name
-  // (via its own separate Checker Name field on ring_frame_inspections, untouched here).
-  for (const tableName of [
-    'spinning.speed_checking',
-    'spinning.lycra_missing',
-    'spinning.bottom_apron_checking',
-    'spinning.lycra_centering',
-    'spinning.RSM_and_lycrasensor_cheking_online',
-    'spinning.RSM_and_lycrasensor_cheking_offline',
-    'spinning.cots_checking'
-  ]) {
-    await client.query(`
-      DO $$
-      DECLARE
-        col_name text;
-      BEGIN
-        SELECT column_name INTO col_name
-        FROM information_schema.columns
-        WHERE table_schema = lower(split_part('${tableName}', '.', 1))
-          AND table_name = lower(split_part('${tableName}', '.', 2))
-          AND column_name ILIKE 'employeename';
-        IF col_name IS NOT NULL THEN
-          EXECUTE format('ALTER TABLE %s DROP COLUMN %I', '${tableName}', col_name);
-        END IF;
-      END $$;
-    `);
-  }
-
-  // LHS_Value/RHS_Value were originally required scalar columns on all six
-  // checking screens; LHS/RHS is now always submitted as a free-form
-  // comma-separated spindle list (lhs_values/rhs_values below), so the old
-  // scalar columns are dropped outright rather than just relaxed to nullable.
-  for (const tableName of [
-    'spinning.speed_checking',
-    'spinning.cots_checking',
-    'spinning.bottom_apron_checking',
-    'spinning.lycra_centering',
-    'spinning.RSM_and_lycrasensor_cheking_online',
-    'spinning.RSM_and_lycrasensor_cheking_offline'
-  ]) {
-    await client.query(`
-      DO $$
-      DECLARE
-        col_name text;
-      BEGIN
-        SELECT column_name INTO col_name
-        FROM information_schema.columns
-        WHERE table_schema = lower(split_part('${tableName}', '.', 1))
-          AND table_name = lower(split_part('${tableName}', '.', 2))
-          AND column_name ILIKE 'lhs_value';
-        IF col_name IS NOT NULL THEN
-          EXECUTE format('ALTER TABLE %s DROP COLUMN %I', '${tableName}', col_name);
-        END IF;
-
-        SELECT column_name INTO col_name
-        FROM information_schema.columns
-        WHERE table_schema = lower(split_part('${tableName}', '.', 1))
-          AND table_name = lower(split_part('${tableName}', '.', 2))
-          AND column_name ILIKE 'rhs_value';
-        IF col_name IS NOT NULL THEN
-          EXECUTE format('ALTER TABLE %s DROP COLUMN %I', '${tableName}', col_name);
-        END IF;
-      END $$;
-    `);
-  }
-
-  // LHS/RHS moved from a single scalar value to a free-form list of spindle
-  // readings on these six checking screens. Each row stays a single
-  // submission (JSONB list + a denormalized count column) so Custom Report
-  // stays a flat, one-row-per-submission table — a normalized child table
-  // (spindle_readings, tried first) required a join that multiplied each
-  // submission into one row per reading and made reports collapse/duplicate
-  // visually, which is worse for this use case than the simpler JSONB blob.
-  const lhsRhsArrayTables = [
-    'spinning.speed_checking',
-    'spinning.cots_checking',
-    'spinning.bottom_apron_checking',
-    'spinning.lycra_centering',
-    'spinning.RSM_and_lycrasensor_cheking_online',
-    'spinning.RSM_and_lycrasensor_cheking_offline'
-  ];
-  for (const tableName of lhsRhsArrayTables) {
-    await client.query(`
-      ALTER TABLE ${tableName}
-        ADD COLUMN IF NOT EXISTS lhs_values JSONB,
-        ADD COLUMN IF NOT EXISTS rhs_values JSONB,
-        ADD COLUMN IF NOT EXISTS lhs_spindle_count INTEGER,
-        ADD COLUMN IF NOT EXISTS rhs_spindle_count INTEGER;
-    `);
-  }
-
-  // machine_name is inserted by every one of these six checking-screen routes below, but no
-  // migration ever added the column — every save was throwing "column machine_name does not
-  // exist" until this was added.
-  for (const tableName of lhsRhsArrayTables) {
-    await client.query(`
-      ALTER TABLE ${tableName}
-        ADD COLUMN IF NOT EXISTS machine_name VARCHAR(255);
-    `);
-  }
-
-  await client.query(`DROP TABLE IF EXISTS spinning.spindle_readings`);
-
-  // "Type 2" is a fault-subtype dropdown added only to the four apron/lycra/RSM
-  // screens, not COTS or Speed Checking — kept in its own table (rather than a
-  // column on each of those four tables) since it's conceptually a separate
-  // fault classification, not part of the core measurement row.
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS spinning.type2_faults (
-      id BIGSERIAL PRIMARY KEY,
-      checking_type TEXT NOT NULL,
-      entry_id TEXT NOT NULL,
-      type2 TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await client.query(`
-    DO $$
-    BEGIN
-      IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'spinning'
-          AND table_name = 'cots_checking'
-          AND column_name = 'employeename'
-      ) THEN
-        ALTER TABLE spinning.cots_checking ALTER COLUMN EmployeeName DROP NOT NULL;
-      END IF;
-    END $$;
-  `);
-
-  // Consignee Name sits alongside Count From on every wheel-change type's
-  // Existing/Proposed columns, and is required (together with Count) to look
-  // up the matching PP ID's approval status before a first-time wheel change
-  // can be submitted (see GET /wheel-change/pp-approval-status below).
-  for (const tableName of [
-    'spinning.wheel_change_inspection',
-    'spinning.wheel_change_v2',
-    'spinning.wheel_change'
-  ]) {
-    await client.query(`
-      ALTER TABLE ${tableName}
-        ADD COLUMN IF NOT EXISTS consignee_name_existing VARCHAR(200),
-        ADD COLUMN IF NOT EXISTS consignee_name_proposed VARCHAR(200),
-        ADD COLUMN IF NOT EXISTS consumed_pp_entry_id TEXT;
-    `);
-  }
-  // consumed_pp_entry_id records which PP id's one-time Wheel Change slot
-  // this row spent when it was saved (see the pp-approval-status gate and
-  // the POST /wheel-change/type1-3 handlers below) - needed so a later
-  // rejection of this Wheel Change knows exactly which PP to revert back to
-  // Active.
-
-  // Which L1 submitted each entry — needed so an L2's approvals queue can be
-  // scoped to just the L1 employees assigned to them (users.supervisor_assignments)
-  // rather than every submission across the whole plant. L3/Admin bypass this
-  // scoping entirely (see resolveApprovalVisibilityScope below).
-  for (const tableName of [
-    'spinning.wheel_change_inspection',
-    'spinning.wheel_change_v2',
-    'spinning.wheel_change',
-    'spinning.spinning_qc_header'
-  ]) {
-    await client.query(`
-      ALTER TABLE ${tableName}
-        ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER;
-    `);
-  }
-
-  await client.query(`
-    ALTER TABLE spinning.wheel_change
-      ADD COLUMN IF NOT EXISTS bdw_existing VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS bdw_proposed VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS dca_existing VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS dca_proposed VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS dcb_existing NUMERIC,
-      ADD COLUMN IF NOT EXISTS dcb_proposed NUMERIC,
-      ADD COLUMN IF NOT EXISTS dfc_existing VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS dfc_proposed VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS dc_existing VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS dc_proposed VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS tcw_existing VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS tcw_proposed VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS tw_existing VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS tw_proposed VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS total_draft_existing NUMERIC,
-      ADD COLUMN IF NOT EXISTS total_draft_proposed NUMERIC;
-  `);
-
-  for (const tableName of [
-    'spinning.speed_checking',
-    'spinning.cots_checking',
-    'spinning.lycra_missing',
-    'spinning.bottom_apron_checking',
-    'spinning.lycra_centering',
-    'spinning.RSM_and_lycrasensor_cheking_online',
-    'spinning.RSM_and_lycrasensor_cheking_offline'
-  ]) {
-    await client.query(`
-      ALTER TABLE ${tableName}
-        ADD COLUMN IF NOT EXISTS operator TEXT;
-    `);
-  }
-
-  await client.query(`DROP TABLE IF EXISTS spinning.wheel_change_type4`);
-
-  for (const tableName of [
-    'spinning.wheel_change_inspection',
-    'spinning.wheel_change_v2',
-    'spinning.wheel_change'
-  ]) {
-    await client.query(`
-      ALTER TABLE ${tableName}
-        ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending',
-        ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
-        ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
-        ADD COLUMN IF NOT EXISTS review_remarks TEXT;
-    `);
-    // ADD COLUMN IF NOT EXISTS above is a no-op once the column already
-    // exists, so a stale/incorrect default from an older migration would
-    // otherwise persist forever. Force it explicitly on every startup.
-    await client.query(`
-      ALTER TABLE ${tableName} ALTER COLUMN approval_status SET DEFAULT 'pending';
-    `);
-  }
-
-  // "Slub Partcy Code" was a typo of "Slub Party Code" — rename the existing column (preserving
-  // its data) rather than adding a new one, guarded so it only runs once per environment.
-  await client.query(`
-    DO $$
-    BEGIN
-      IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'spinning' AND table_name = 'spinning_qc_header' AND column_name = 'slub_partcy_code'
-      ) AND NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'spinning' AND table_name = 'spinning_qc_header' AND column_name = 'slub_party_code'
-      ) THEN
-        ALTER TABLE spinning.spinning_qc_header RENAME COLUMN slub_partcy_code TO slub_party_code;
-      END IF;
-    END $$;
-  `);
-
-  await client.query(`
-    ALTER TABLE spinning.spinning_qc_header
-      ADD COLUMN IF NOT EXISTS slub_party_code TEXT,
-      ADD COLUMN IF NOT EXISTS slub_mtr NUMERIC,
-      ADD COLUMN IF NOT EXISTS pause_min NUMERIC,
-      ADD COLUMN IF NOT EXISTS pause_max NUMERIC,
-      ADD COLUMN IF NOT EXISTS slub_min NUMERIC,
-      ADD COLUMN IF NOT EXISTS slub_max NUMERIC,
-      ADD COLUMN IF NOT EXISTS thickness_min NUMERIC,
-      ADD COLUMN IF NOT EXISTS thickness_max NUMERIC,
-      ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending',
-      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
-      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS review_remarks TEXT;
-  `);
-  // NOTE: approval_status/reviewed_by/reviewed_at/review_remarks above are no
-  // longer what gates Wheel Change - that moved to a single approval on the
-  // whole PP id (process_parameters.master.status, see processParameters.js
-  // and GET /wheel-change/pp-approval-status below). These columns are kept
-  // only because dropping them would lose historical data already recorded
-  // under the old per-row model; nothing new writes to them.
-  // ADD COLUMN IF NOT EXISTS above is a no-op once the column already exists,
-  // so a stale/incorrect default from an older migration would otherwise
-  // persist forever. Force it explicitly on every startup, same as the
-  // wheel-change tables' approval_status default.
-  await client.query(`
-    ALTER TABLE spinning.spinning_qc_header ALTER COLUMN approval_status SET DEFAULT 'pending';
-  `);
-};
-
-// ensureSpinningEntryIdColumnsImpl runs ~17 sequential ALTER TABLE/DO $$ statements — fine as a
-// one-time startup migration, but every route in this file awaits it on every single request, and
-// each statement is a round trip to the remote Supabase pooler. Memoizing the in-flight/completed
-// promise means the real migration work only ever runs once per server process; every call after
-// that resolves immediately instead of re-running all 17 statements (this was making routes like
-// GET /wheel-change/pp-approval-status - hit on every debounced keystroke - feel sluggish).
-let ensureSpinningEntryIdColumnsPromise = null;
-const ensureSpinningEntryIdColumns = () => {
-  if (!ensureSpinningEntryIdColumnsPromise) {
-    ensureSpinningEntryIdColumnsPromise = ensureSpinningEntryIdColumnsImpl().catch((error) => {
-      ensureSpinningEntryIdColumnsPromise = null;
-      throw error;
-    });
-  }
-  return ensureSpinningEntryIdColumnsPromise;
-};
 
 // Writes the Type-2 fault-subtype value into its own table for a given
 // checking screen + submission, replacing any prior value for that
@@ -1651,7 +1239,6 @@ router.get('/rsm-lycra-offline/master/mc-nos', getSpinningLycraMachineNumbers);
 
 router.post('/speed-checking', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const {
       entry_id,
       inspectiondate,
@@ -1756,7 +1343,6 @@ router.post('/speed-checking', async (req, res, next) => {
 
 router.get('/speed-checking', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
         entry_id AS id,
@@ -1840,7 +1426,6 @@ router.get('/speed-checking', async (req, res, next) => {
  */
 router.post('/cots-checking', async (req, res, next) =>{
     try {
-    await ensureSpinningEntryIdColumns();
     const {
       entry_id,
       inspectiondate,
@@ -1945,7 +1530,6 @@ router.post('/cots-checking', async (req, res, next) =>{
  */
 router.get('/cots-checking', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
         entry_id AS id,
@@ -2025,7 +1609,6 @@ router.get('/cots-checking', async (req, res, next) => {
  */
 router.post('/lycra-missing', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const {
       entry_id,
       inspectiondate,
@@ -2169,7 +1752,6 @@ router.get('/lycra-missing', async (req, res, next) => {
  */
 router.post('/bottom-apron-checking', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const {
       entry_id,
       inspectiondate,
@@ -2252,7 +1834,6 @@ router.post('/bottom-apron-checking', async (req, res, next) => {
  */
 router.get('/bottom-apron-checking', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
         h.entry_id AS id,
@@ -2334,7 +1915,6 @@ router.get('/bottom-apron-checking', async (req, res, next) => {
  */
 router.post('/lycra-centering', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const {
       entry_id,
       inspectiondate,
@@ -2417,7 +1997,6 @@ router.post('/lycra-centering', async (req, res, next) => {
  */
 router.get('/lycra-centering', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
         h.entry_id AS id,
@@ -2499,7 +2078,6 @@ router.get('/lycra-centering', async (req, res, next) => {
  */
 router.post('/rsm-lycra-online', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const {
       entry_id,
       inspectiondate,
@@ -2582,7 +2160,6 @@ router.post('/rsm-lycra-online', async (req, res, next) => {
  */
 router.get('/rsm-lycra-online', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
         h.entry_id AS id,
@@ -2664,7 +2241,6 @@ router.get('/rsm-lycra-online', async (req, res, next) => {
  */
 router.post('/rsm-lycra-offline', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const {
       entry_id,
       inspectiondate,
@@ -2747,7 +2323,6 @@ router.post('/rsm-lycra-offline', async (req, res, next) => {
  */
 router.get('/rsm-lycra-offline', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
         h.entry_id AS id,
@@ -2824,7 +2399,6 @@ router.get('/rsm-lycra-offline', async (req, res, next) => {
 
 router.post('/ring-frame', async (req, res) => {
   try {
-    await ensureRingFrameLogBookTables();
     const {
       entry_id,
       inspection_type,
@@ -2939,7 +2513,6 @@ router.post('/ring-frame', async (req, res) => {
 
 const getRingFrameCheckerNames = async (req, res, next) => {
   try {
-    await ensureRingFrameLogBookTables();
     const prefix = String(req.query.prefix || '').trim();
     const likeToken = `%${prefix}%`;
     const checkerParams = Object.fromEntries(
@@ -3115,7 +2688,6 @@ router.get('/ring-frame-logbook/shift', getRingFrameShifts);
  */
 router.get('/ring-frame', async (req, res) => {
   try {
-    await ensureRingFrameLogBookTables();
 
     const result = await client.query(`
       SELECT 
@@ -3258,7 +2830,6 @@ router.get('/ring-frame/master-data', async (req, res) => {
 
 router.post('/count-change', async (req, res) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const {
       entry_id,
       type,
@@ -3367,7 +2938,6 @@ router.post('/count-change', async (req, res) => {
 
 router.get('/count-change', async (req, res) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const hasMcMaster = await hasPostgresTable('ticketing_system.mc_master');
     const rfSelect = hasMcMaster
       ? `,
@@ -3495,7 +3065,6 @@ router.get('/count-change', async (req, res) => {
 
 router.post('/qc', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const {
       entry_id,
       count_name,
@@ -3644,7 +3213,6 @@ router.post('/qc', async (req, res, next) => {
 
 router.get('/qc', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = parseInt(page);
@@ -4069,8 +3637,6 @@ const normalizeWheelChangeType3Payload = (payload) => {
  */
 router.post('/wheel-change/type1', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
-    await ensureProcessParameterMasterTable();
     const d = { ...withWheelChangeRfNumber(req.body, 'fm_no'), created_by_user_id: req.user?.id ?? null };
     const type1Fields = [
       'entry_id',
@@ -4177,7 +3743,6 @@ router.post('/wheel-change/type1', async (req, res, next) => {
 // UNION isn't possible — fetch each separately and merge in JS instead.
 router.get('/wheel-change', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const [type1, type2, type3] = await Promise.all([
       client.query(`SELECT * FROM spinning.wheel_change_inspection`),
       client.query(`SELECT * FROM spinning.wheel_change_v2`),
@@ -4207,7 +3772,6 @@ router.get('/wheel-change', async (req, res, next) => {
  */
 router.get('/wheel-change/type1', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
     const machineNo = String(req.query.fm_no || req.query.machine_no || req.query.mc_no || '').trim();
     const approvalStatus = String(req.query.approval_status || req.query.status || '').trim();
@@ -4316,8 +3880,6 @@ router.get('/wheel-change/type1', async (req, res, next) => {
  */
 router.post('/wheel-change/type2', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
-    await ensureProcessParameterMasterTable();
     const d = { ...withWheelChangeRfNumber(req.body, 'fm_no'), created_by_user_id: req.user?.id ?? null };
     const type2Fields = [
       'entry_id',
@@ -4432,7 +3994,6 @@ router.post('/wheel-change/type2', async (req, res, next) => {
  */
 router.get('/wheel-change/type2', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
     const machineNo = String(req.query.fm_no || req.query.machine_no || req.query.mc_no || '').trim();
     const approvalStatus = String(req.query.approval_status || req.query.status || '').trim();
@@ -4541,8 +4102,6 @@ router.get('/wheel-change/type2', async (req, res, next) => {
  */
 router.post('/wheel-change/type3', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
-    await ensureProcessParameterMasterTable();
     const d = {
       ...normalizeWheelChangeType3Payload(withWheelChangeRfNumber(req.body, 'fr_no')),
       created_by_user_id: req.user?.id ?? null
@@ -4660,7 +4219,6 @@ router.post('/wheel-change/type3', async (req, res, next) => {
  */
 router.get('/wheel-change/type3', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
     const machineNo = String(req.query.fr_no || req.query.fm_no || req.query.machine_no || req.query.mc_no || '').trim();
     const approvalStatus = String(req.query.approval_status || req.query.status || '').trim();
@@ -4778,7 +4336,6 @@ router.get('/wheel-change/approval-config/list', async (req, res, next) => {
 
 router.post('/wheel-change/approval-config', async (req, res, next) => {
   try {
-    await ensureWheelChangeApprovalConfigTable();
 
     const department = WHEEL_CHANGE_DEPARTMENTS.includes(req.body?.department) ? req.body.department : null;
     if (!department) {
@@ -4814,7 +4371,6 @@ router.post('/wheel-change/approval-config', async (req, res, next) => {
 
 router.patch('/wheel-change/approval-config/:department/status', async (req, res, next) => {
   try {
-    await ensureWheelChangeApprovalConfigTable();
     const department = WHEEL_CHANGE_DEPARTMENTS.includes(req.params.department) ? req.params.department : null;
     if (!department) {
       return res.status(400).json({ message: `department must be one of ${WHEEL_CHANGE_DEPARTMENTS.join(', ')}` });
@@ -4841,7 +4397,6 @@ router.patch('/wheel-change/approval-config/:department/status', async (req, res
 
 router.get('/wheel-change/approvals', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const status = String(req.query.status ?? '').trim();
     const whereClause = status ? 'WHERE approval_status = $1' : '';
     const scope = await resolveApprovalVisibilityScope(req);
@@ -4976,28 +4531,7 @@ const deriveWheelChangeDepartment = (tableName) => {
   return match || 'Spinning';
 };
 
-const ensureWheelChangeApprovalConfigTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.wheel_change_approval_config (
-      config_key TEXT PRIMARY KEY DEFAULT 'global',
-      l4_user_id INTEGER NULL,
-      tat_hours INTEGER NOT NULL DEFAULT 24,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  // Admin can assign as many L4 approvers as needed, not just one - l4_user_ids
-  // is now the source of truth; the older single l4_user_id column is kept
-  // (and folded into the array) so existing saved configs keep working.
-  await client.query(`
-    ALTER TABLE ticketing_system.wheel_change_approval_config
-      ADD COLUMN IF NOT EXISTS l4_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
-      ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true,
-      ADD COLUMN IF NOT EXISTS severity TEXT NOT NULL DEFAULT 'High'
-  `);
-};
-
 const getWheelChangeApprovalConfig = async (department = 'Spinning') => {
-  await ensureWheelChangeApprovalConfigTable();
   const result = await client.query(
     `SELECT * FROM ticketing_system.wheel_change_approval_config WHERE config_key = $1`,
     [department]
@@ -5033,7 +4567,6 @@ const getWheelChangeApprovalConfig = async (department = 'Spinning') => {
 };
 
 const getAllWheelChangeApprovalConfigs = async () => {
-  await ensureWheelChangeApprovalConfigTable();
   const result = await client.query(
     `SELECT *
      FROM ticketing_system.wheel_change_approval_config
@@ -5051,23 +4584,10 @@ const getAllWheelChangeApprovalConfigs = async () => {
   }));
 };
 
-const ensureWheelChangeApprovalTicketSchema = async () => {
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-      ADD COLUMN IF NOT EXISTS approval_l4_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l5_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS tat_current_level text NULL,
-      ADD COLUMN IF NOT EXISTS l4_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS l5_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
-  `);
-};
-
 // wheelChangeRowKey uniquely identifies the WC row this ticket is for
 // (table name + row id), since ticket_id-style composite ids
 // ("type1:123") aren't stable identifiers to search violation_details by.
 const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
-  await ensureWheelChangeApprovalTicketSchema();
   const wheelChangeRowKey = `${tableName}:${wheelChangeRowId}`;
 
   const existing = await client.query(
@@ -5184,7 +4704,6 @@ const runWheelChangeApprovalOverdueCheck = async () => {
 };
 
 const closeWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
-  await ensureWheelChangeApprovalTicketSchema();
   const wheelChangeRowKey = `${tableName}:${wheelChangeRowId}`;
   await client.query(
     `UPDATE ticketing_system.operator_tickets
@@ -5222,8 +4741,6 @@ const consumeAndStampWheelChangeRow = async (tableName, row) => {
 
 router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
-    await ensureProcessParameterMasterTable();
     const resolved = resolveWheelChangeApprovalTable(req.params.id);
     if (!resolved) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
@@ -5259,7 +4776,6 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
 
 router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const resolved = resolveWheelChangeApprovalTable(req.params.id);
     if (!resolved) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
@@ -5299,7 +4815,6 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
 // its shared entry_id (PP-000N) plus Count + Consignee Name.
 router.get('/qc/approvals', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const status = String(req.query.status ?? '').trim();
     const whereClause = status ? 'WHERE h.approval_status = $1' : '';
     const scope = await resolveApprovalVisibilityScope(req);
@@ -5334,7 +4849,6 @@ router.get('/qc/approvals', async (req, res, next) => {
 
 router.post('/qc/:id/approve', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const qcId = parseInt(req.params.id, 10);
     if (!Number.isInteger(qcId) || qcId <= 0) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
@@ -5358,7 +4872,6 @@ router.post('/qc/:id/approve', async (req, res, next) => {
 
 router.post('/qc/:id/reject', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
     const qcId = parseInt(req.params.id, 10);
     if (!Number.isInteger(qcId) || qcId <= 0) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
@@ -5389,8 +4902,6 @@ router.post('/qc/:id/reject', async (req, res, next) => {
 // department has submitted - not a per-row check on Spinning alone.
 router.get('/wheel-change/pp-approval-status', async (req, res, next) => {
   try {
-    await ensureSpinningEntryIdColumns();
-    await ensureProcessParameterMasterTable();
     const countName = String(req.query.count_name || req.query.countName || req.query.count || '').trim();
     const consigneeName = String(req.query.consignee_name || req.query.consigneeName || req.query.consignee || '').trim();
 
@@ -5425,7 +4936,6 @@ module.exports.runWheelChangeApprovalTatCheck = runWheelChangeApprovalTatCheck;
 module.exports.runWheelChangeApprovalOverdueCheck = runWheelChangeApprovalOverdueCheck;
 module.exports.createWheelChangeApprovalTicket = createWheelChangeApprovalTicket;
 module.exports.closeWheelChangeApprovalTicket = closeWheelChangeApprovalTicket;
-module.exports.ensureWheelChangeApprovalConfigTable = ensureWheelChangeApprovalConfigTable;
 module.exports.getWheelChangeApprovalConfig = getWheelChangeApprovalConfig;
 module.exports.getAllWheelChangeApprovalConfigs = getAllWheelChangeApprovalConfigs;
 module.exports.deriveWheelChangeDepartment = deriveWheelChangeDepartment;

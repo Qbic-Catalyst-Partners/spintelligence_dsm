@@ -133,52 +133,6 @@ const ensureWrappingAPercentTable = async () => {
   `);
 };
 
-const ensureWrappingStretchPercentTable = async () => {
-  await client.query(`CREATE SCHEMA IF NOT EXISTS wrapping`);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS wrapping.stretch_percent (
-      id BIGSERIAL PRIMARY KEY,
-      entry_id TEXT,
-      entry_type TEXT,
-      schema_name TEXT,
-      table_name TEXT,
-      pdf_file TEXT,
-      meta JSONB NOT NULL DEFAULT '{}'::jsonb,
-      sample_rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      summary_rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      raw_ocr_rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    ALTER TABLE wrapping.stretch_percent
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS entry_type TEXT,
-      ADD COLUMN IF NOT EXISTS schema_name TEXT,
-      ADD COLUMN IF NOT EXISTS table_name TEXT,
-      ADD COLUMN IF NOT EXISTS pdf_file TEXT,
-      ADD COLUMN IF NOT EXISTS meta JSONB NOT NULL DEFAULT '{}'::jsonb,
-      ADD COLUMN IF NOT EXISTS sample_rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      ADD COLUMN IF NOT EXISTS summary_rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      ADD COLUMN IF NOT EXISTS raw_ocr_rows JSONB NOT NULL DEFAULT '[]'::jsonb;
-  `);
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS wrapping_stretch_percent_entry_id_uq
-    ON wrapping.stretch_percent (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS wrapping_stretch_percent_created_at_idx
-    ON wrapping.stretch_percent (created_at DESC, id DESC);
-  `);
-};
-
 const ensureWrappingComberNoilPercentTable = async () => {
   await client.query(`CREATE SCHEMA IF NOT EXISTS wrapping`);
 
@@ -224,178 +178,6 @@ const ensureWrappingComberNoilPercentTable = async () => {
   await client.query(`
     CREATE INDEX IF NOT EXISTS wrapping_comber_noil_percent_created_at_idx
     ON wrapping.comber_noil_percent (created_at DESC, id DESC);
-  `);
-};
-
-// These Draw Frame tables store created_at/updated_at as `timestamp WITHOUT time zone` with a
-// bare CURRENT_TIMESTAMP default — on this DB, that silently writes a different offset than what
-// gets displayed back, shifting "Created At" by several hours (sometimes onto the wrong calendar
-// day) in Custom Report. Same root cause and same fix as Comber's equivalent tables: convert to
-// timestamptz so new rows store an unambiguous absolute instant.
-const ensureDrawframeTimestampColumnsHaveTimezone = async () => {
-  const columnsByTable = {
-    yarn_cv_percent: ['created_at'],
-    yarn_cv_yard_results: ['created_at'],
-    drawframe_qc_header: ['created_at'],
-    cots_data_entry: ['created_at'],
-    cots_breaker_data: ['created_at'],
-    cots_finisher_data: ['created_at'],
-    u_data_entry: ['created_at']
-  };
-  for (const [table, columns] of Object.entries(columnsByTable)) {
-    for (const column of columns) {
-      await client.query(`
-        DO $$
-        BEGIN
-          IF EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'drawframe' AND table_name = '${table}' AND column_name = '${column}'
-              AND data_type = 'timestamp without time zone'
-          ) THEN
-            ALTER TABLE drawframe.${table}
-              ALTER COLUMN ${column} TYPE timestamptz USING ${column} AT TIME ZONE 'UTC';
-            ALTER TABLE drawframe.${table}
-              ALTER COLUMN ${column} SET DEFAULT now();
-          END IF;
-        END $$;
-      `);
-    }
-  }
-};
-
-const ensureDrawframeEntryIdColumns = async () => {
-  await client.query(`CREATE SCHEMA IF NOT EXISTS drawframe`);
-  await ensureDrawframeTimestampColumnsHaveTimezone();
-
-  await client.query(`
-    ALTER TABLE drawframe.yarn_cv_percent
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    ALTER TABLE drawframe.yarn_cv_percent
-      ALTER COLUMN s_no DROP NOT NULL;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS yarn_cv_percent_entry_id_uq
-    ON drawframe.yarn_cv_percent (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-  // The form collects however many individual 1 Yard/1/2 Yard readings the user enters (N, not
-  // fixed), used to compute the avg/hank/sd/cv summary stats — but only the summary was ever
-  // saved, so Custom Report could never show the individual readings themselves.
-  await client.query(`
-    ALTER TABLE drawframe.yarn_cv_percent
-      ADD COLUMN IF NOT EXISTS readings JSONB NOT NULL DEFAULT '{}'::jsonb;
-  `);
-
-  await client.query(`
-    ALTER TABLE drawframe.cots_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS cots_data_entry_entry_id_uq
-    ON drawframe.cots_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE drawframe.u_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS drawframe_u_data_entry_entry_id_uq
-    ON drawframe.u_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE drawframe.drawframe_qc_header
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  // PP - Breaker and PP - Finisher share this table and the same PP id as entry_id (only
-  // entry_scope tells them apart), so entry_id alone can't be unique — a Finisher save under
-  // a PP id already used by that PP id's Breaker save would otherwise collide. Scope the
-  // uniqueness to (entry_id, entry_scope) instead.
-  await client.query(`DROP INDEX IF EXISTS drawframe.drawframe_qc_header_entry_id_uq;`);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS drawframe_qc_header_entry_id_scope_uq
-    ON drawframe.drawframe_qc_header (entry_id, entry_scope)
-    WHERE entry_id IS NOT NULL;
-  `);
-  // PP - Finisher Drawing shares this table with PP - Breaker Drawing (distinguished by
-  // entry_scope) but submits its own extra fields that Breaker doesn't have — add them so the
-  // Finisher form's data actually gets saved instead of being silently dropped.
-  await client.query(`
-    ALTER TABLE drawframe.drawframe_qc_header
-      ADD COLUMN IF NOT EXISTS insert_size NUMERIC,
-      ADD COLUMN IF NOT EXISTS web_funnel_size NUMERIC,
-      ADD COLUMN IF NOT EXISTS delivery_hank NUMERIC,
-      ADD COLUMN IF NOT EXISTS scanning_rolls_size VARCHAR(255);
-  `);
-  // drawframe_qc_header never had its own "operator" column at all — PP Breaker/Finisher
-  // Drawing's operator has always depended entirely on the separate submitted-notebook
-  // recording flow, which has proven fragile (some entries never got recorded, leaving Operator
-  // blank in Custom Report with no fallback). Persist it directly on the row too.
-  await client.query(`
-    ALTER TABLE drawframe.drawframe_qc_header
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-
-};
-
-const ensureDrawframeWheelChangeTable = async () => {
-  await client.query(`CREATE SCHEMA IF NOT EXISTS drawframe`);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS drawframe.wheel_change (
-      id BIGSERIAL PRIMARY KEY,
-      entry_id TEXT,
-      type TEXT NOT NULL DEFAULT 'Wheel Change',
-      line_type TEXT,
-      wheel_change_type TEXT,
-      wheel_change_type_label TEXT,
-      entry_date DATE,
-      parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
-      rows JSONB NOT NULL DEFAULT '{}'::jsonb,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    ALTER TABLE drawframe.wheel_change
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'Wheel Change',
-      ADD COLUMN IF NOT EXISTS line_type TEXT,
-      ADD COLUMN IF NOT EXISTS wheel_change_type TEXT,
-      ADD COLUMN IF NOT EXISTS wheel_change_type_label TEXT,
-      ADD COLUMN IF NOT EXISTS entry_date DATE,
-      ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
-      ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '{}'::jsonb,
-      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending',
-      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
-      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS review_remarks TEXT;
-  `);
-  // ADD COLUMN IF NOT EXISTS above is a no-op once the column already exists,
-  // so a stale/incorrect default from an older migration would otherwise
-  // persist forever. Force it explicitly on every startup.
-  await client.query(`
-    ALTER TABLE drawframe.wheel_change ALTER COLUMN approval_status SET DEFAULT 'pending';
-  `);
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS drawframe_wheel_change_entry_id_uq
-    ON drawframe.wheel_change (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS drawframe_wheel_change_entry_date_idx
-    ON drawframe.wheel_change (entry_date DESC, id DESC);
   `);
 };
 
@@ -536,8 +318,6 @@ const getWrappingAPercent = async (req, res, next) => {
 
 const saveWrappingStretchPercent = async (req, res, next) => {
   try {
-    await ensureWrappingStretchPercentTable();
-
     const payload = req.body || {};
     const sampleRows = normalizeJsonArray(payload.sample_rows ?? payload.sampleRows);
     const summaryRows = normalizeJsonArray(payload.summary_rows ?? payload.summaryRows);
@@ -593,8 +373,6 @@ const saveWrappingStretchPercent = async (req, res, next) => {
 
 const getWrappingStretchPercent = async (req, res, next) => {
   try {
-    await ensureWrappingStretchPercentTable();
-
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.max(1, parseInt(req.query.limit, 10) || 50);
     const offset = (page - 1) * limit;
@@ -1482,7 +1260,6 @@ router.get('/cots/machine-numbers', async (req, res, next) => {
  */
 router.post('/yarn-cv', async (req, res) => {
     try {
-        await ensureDrawframeEntryIdColumns();
         const {
             entry_id,
             type,
@@ -1576,7 +1353,6 @@ router.post('/yarn-cv', async (req, res) => {
  */
 router.get('/yarn-cv', async (req, res) => {
     try {
-        await ensureDrawframeEntryIdColumns();
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
@@ -1642,7 +1418,6 @@ router.get('/yarn-cv', async (req, res) => {
  */
 router.post('/cots', async (req, res) => {
     try {
-        await ensureDrawframeEntryIdColumns();
         const { entry_id, entry_date, shift, sub_type, machines } = req.body;
 
         if (!entry_id) {
@@ -1755,7 +1530,6 @@ router.post('/cots', async (req, res) => {
  */
 router.get('/cots', async (req, res) => {
     try {
-        await ensureDrawframeEntryIdColumns();
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
@@ -1879,7 +1653,6 @@ router.get('/cots', async (req, res) => {
  */
 router.post('/uqc', async (req, res) => {
     try {
-        await ensureDrawframeEntryIdColumns();
         console.log("UQC BODY:", req.body);
 
         const {
@@ -1978,7 +1751,6 @@ router.post('/uqc', async (req, res) => {
  */
 router.get('/uqc', async (req, res) => {
     try {
-        await ensureDrawframeEntryIdColumns();
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
@@ -2073,7 +1845,6 @@ router.get('/uqc', async (req, res) => {
 
 router.post('/header', async (req, res, next) => {
   try {
-    await ensureDrawframeEntryIdColumns();
     console.log('[DF DEBUG] POST /header body', { entry_id: req.body.entry_id, type: req.body.type, count_name: req.body.count_name });
     const {
       entry_id,
@@ -2209,7 +1980,6 @@ router.post('/header', async (req, res, next) => {
 
 router.get('/header', async (req, res, next) => {
   try {
-    await ensureDrawframeEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -2252,8 +2022,6 @@ router.get('/header', async (req, res, next) => {
 
 const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChangeType = null, defaultWheelChangeTypeLabel = null) => {
   try {
-    await ensureDrawframeWheelChangeTable();
-
     const payload = req.body || {};
     const entry_id = String(payload.entry_id ?? payload.entryId ?? '').trim() || null;
     const type = String(payload.type ?? 'Wheel Change').trim() || 'Wheel Change';
@@ -2317,8 +2085,6 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
 
 const getDrawframeWheelChangeEntries = async (req, res, next, defaultWheelChangeType = null) => {
   try {
-    await ensureDrawframeWheelChangeTable();
-
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
     const offset = (page - 1) * limit;
@@ -2399,7 +2165,6 @@ router.get('/wheel-change/type4-ldf3s', (req, res, next) => getDrawframeWheelCha
 
 router.get('/wheel-change/approvals', async (req, res, next) => {
   try {
-    await ensureDrawframeWheelChangeTable();
     const status = String(req.query.status ?? '').trim();
     const whereClause = status ? 'WHERE approval_status = $1' : '';
     const result = await client.query(
@@ -2415,7 +2180,6 @@ router.get('/wheel-change/approvals', async (req, res, next) => {
 
 router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
   try {
-    await ensureDrawframeWheelChangeTable();
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
@@ -2443,7 +2207,6 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
 
 router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
   try {
-    await ensureDrawframeWheelChangeTable();
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ message: 'Invalid ID supplied' });

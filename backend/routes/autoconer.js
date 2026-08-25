@@ -276,255 +276,6 @@ const sendAutoconerMachineDropdown = async (req, res, next) => {
   }
 };
 
-// These tables store their submission timestamp as `timestamp WITHOUT time zone` with a bare
-// default — on this DB, that silently writes a different offset than what gets displayed back,
-// shifting "Created At" by several hours (sometimes onto the wrong calendar day) in Custom Report.
-// Same root cause and same fix as every other department's equivalent tables: convert to
-// timestamptz so new rows store an unambiguous absolute instant.
-const ensureAutoconerTimestampColumnsHaveTimezone = async () => {
-  const tablesAndColumn = [
-    ['autoconer.autoconer_process_parameter', 'created_at'],
-    ['autoconer.autoconer_process_parameter', 'updated_at'],
-    ['autoconer.autoconer_q2_inspection', 'created_at'],
-    ['autoconer.autoconer_q2_inspection', 'updated_at'],
-    ['autoconer.autoconer_q3_inspection', 'created_at'],
-    ['autoconer.autoconer_q3_inspection', 'updated_at'],
-    ['autoconer.cone_density_notebook', 'created_at'],
-    ['autoconer.cone_density_notebook', 'updated_at'],
-    ['autoconer.cone_density_notebook_drums', 'created_at'],
-    ['autoconer.cone_packing_audit', 'created_at'],
-    ['autoconer.count_wise_cuts', 'created_at'],
-    ['autoconer.drum_readings', 'created_at'],
-    ['autoconer.drum_wise', 'created_at'],
-    ['autoconer.inspection_data_entry', 'created_at'],
-    ['autoconer.inspections', 'created_at'],
-    ['autoconer.lycra_checking_inspections', 'created_at'],
-    ['autoconer.parameter_entries', 'created_at'],
-    ['autoconer.parameter_entries', 'updated_at']
-  ];
-  for (const [tableName, column] of tablesAndColumn) {
-    const [schemaName, relationName] = tableName.split('.');
-    await client.query(`
-      DO $$
-      BEGIN
-        IF EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_schema = '${schemaName}' AND table_name = '${relationName}' AND column_name = '${column}'
-            AND data_type = 'timestamp without time zone'
-        ) THEN
-          ALTER TABLE ${tableName}
-            ALTER COLUMN ${column} TYPE timestamptz USING ${column} AT TIME ZONE 'UTC';
-          ALTER TABLE ${tableName}
-            ALTER COLUMN ${column} SET DEFAULT now();
-        END IF;
-      END $$;
-    `);
-  }
-};
-
-const ensureAutoconerEntryIdColumns = async () => {
-  await ensureAutoconerTimestampColumnsHaveTimezone();
-  await client.query(`
-    ALTER TABLE autoconer.autoconer_process_parameter
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS autoconer_process_parameter_entry_id_uq
-    ON autoconer.autoconer_process_parameter (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE autoconer.autoconer_q2_inspection
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS autoconer_q2_inspection_entry_id_uq
-    ON autoconer.autoconer_q2_inspection (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE autoconer.autoconer_q3_inspection
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  await client.query(`
-    ALTER TABLE autoconer.autoconer_q4_inspection
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  await client.query(`
-    ALTER TABLE autoconer.lycra_checking_inspections
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  await client.query(`
-    ALTER TABLE autoconer.cone_packing_audit
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  await client.query(`
-    ALTER TABLE autoconer.inspections
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS autoconer_q3_inspection_entry_id_uq
-    ON autoconer.autoconer_q3_inspection (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  // Autoconer Q4 notebook — unlike q2/q3 (created manually in the DB before this codebase
-  // adopted the "ensure*" idempotent-migration convention), this table is created here so the
-  // feature works out of the box against any database, with no manual provisioning step.
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS autoconer.autoconer_q4_inspection (
-      id SERIAL PRIMARY KEY,
-      entry_id TEXT,
-      operator TEXT,
-      count_name VARCHAR(100) NOT NULL,
-      consignee_name VARCHAR(100) NOT NULL,
-      creation_date DATE NOT NULL,
-      nsl1 NUMERIC(6,2), nsl2 NUMERIC(6,2), nsl3 NUMERIC(6,2), nsl4 NUMERIC(6,2), nsl5 NUMERIC(6,2), nsl6 NUMERIC(6,2), nsl7 NUMERIC(6,2),
-      t1 NUMERIC(6,2), t2 NUMERIC(6,2), t3 NUMERIC(6,2), t4 NUMERIC(6,2), t5 NUMERIC(6,2),
-      pf_sensing NUMERIC(6,2),
-      pf_no_of_periods INTEGER,
-      oc NUMERIC(6,2), cp NUMERIC(6,2), cm NUMERIC(6,2), ccp1 NUMERIC(6,2), ccp2 NUMERIC(6,2), ccm1 NUMERIC(6,2), ccm2 NUMERIC(6,2),
-      jp1 NUMERIC(6,2), jp2 NUMERIC(6,2), jp3 NUMERIC(6,2), jp4 NUMERIC(6,2), jp5 NUMERIC(6,2), jp6 NUMERIC(6,2), jp7 NUMERIC(6,2),
-      jp_clearing NUMERIC(6,2), jp_u_percent NUMERIC(6,2), jp_jm NUMERIC(6,2),
-      fd1 NUMERIC(6,2), fd2 NUMERIC(6,2), fd3 NUMERIC(6,2), fd4 NUMERIC(6,2), fd5 NUMERIC(6,2), fd6 NUMERIC(6,2),
-      reference_length NUMERIC(6,2),
-      suction NUMERIC(6,2),
-      measurement NUMERIC(6,2),
-      upper_limit NUMERIC(6,2),
-      lower_limit NUMERIC(6,2),
-      action VARCHAR(255),
-      suction_status VARCHAR(255),
-      blocking VARCHAR(255),
-      x_status VARCHAR(10) DEFAULT 'On',
-      dp_plus_30 NUMERIC(6,2),
-      sm_minus_30 NUMERIC(6,2),
-      cdp1 NUMERIC(6,2), cdp2 NUMERIC(6,2), cdm1 NUMERIC(6,2), cdm2 NUMERIC(6,2),
-      nsl_max_event NUMERIC(6,2),
-      t_max_event NUMERIC(6,2),
-      fd_max_events NUMERIC(6,2),
-      fl_max_events NUMERIC(6,2),
-      created_at TIMESTAMPTZ DEFAULT now(),
-      updated_at TIMESTAMPTZ DEFAULT now()
-    );
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS autoconer_q4_inspection_entry_id_uq
-    ON autoconer.autoconer_q4_inspection (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE autoconer.lycra_checking_inspections
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS lycra_checking_inspections_entry_id_uq
-    ON autoconer.lycra_checking_inspections (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  // Neither table was ever given a real PRIMARY KEY (just a plain `id` column) — harmless until
-  // GET /lycra-checking's GROUP BY i.id, s.id runs, since without a declared primary key Postgres
-  // can't apply the functional-dependency rule that normally lets `i.*`/`s.*` be selected once
-  // grouped by their own id, and instead rejects the whole query with "column ... must appear in
-  // the GROUP BY clause" — meaning this route has been failing outright on every fetch.
-  await client.query(`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conrelid = 'autoconer.lycra_checking_inspections'::regclass AND contype = 'p'
-      ) THEN
-        ALTER TABLE autoconer.lycra_checking_inspections ADD PRIMARY KEY (id);
-      END IF;
-      IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conrelid = 'autoconer.lycra_checking_summary'::regclass AND contype = 'p'
-      ) THEN
-        ALTER TABLE autoconer.lycra_checking_summary ADD PRIMARY KEY (id);
-      END IF;
-    END $$;
-  `);
-
-  await client.query(`
-    ALTER TABLE autoconer.drum_wise
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS drum_wise_entry_id_uq
-    ON autoconer.drum_wise (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE autoconer.inspections
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS autoconer_inspections_entry_id_uq
-    ON autoconer.inspections (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE autoconer.cone_packing_audit
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS cone_packing_audit_entry_id_uq
-    ON autoconer.cone_packing_audit (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE autoconer.parameter_entries
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS parameter_entries_entry_id_uq
-    ON autoconer.parameter_entries (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE autoconer.count_wise_cuts
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS count_wise_cuts_entry_id_uq
-    ON autoconer.count_wise_cuts (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  // cone_density_notebook already has an entry_id column but never had a uniqueness guard.
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS cone_density_notebook_entry_id_uq
-    ON autoconer.cone_density_notebook (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE autoconer.cone_density_notebook
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-
-  // Rewinding study (inspection_data_entry) header never stored the drum-reading totals,
-  // so the list/report views had no way to show them without re-summing readings client-side.
-  await client.query(`
-    ALTER TABLE autoconer.inspection_data_entry
-      ADD COLUMN IF NOT EXISTS total_cones INTEGER,
-      ADD COLUMN IF NOT EXISTS total_faults INTEGER,
-      ADD COLUMN IF NOT EXISTS total_weight NUMERIC(14, 4),
-      ADD COLUMN IF NOT EXISTS total_length_meters NUMERIC(14, 4),
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-};
-
 router.get('/thresholds', async (req, res, next) => {
   try {
     const {
@@ -615,7 +366,6 @@ router.get('/thresholds', async (req, res, next) => {
  */
 router.post('/lycra-checking', async (req, res) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const {
       entry_id,
       inspection_type,
@@ -729,7 +479,6 @@ router.post('/lycra-checking', async (req, res) => {
  */
 router.get('/lycra-checking', async (req, res) => {
   try {
-    await ensureAutoconerEntryIdColumns();
 
     const result = await client.query(`
             SELECT
@@ -816,7 +565,6 @@ router.get('/lycra-checking', async (req, res) => {
 
 router.post('/count-wise-cuts', async (req, res) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const data = { ...req.body };
     data.operator = getAuthenticatedOperatorName(req);
 
@@ -955,7 +703,6 @@ router.get('/count-wise-cuts', async (req, res) => {
  */
 router.post('/drum-wise', async (req, res) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const {
       entry_id,
       test_no,
@@ -1092,7 +839,6 @@ router.post('/drum-wise', async (req, res) => {
  */
 router.get('/drum-wise', async (req, res) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
@@ -1257,7 +1003,6 @@ module.exports = router;
  */
 router.post('/splice-strength', async (req, res) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const {
       entry_id,
       type,
@@ -1412,7 +1157,6 @@ router.post('/splice-strength', async (req, res) => {
  */
 router.get('/splice-strength', async (req, res) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
@@ -1589,7 +1333,6 @@ router.post('/inspection-data-entry', async (req, res) => {
  */
 router.get('/inspection-data-entry', async (req, res) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const fetchAll = String(req.query.all || '').toLowerCase() === 'true';
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -1819,7 +1562,6 @@ router.get('/conedensity/master-data', async (req, res) => {
 // cone_density_notebook_drums hold the real data.
 router.post('/cone-density-notebook', async (req, res) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const {
       entry_id,
       entry_date,
@@ -1897,7 +1639,6 @@ router.post('/cone-density-notebook', async (req, res) => {
 
 router.get('/cone-density-notebook', async (req, res) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const fetchAll = String(req.query.all || '').toLowerCase() === 'true';
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -2273,7 +2014,6 @@ router.get('/q4/master/consignee-dropdown', sendAutoconerConsigneeDropdown);
  */
 router.post('/cone-packing-audit', async (req, res) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const {
       entry_id,
       inspection_date,
@@ -2484,7 +2224,6 @@ router.post('/cone-packing-audit', async (req, res) => {
  */
 router.get('/cone-packing-audit', async (req, res) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
@@ -2573,7 +2312,6 @@ router.get('/cone-packing-audit', async (req, res) => {
  */
 router.post('/parameter-entries', async (req, res) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const data = req.body;
 
     let phase = 'pending';
@@ -2831,7 +2569,6 @@ router.put('/parameter-entries/:id', async (req, res) => {
  */
 router.get('/parameter-entries', async (req, res) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const result = await client.query(
       `SELECT * FROM autoconer.parameter_entries ORDER BY id DESC`
     );
@@ -3080,7 +2817,6 @@ router.get('/parameter-entries/pending-quality', async (req, res) => {
  */
 router.post('/process', async (req, res, next) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const data = req.body;
 
     if (!data.count_name || !data.consignee_name || !data.creation_date) {
@@ -3292,7 +3028,6 @@ router.post('/process', async (req, res, next) => {
  */
 router.get('/process', async (req, res, next) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page));
@@ -3614,7 +3349,6 @@ router.put('/process/:id', async (req, res, next) => {
  */
 router.post('/q2', async (req, res, next) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const data = req.body;
 
     if (!data.count_name || !data.consignee_name || !data.creation_date) {
@@ -3727,7 +3461,6 @@ router.post('/q2', async (req, res, next) => {
  */
 router.get('/q2', async (req, res, next) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page));
@@ -4139,7 +3872,6 @@ router.put('/q2/:id', async (req, res, next) => {
  */
 router.post('/q3', async (req, res, next) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const data = req.body;
 
     if (!data.count_name || !data.consignee_name || !data.creation_date) {
@@ -4295,7 +4027,6 @@ router.post('/q3', async (req, res, next) => {
  */
 router.get('/q3', async (req, res, next) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page));
@@ -4448,7 +4179,6 @@ router.put('/q3/:id', async (req, res, next) => {
 
 router.post('/q4', async (req, res, next) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const data = req.body;
 
     if (!data.count_name || !data.consignee_name || !data.creation_date) {
@@ -4539,7 +4269,6 @@ router.post('/q4', async (req, res, next) => {
 
 router.get('/q4', async (req, res, next) => {
   try {
-    await ensureAutoconerEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page));

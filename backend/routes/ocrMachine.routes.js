@@ -116,7 +116,6 @@ const STRECH_FIELDS = [
   'Initial Bobbin',
   'Full Bobbin',
 ];
-let hviTableReady = false;
 let machineTableReady = false;
 
 router.use('/', express.static(path.join(__dirname, '..', 'public', 'ocr-machine')));
@@ -192,25 +191,6 @@ function withTimeout(signalMs = OCR_TIMEOUT_MS) {
 
 function sendSse(res, payload) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
-}
-
-async function ensureHviTable() {
-  if (hviTableReady) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS hvi_records (
-      id SERIAL PRIMARY KEY,
-      doc_type TEXT DEFAULT 'hvi',
-      filename TEXT,
-      ocr_json JSONB,
-      manual_json JSONB,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-  `);
-  await db.query(`
-    ALTER TABLE hvi_records
-      ADD COLUMN IF NOT EXISTS doc_type TEXT DEFAULT 'hvi';
-  `);
-  hviTableReady = true;
 }
 
 async function ensureMachineOcrTable() {
@@ -730,7 +710,6 @@ router.post('/api/save', express.json({ limit: '10mb' }), async (req, res) => {
       });
     }
 
-    await ensureHviTable();
     const inserted = await db.query(
       `
         INSERT INTO hvi_records (doc_type, filename, ocr_json, manual_json)

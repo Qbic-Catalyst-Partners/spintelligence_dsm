@@ -154,57 +154,7 @@ const BR_WASTE_TYPE_DEFAULTS = [
   'Dropping waste in GBR',
 ];
 
-const ensureBlowroomWasteTypeMasterTable = async () => {
-  if (brWasteTypeMasterReady) return;
-
-  await client.query(`CREATE SCHEMA IF NOT EXISTS blowroom;`);
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS blowroom.br_waste_type_master (
-      id bigserial PRIMARY KEY,
-      waste_type varchar(120) NOT NULL,
-      waste_type_key varchar(120) NOT NULL,
-      created_at timestamptz NOT NULL DEFAULT NOW()
-    );
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS br_waste_type_master_waste_type_key_uq
-    ON blowroom.br_waste_type_master (waste_type_key);
-  `);
-
-  for (const prefix of BR_WASTE_TYPE_CLEANUP_PREFIXES) {
-    await client.query(
-      `DELETE FROM blowroom.br_waste_type_master
-       WHERE LOWER(TRIM(waste_type)) = $1
-          OR LOWER(TRIM(waste_type)) LIKE $2`,
-      [prefix, `${prefix}%`]
-    );
-  }
-
-  await client.query(`
-    ALTER TABLE blowroom.br_waste_type_master
-      ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;
-  `);
-
-  for (const wasteType of BR_WASTE_TYPE_DEFAULTS) {
-    const wasteTypeKey = wasteType.toLowerCase();
-    await client.query(
-      `INSERT INTO blowroom.br_waste_type_master (waste_type, waste_type_key, sort_order)
-       VALUES (
-         $1,
-         $2,
-         COALESCE((SELECT MAX(sort_order) FROM blowroom.br_waste_type_master), 0) + 1
-       )
-       ON CONFLICT (waste_type_key) DO NOTHING`,
-      [wasteType, wasteTypeKey]
-    );
-  }
-
-  brWasteTypeMasterReady = true;
-};
-
 const upsertBlowroomWasteType = async (wasteType) => {
-  await ensureBlowroomWasteTypeMasterTable();
-
   const normalizedWasteType = normalizeWasteType(wasteType);
   if (!normalizedWasteType) return null;
   if (normalizedWasteType.length < 5) return null;
@@ -227,8 +177,6 @@ const upsertBlowroomWasteType = async (wasteType) => {
 };
 
 const fetchBlowroomWasteTypes = async (prefix = '') => {
-  await ensureBlowroomWasteTypeMasterTable();
-
   const result = await client.query(
     `SELECT id, waste_type, created_at
      FROM blowroom.br_waste_type_master
@@ -239,11 +187,6 @@ const fetchBlowroomWasteTypes = async (prefix = '') => {
 
   return result.rows || [];
 };
-
-let syncStatsReady = false;
-let brWasteStudyReady = false;
-let brWasteTypeMasterReady = false;
-let lapCvTablesReady = false;
 
 const fetchCountMaster = async (prefix = '') => {
   const result = await sqlServer.query(
@@ -362,286 +305,6 @@ const getBlowroomWasteTypeDropdown = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
-
-const ensureBlowroomEntryIdColumns = async () => {
-  await client.query(`
-    ALTER TABLE blowroom.blow_room_sync
-      ADD COLUMN IF NOT EXISTS entry_id varchar(80),
-      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
-  `);
-  // "Run Time"/"Idle Time"/"Sub Total Time"/"Sync %" totals are computed in the browser
-  // (BlowRoomSync.jsx's totalRunSeconds/totalIdleSeconds/totalSubSeconds/totalSyncPercentage) but
-  // were never sent to the backend or given a column — only the formatted grand-total "total_time"
-  // (HH:MM:SS) was stored, so Custom Report had no numeric total to show. Persist all four.
-  await client.query(`
-    ALTER TABLE blowroom.blow_room_sync
-      ADD COLUMN IF NOT EXISTS total_run_time NUMERIC,
-      ADD COLUMN IF NOT EXISTS total_idle_time NUMERIC,
-      ADD COLUMN IF NOT EXISTS total_sub_total_time NUMERIC,
-      ADD COLUMN IF NOT EXISTS total_sync_percentage NUMERIC;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS blow_room_sync_entry_id_uq
-    ON blowroom.blow_room_sync (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE blowroom.drop_test
-      ADD COLUMN IF NOT EXISTS entry_id varchar(80),
-      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW(),
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  // "Average Wt." is entered per-tuft on the form (DropTestDataEntry's actDisplay field, used to
-  // compute Ratio %) but was never sent to the backend or given a column — Custom Report had
-  // nothing to show for it. Persist it alongside the other tuft weight fields.
-  await client.query(`
-    ALTER TABLE blowroom.drop_test
-      ADD COLUMN IF NOT EXISTS average_weight NUMERIC;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS drop_test_entry_id_uq
-    ON blowroom.drop_test (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE blowroom.blowroom_header
-      ADD COLUMN IF NOT EXISTS entry_id varchar(80),
-      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW(),
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS blowroom_header_entry_id_uq
-    ON blowroom.blowroom_header (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-  // Process Parameter never persisted who submitted it — same fix as Openness/AFIS/Fibre/Moisture:
-  // the row itself needs its own operator column so Custom Report's Operator resolution (which
-  // checks the row's own column before falling back to the submitted_notebooks join, which this
-  // screen never registers with either) has something to find.
-  await client.query(`
-    ALTER TABLE blowroom.blowroom_header
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-};
-
-const ensureSyncStatsView = async () => {
-  if (syncStatsReady) {
-    const exists = await client.query(`SELECT to_regclass('blowroom.sync_stats') AS reg`);
-    if (exists.rows[0]?.reg) return;
-    syncStatsReady = false;
-  }
-
-  // Recreate view to avoid CREATE OR REPLACE column-rename errors
-  // when a previous version exists with different column names.
-  await client.query(`DROP VIEW IF EXISTS blowroom.sync_stats`);
-
-  await client.query(`
-    CREATE OR REPLACE VIEW blowroom.sync_stats AS
-    SELECT
-      sync_id,
-      ROUND(AVG(value_a), 4) AS value_a_avg,
-      MIN(value_a) AS value_a_min,
-      MAX(value_a) AS value_a_max,
-      ROUND(MAX(value_a) - MIN(value_a), 4) AS value_a_range,
-      ROUND(AVG(value_b), 4) AS value_b_avg,
-      MIN(value_b) AS value_b_min,
-      MAX(value_b) AS value_b_max,
-      ROUND(MAX(value_b) - MIN(value_b), 4) AS value_b_range,
-      ROUND(AVG(value_c), 4) AS value_c_avg,
-      MIN(value_c) AS value_c_min,
-      MAX(value_c) AS value_c_max,
-      ROUND(MAX(value_c) - MIN(value_c), 4) AS value_c_range,
-      ROUND(AVG(sync_percentage), 4) AS sync_percentage_avg,
-      MIN(sync_percentage) AS sync_percentage_min,
-      MAX(sync_percentage) AS sync_percentage_max,
-      ROUND(MAX(sync_percentage) - MIN(sync_percentage), 4) AS sync_percentage_range
-    FROM blowroom.blow_room_sync_entries
-    GROUP BY sync_id
-  `);
-
-  syncStatsReady = true;
-};
-
-const ensureBrWasteStudyTables = async () => {
-  if (brWasteStudyReady) return;
-
-  await client.query(`CREATE SCHEMA IF NOT EXISTS blowroom;`);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS blowroom.br_waste_study (
-      id bigserial PRIMARY KEY,
-      entry_id varchar(80),
-      waste_study_id varchar(80),
-      date date NOT NULL,
-      variety varchar(120),
-      study_type varchar(20) NOT NULL CHECK (study_type IN ('Type 1', 'Type 2', 'Type 3')),
-      operator TEXT,
-      carding_production_kg numeric(12,2),
-      type_entries integer,
-      waste_type varchar(120),
-      waste_kg numeric(12,2),
-      waste_percent numeric(8,2),
-      overall_percent numeric(8,2),
-      remarks text,
-      entry_type varchar(120),
-      created_at timestamptz NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await client.query(`
-    ALTER TABLE blowroom.br_waste_study
-      ADD COLUMN IF NOT EXISTS entry_id varchar(80),
-      ADD COLUMN IF NOT EXISTS entry_type varchar(120),
-      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
-  `);
-
-  await client.query(`
-    ALTER TABLE blowroom.br_waste_study
-      DROP COLUMN IF EXISTS lot_no;
-  `);
-
-  await client.query(`
-    ALTER TABLE blowroom.br_waste_study
-      ALTER COLUMN carding_production_kg TYPE numeric(12,4),
-      ALTER COLUMN waste_kg TYPE numeric(12,4),
-      ALTER COLUMN waste_percent TYPE numeric(12,4),
-      ALTER COLUMN overall_percent TYPE numeric(12,4);
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS blowroom.br_waste_study_type_rows (
-      id bigserial PRIMARY KEY,
-      study_id bigint NOT NULL REFERENCES blowroom.br_waste_study(id) ON DELETE CASCADE,
-      row_no integer NOT NULL,
-      cylinder_speed numeric(12,4),
-      lickerin_speed numeric(12,4),
-      flat_speed numeric(12,4),
-      doffer_speed numeric(12,4),
-      delivery_speed numeric(12,4),
-      wing_setting_1 numeric(12,4),
-      wing_setting_2 numeric(12,4),
-      mc_no varchar(80),
-      mc_production numeric(12,4),
-      created_at timestamptz NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await client.query(`
-    ALTER TABLE blowroom.br_waste_study_type_rows
-      ALTER COLUMN cylinder_speed TYPE numeric(12,4),
-      ALTER COLUMN lickerin_speed TYPE numeric(12,4),
-      ALTER COLUMN flat_speed TYPE numeric(12,4),
-      ALTER COLUMN doffer_speed TYPE numeric(12,4),
-      ALTER COLUMN delivery_speed TYPE numeric(12,4),
-      ALTER COLUMN wing_setting_1 TYPE numeric(12,4),
-      ALTER COLUMN wing_setting_2 TYPE numeric(12,4),
-      ALTER COLUMN mc_production TYPE numeric(12,4);
-  `);
-
-  // Type 3 studies submit THREE lickerin speeds (first_lickerin_speed/second_lickerin_speed/
-  // third_lickerin_speed from BrWasteStudyEntry.jsx) but this table only ever had a single
-  // "lickerin_speed" column (shared with Type 1/2, which only have one) — Type 3's 1st/2nd/3rd
-  // values were silently dropped on every insert, never stored, never retrievable.
-  await client.query(`
-    ALTER TABLE blowroom.br_waste_study_type_rows
-      ADD COLUMN IF NOT EXISTS lickerin_speed_1 numeric(12,4),
-      ADD COLUMN IF NOT EXISTS lickerin_speed_2 numeric(12,4),
-      ADD COLUMN IF NOT EXISTS lickerin_speed_3 numeric(12,4);
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS blowroom.br_waste_study_waste_rows (
-      id bigserial PRIMARY KEY,
-      study_id bigint NOT NULL REFERENCES blowroom.br_waste_study(id) ON DELETE CASCADE,
-      row_no integer NOT NULL,
-      waste_type varchar(120),
-      waste_kgs_value numeric(12,4),
-      waste_kgs_percent numeric(12,4),
-      created_at timestamptz NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await client.query(`
-    ALTER TABLE blowroom.br_waste_study_waste_rows
-      ALTER COLUMN waste_kgs_value TYPE numeric(12,4),
-      ALTER COLUMN waste_kgs_percent TYPE numeric(12,4);
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS br_waste_study_type_rows_study_id_idx
-    ON blowroom.br_waste_study_type_rows (study_id);
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS br_waste_study_waste_rows_study_id_idx
-    ON blowroom.br_waste_study_waste_rows (study_id);
-  `);
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS br_waste_study_waste_study_id_uq
-    ON blowroom.br_waste_study (waste_study_id)
-    WHERE waste_study_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS br_waste_study_entry_id_uq
-    ON blowroom.br_waste_study (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  brWasteStudyReady = true;
-};
-
-// "B/R CV1M Data Entry Within Lap" and "B/R Between Lap CV%" both submit the same shape
-// (machine_name, variety, lap_weight, lap_length, up to 5 samples, and computed average/min/max/
-// std_deviation/cv_percent) — kept as two separate tables (rather than one shared table with a
-// `type` discriminator) to match this file's one-table-per-screen convention.
-const ensureLapCvTables = async () => {
-  if (lapCvTablesReady) return;
-
-  await client.query(`CREATE SCHEMA IF NOT EXISTS blowroom;`);
-
-  for (const tableName of ['within_lap_cv', 'between_lap_cv']) {
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS blowroom.${tableName} (
-        id bigserial PRIMARY KEY,
-        entry_id varchar(80),
-        record_date date,
-        machine_name varchar(120),
-        variety varchar(120),
-        type varchar(40),
-        lap_weight numeric(12,4),
-        lap_length numeric(12,4),
-        grams_per_meter numeric(12,4),
-        average numeric(12,4),
-        minimum numeric(12,4),
-        maximum numeric(12,4),
-        std_deviation numeric(12,4),
-        cv_percent numeric(12,4),
-        created_at timestamptz NOT NULL DEFAULT NOW()
-      );
-    `);
-    // "Number of Sample Entries" on this form is user-editable, not fixed at 5 — the sample_1..5
-    // columns above silently dropped anything past the 5th reading. Store the full submitted array
-    // here instead so a study with e.g. 8 samples doesn't lose samples 6-8.
-    await client.query(`
-      ALTER TABLE blowroom.${tableName}
-        ADD COLUMN IF NOT EXISTS samples jsonb;
-    `);
-    await client.query(`
-      ALTER TABLE blowroom.${tableName}
-        ADD COLUMN IF NOT EXISTS operator TEXT;
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS ${tableName}_entry_id_uq
-      ON blowroom.${tableName} (entry_id)
-      WHERE entry_id IS NOT NULL;
-    `);
-  }
-
-  lapCvTablesReady = true;
 };
 
 router.get('/thresholds', async (req, res, next) => {
@@ -833,7 +496,6 @@ router.post('/master/waste-types', async (req, res, next) => {
 
 router.post('/sync', async (req, res, next) => {
   try {
-    await ensureBlowroomEntryIdColumns();
     const {
       entry_id,
       inspection_date,
@@ -919,9 +581,6 @@ router.post('/sync', async (req, res, next) => {
 
 router.get('/sync', async (req, res, next) => {
   try {
-    await ensureBlowroomEntryIdColumns();
-    await ensureSyncStatsView();
-
     const result = await client.query(`
       SELECT s.*, st.*, t.total_run_time, t.total_idle_time, t.total_sub_total_time, t.total_sync_percentage
       FROM blowroom.blow_room_sync s
@@ -1016,8 +675,6 @@ router.get('/sync', async (req, res, next) => {
 
 router.post('/drop-test', async (req, res, next) => {
   try {
-    await ensureBlowroomEntryIdColumns();
-
     const {
       entry_id,
       date,
@@ -1218,8 +875,6 @@ router.get('/drop-test', async (req, res, next) => {
  */
 router.post('/br-waste-study', async (req, res, next) => {
   try {
-    await ensureBrWasteStudyTables();
-
     const {
       type,
       entry_id,
@@ -1385,8 +1040,6 @@ router.post('/br-waste-study', async (req, res, next) => {
 
 router.get('/br-waste-study', async (req, res, next) => {
   try {
-    await ensureBrWasteStudyTables();
-
     const { page = 1, limit = 10 } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.max(1, parseInt(limit) || 10);
@@ -1513,7 +1166,6 @@ router.get('/br-waste-study', async (req, res, next) => {
 
 router.post('/header', async (req, res, next) => {
   try {
-    await ensureBlowroomEntryIdColumns();
     const {
       entry_id,
       count_name,
@@ -1624,7 +1276,6 @@ router.post('/header', async (req, res, next) => {
 
 router.get('/header', async (req, res, next) => {
   try {
-    await ensureBlowroomEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -1933,8 +1584,6 @@ router.put('/header/:br_id', async (req, res, next) => {
 const createLapCvRoutes = (tableName, routePath, screenLabel) => {
   router.post(routePath, async (req, res, next) => {
     try {
-      await ensureLapCvTables();
-
       const {
         entry_id,
         record_date,
@@ -2003,8 +1652,6 @@ const createLapCvRoutes = (tableName, routePath, screenLabel) => {
 
   router.get(routePath, async (req, res, next) => {
     try {
-      await ensureLapCvTables();
-
       const { page = 1, limit = 10 } = req.query;
       const pageNum = Math.max(1, parseInt(page) || 1);
       const limitNum = Math.max(1, parseInt(limit) || 10);
