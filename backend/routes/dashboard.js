@@ -117,16 +117,6 @@ const ensureDashboardAccess = (req, res, userId) => {
   return true;
 };
 
-const ensureDashboardBuilderTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS users.dashboard_builder_configs (
-      user_id integer PRIMARY KEY REFERENCES users.user_details(id) ON DELETE CASCADE,
-      widgets jsonb NOT NULL DEFAULT '[]'::jsonb,
-      updated_at timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-};
-
 const ensureUserDashboardPagesTable = async () => {
   await client.query(`
     CREATE TABLE IF NOT EXISTS users.user_dashboard_pages (
@@ -330,7 +320,6 @@ const validateWidget = async (widget) => {
 };
 
 const getConfig = async (userId) => {
-  await ensureDashboardBuilderTable();
   const result = await client.query(
     `SELECT widgets, updated_at
      FROM users.dashboard_builder_configs
@@ -345,7 +334,6 @@ const getConfig = async (userId) => {
 };
 
 const saveConfig = async (userId, widgets) => {
-  await ensureDashboardBuilderTable();
   const result = await client.query(
     `INSERT INTO users.dashboard_builder_configs (user_id, widgets, updated_at)
      VALUES ($1, $2::jsonb, now())

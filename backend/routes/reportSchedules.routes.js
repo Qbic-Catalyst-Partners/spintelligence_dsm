@@ -86,26 +86,6 @@ const validateResendFromAddress = (from) => {
   }
 };
 
-const ensureReportSchedulesTable = async () => {
-  await client.query(`
-    CREATE SCHEMA IF NOT EXISTS reports;
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS reports.report_schedules (
-      id text PRIMARY KEY,
-      schedule jsonb NOT NULL,
-      mail_payload jsonb NOT NULL,
-      active boolean NOT NULL DEFAULT true,
-      frequency varchar(30),
-      last_auto_sent_key text,
-      last_sent_at timestamptz,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      updated_at timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-};
-
 const padDatePart = (value) => String(value).padStart(2, '0');
 
 const toInputDate = (date) =>
@@ -2150,8 +2130,6 @@ const upsertSchedule = async ({ schedule, mailPayload }) => {
     }
   };
 
-  await ensureReportSchedulesTable();
-
   const result = await client.query(
     `INSERT INTO reports.report_schedules
       (id, schedule, mail_payload, active, frequency, updated_at)
@@ -2176,8 +2154,6 @@ const upsertSchedule = async ({ schedule, mailPayload }) => {
 };
 
 const sendStoredSchedule = async (id, { automatic = false, occurrenceKey = '', mailPayload = null } = {}) => {
-  await ensureReportSchedulesTable();
-
   const result = await client.query(
     `SELECT *
      FROM reports.report_schedules
@@ -2287,7 +2263,6 @@ const sendStoredSchedule = async (id, { automatic = false, occurrenceKey = '', m
 
 router.get('/schedules', async (req, res, next) => {
   try {
-    await ensureReportSchedulesTable();
     const result = await client.query(`
       SELECT *
       FROM reports.report_schedules
@@ -2345,7 +2320,6 @@ router.put('/schedules/:id', async (req, res, next) => {
 
 router.patch('/schedules/:id/status', async (req, res, next) => {
   try {
-    await ensureReportSchedulesTable();
     const active = req.body?.active !== false;
     const result = await client.query(
       `UPDATE reports.report_schedules
@@ -2369,7 +2343,6 @@ router.patch('/schedules/:id/status', async (req, res, next) => {
 
 router.delete('/schedules/:id', async (req, res, next) => {
   try {
-    await ensureReportSchedulesTable();
     await client.query(`DELETE FROM reports.report_schedules WHERE id = $1`, [req.params.id]);
     res.json({ message: 'Schedule deleted' });
   } catch (error) {
@@ -2443,7 +2416,6 @@ const runDueSchedules = async () => {
   workerRunning = true;
 
   try {
-    await ensureReportSchedulesTable();
     const now = new Date();
     const intervalMs = Number.isFinite(workerIntervalMs) && workerIntervalMs > 0 ? workerIntervalMs : 60000;
     const previousRun = workerLastRunAt || new Date(now.getTime() - Math.max(intervalMs, 60000));

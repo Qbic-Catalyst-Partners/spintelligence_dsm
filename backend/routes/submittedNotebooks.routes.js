@@ -21,39 +21,6 @@ const cleanText = (value) => {
 
 const toJson = (value, fallback = null) => JSON.stringify(value === undefined ? fallback : value);
 
-// operator_tickets' approval_lX_user_ids / lX_tat_due_at columns are also
-// migrated by operatorTickets.routes.js and supervisorTickets.routes.js -
-// this file references them (l2/l3/l4/l5_tat_due_at, approval_l1-l5_user_ids)
-// without ever having run its own copy of that migration, relying entirely
-// on one of those other files' routes having already been hit first. That's
-// fragile even for the pre-existing L1-L3 columns; ensure them here too so
-// this file's own endpoints (PP batch completion check in particular) work
-// standalone.
-let ticketApprovalColumnsEnsured = false;
-const ensureTicketApprovalColumnsForBatchCheck = async () => {
-  if (ticketApprovalColumnsEnsured) return;
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-      ADD COLUMN IF NOT EXISTS approval_l1_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l2_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l3_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l4_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l5_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS tat_current_level text NULL,
-      ADD COLUMN IF NOT EXISTS l1_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS l2_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS l3_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS l4_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS l5_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
-  `);
-  // PP_BATCH_INCOMPLETE briefly filed one ticket per missing notebook instead
-  // of one per PP id; drop any leftover unique index from either model so it
-  // can't block the current one-ticket-per-entry_id inserts.
-  await client.query(`DROP INDEX IF EXISTS ticketing_system.operator_tickets_pp_batch_entry_id_uq`);
-  ticketApprovalColumnsEnsured = true;
-};
-
 const parseTatHours = (value, fallback = null) => {
   if (value === null || value === undefined || value === '') return fallback;
   const n = Number(value);
@@ -242,50 +209,13 @@ const PP_BATCH_NOTEBOOKS = [
   { sub_department: 'Autoconer', notebook: 'Autoconer Q4 Inspection', label: 'Autoconer Process Parameter (Q4)', schema: 'autoconer', table: 'autoconer_q4_inspection', hasOperator: false }
 ];
 
-const ensurePpBatchConfigTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.pp_batch_config (
-      config_key TEXT PRIMARY KEY DEFAULT 'global',
-      completion_threshold_hours INTEGER NOT NULL DEFAULT 24,
-      l2_tat_hours INTEGER NULL,
-      approval_l1_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
-      approval_l2_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
-      is_active BOOLEAN NOT NULL DEFAULT true,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  // L3/L4/L5 escalation tiers - a PP_BATCH_INCOMPLETE ticket escalates
-  // L2 -> L3 -> L4 -> L5 as each tier's TAT elapses (see
-  // escalatePpBatchTickets below), mirroring the existing L2 step.
-  await client.query(`
-    ALTER TABLE ticketing_system.pp_batch_config
-      ADD COLUMN IF NOT EXISTS l3_tat_hours INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS l4_tat_hours INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS l5_tat_hours INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS approval_l3_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
-      ADD COLUMN IF NOT EXISTS approval_l4_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
-      ADD COLUMN IF NOT EXISTS approval_l5_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]
-  `);
-};
-
 // Per-PDF spec: PP Threshold config is "Multiple Sub-Department Rows: each
 // participating sub-department is listed as a separate row... each with its
 // own individual TAT", timed from the first department's submission - not
 // one global TAT shared by every department. This table holds that per-row
 // override; pp_batch_config.completion_threshold_hours remains the fallback
 // for any sub-department without its own row.
-const ensurePpBatchSubDepartmentConfigTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.pp_batch_sub_department_config (
-      sub_department TEXT PRIMARY KEY,
-      completion_threshold_hours INTEGER NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-};
-
 const getPpBatchSubDepartmentThresholds = async () => {
-  await ensurePpBatchSubDepartmentConfigTable();
   const result = await client.query(
     `SELECT sub_department, completion_threshold_hours, updated_at
      FROM ticketing_system.pp_batch_sub_department_config`
@@ -304,57 +234,7 @@ const PP_BATCH_LABEL_TO_SUB_DEPARTMENT = PP_BATCH_NOTEBOOKS.reduce((map, noteboo
 
 // PP notebook settings: shared timing plus per-notebook responsibility.
 // When a notebook row exists, it overrides the broader fallback config.
-const ensurePpNotebookThresholdTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.pp_notebook_threshold (
-      id BIGSERIAL PRIMARY KEY,
-      notebook_label TEXT UNIQUE NOT NULL,
-      completion_threshold_hours INTEGER NOT NULL,
-      approval_l1_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
-      approval_l2_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
-      is_active BOOLEAN NOT NULL DEFAULT true,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  // Department / sub_department are informational filters on the config
-  // screen. Severity, approval_l4_user_ids, and approve_within_hours are the
-  // shared PP approval settings for that notebook row.
-  await client.query(`
-    ALTER TABLE ticketing_system.pp_notebook_threshold
-      ADD COLUMN IF NOT EXISTS department TEXT NULL,
-      ADD COLUMN IF NOT EXISTS sub_department TEXT NULL,
-      ADD COLUMN IF NOT EXISTS severity TEXT NOT NULL DEFAULT 'High',
-      ADD COLUMN IF NOT EXISTS approval_l4_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
-      ADD COLUMN IF NOT EXISTS approve_within_hours INTEGER NULL
-  `);
-  // Notebook labels were renamed to "X Process Parameter" style - carry any
-  // already-configured rows (saved under the old labels) over to the new
-  // ones so they don't silently become invisible/orphaned.
-  const LEGACY_LABEL_RENAMES = {
-    'Mixing QC Header': 'Mixing Process Parameter',
-    'Carding QC Header': 'Carding Process Parameter',
-    'Blowroom Header': 'Blowroom Process Parameter',
-    'PP-Breaker': 'Drawframe Process Parameter (Breaker)',
-    'PP-Finisher': 'Drawframe Process Parameter (Finisher)',
-    'Spinning QC Header': 'Spinning Process Parameter',
-    'Autoconer Q2 Inspection': 'Autoconer Process Parameter (Q2)',
-    'Autoconer Q3 Inspection': 'Autoconer Process Parameter (Q3)',
-    'Autoconer Q4 Inspection': 'Autoconer Process Parameter (Q4)',
-  };
-  for (const [oldLabel, newLabel] of Object.entries(LEGACY_LABEL_RENAMES)) {
-    // eslint-disable-next-line no-await-in-loop
-    await client.query(
-      `UPDATE ticketing_system.pp_notebook_threshold SET notebook_label = $2, updated_at = NOW()
-       WHERE notebook_label = $1
-         AND NOT EXISTS (SELECT 1 FROM ticketing_system.pp_notebook_threshold WHERE notebook_label = $2)`,
-      [oldLabel, newLabel]
-    );
-  }
-};
-
 const getPpNotebookThresholds = async () => {
-  await ensurePpNotebookThresholdTable();
   const result = await client.query(
     `SELECT * FROM ticketing_system.pp_notebook_threshold WHERE is_active = true`
   );
@@ -366,7 +246,6 @@ const getPpNotebookThresholds = async () => {
 };
 
 const getPpBatchConfig = async () => {
-  await ensurePpBatchConfigTable();
   const result = await client.query(
     `SELECT * FROM ticketing_system.pp_batch_config WHERE config_key = 'global'`
   );
@@ -453,7 +332,6 @@ const getL1UserIdsByDepartment = async () => {
 // naming every overdue screen, then expires any already-open
 // PP_BATCH_INCOMPLETE ticket whose L2 TAT has elapsed.
 const runPpBatchCompletionCheck = async () => {
-  await ensureTicketApprovalColumnsForBatchCheck();
   const config = await getPpBatchConfig();
 
   if (config.is_active === false) {
@@ -642,7 +520,6 @@ const runPpBatchCompletionCheck = async () => {
 // created_at + resolution_hours, same as isTicketOverdueBySla on the
 // frontend), so it's the one real source of truth for this timing.
 const runPpBatchTatCheck = async () => {
-  await ensureTicketApprovalColumnsForBatchCheck();
   const notebookThresholds = await getPpNotebookThresholds();
 
   const dueTickets = await client.query(
@@ -699,182 +576,6 @@ const runPpBatchTatCheck = async () => {
   return escalated;
 };
 
-const ensureSubmittedNotebookTables = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.submitted_notebooks (
-      id bigserial PRIMARY KEY,
-      notebook_submission_id text NOT NULL UNIQUE,
-      department text NULL,
-      sub_department text NULL,
-      notebook text NOT NULL,
-      input_screen text NULL,
-      entry_id text NULL,
-      source_schema text NULL,
-      source_table text NULL,
-      source_record_id text NULL,
-      submitted_by_user_id integer NULL REFERENCES users.user_details(id) ON DELETE SET NULL,
-      submitted_by_name text NULL,
-      submitted_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
-      l2_approver_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
-      l3_approver_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
-      status text NOT NULL DEFAULT 'PENDING_ACK',
-      submitted_at timestamptz NOT NULL DEFAULT NOW(),
-      ack_due_at timestamptz NOT NULL DEFAULT NOW() + INTERVAL '24 hours',
-      acknowledged_at timestamptz NULL,
-      acknowledged_by_user_id integer NULL REFERENCES users.user_details(id) ON DELETE SET NULL,
-      acknowledged_by_name text NULL,
-      acknowledgement_note text NULL,
-      overdue_ticket_id text NULL REFERENCES ticketing_system.operator_tickets(ticket_id) ON DELETE SET NULL,
-      overdue_ticket_created_at timestamptz NULL,
-      created_at timestamptz NOT NULL DEFAULT NOW(),
-      updated_at timestamptz NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    ALTER TABLE ticketing_system.submitted_notebooks
-      ADD COLUMN IF NOT EXISTS id bigserial,
-      ADD COLUMN IF NOT EXISTS notebook_submission_id text,
-      ADD COLUMN IF NOT EXISTS department text NULL,
-      ADD COLUMN IF NOT EXISTS sub_department text NULL,
-      ADD COLUMN IF NOT EXISTS notebook text,
-      ADD COLUMN IF NOT EXISTS input_screen text NULL,
-      ADD COLUMN IF NOT EXISTS entry_id text NULL,
-      ADD COLUMN IF NOT EXISTS source_schema text NULL,
-      ADD COLUMN IF NOT EXISTS source_table text NULL,
-      ADD COLUMN IF NOT EXISTS source_record_id text NULL,
-      ADD COLUMN IF NOT EXISTS submitted_by_user_id integer NULL REFERENCES users.user_details(id) ON DELETE SET NULL,
-      ADD COLUMN IF NOT EXISTS submitted_by_name text NULL,
-      ADD COLUMN IF NOT EXISTS submitted_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
-      ADD COLUMN IF NOT EXISTS l2_approver_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
-      ADD COLUMN IF NOT EXISTS l3_approver_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
-      ADD COLUMN IF NOT EXISTS l4_approver_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
-      ADD COLUMN IF NOT EXISTS l5_approver_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
-      ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'PENDING_ACK',
-      ADD COLUMN IF NOT EXISTS submitted_at timestamptz NOT NULL DEFAULT NOW(),
-      ADD COLUMN IF NOT EXISTS ack_due_at timestamptz NOT NULL DEFAULT NOW() + INTERVAL '24 hours',
-      ADD COLUMN IF NOT EXISTS acknowledged_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS acknowledged_by_user_id integer NULL REFERENCES users.user_details(id) ON DELETE SET NULL,
-      ADD COLUMN IF NOT EXISTS acknowledged_by_name text NULL,
-      ADD COLUMN IF NOT EXISTS acknowledgement_note text NULL,
-      ADD COLUMN IF NOT EXISTS overdue_ticket_id text NULL REFERENCES ticketing_system.operator_tickets(ticket_id) ON DELETE SET NULL,
-      ADD COLUMN IF NOT EXISTS overdue_ticket_created_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW(),
-      ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW()
-  `);
-
-  await client.query(`
-    DELETE FROM ticketing_system.submitted_notebooks s
-    USING (
-      SELECT ctid,
-             ROW_NUMBER() OVER (
-               PARTITION BY notebook_submission_id
-               ORDER BY submitted_at DESC NULLS LAST, id DESC NULLS LAST, ctid
-             ) AS rn
-      FROM ticketing_system.submitted_notebooks
-      WHERE notebook_submission_id IS NOT NULL
-    ) d
-    WHERE s.ctid = d.ctid
-      AND d.rn > 1
-  `);
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS submitted_notebooks_submission_id_uq
-    ON ticketing_system.submitted_notebooks (notebook_submission_id)
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS submitted_notebooks_l2_status_due_idx
-    ON ticketing_system.submitted_notebooks (status, ack_due_at DESC)
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS submitted_notebooks_submitted_at_idx
-    ON ticketing_system.submitted_notebooks (submitted_at DESC)
-  `);
-};
-
-const ensureScreenFrequencyTable = async () => {
-  await client.query(`
-    SELECT 1
-    FROM information_schema.tables
-    WHERE table_schema = 'ticketing_system'
-      AND table_name = 'screen_submission_frequency'
-    LIMIT 1
-  `);
-  await client.query(`
-    DELETE FROM ticketing_system.screen_submission_frequency f
-    USING (
-      SELECT ctid,
-             ROW_NUMBER() OVER (
-               PARTITION BY screen_name, department, sub_department
-               ORDER BY updated_at DESC NULLS LAST, id DESC NULLS LAST, ctid
-             ) AS rn
-      FROM ticketing_system.screen_submission_frequency
-    ) d
-    WHERE f.ctid = d.ctid
-      AND d.rn > 1
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS screen_submission_frequency_screen_dept_subdept_uq
-    ON ticketing_system.screen_submission_frequency (screen_name, department, sub_department)
-  `);
-};
-
-const ensureAcknowledgementThresholdTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.notebook_acknowledgement_threshold (
-      id BIGSERIAL PRIMARY KEY,
-      screen_name TEXT NOT NULL,
-      department TEXT NULL,
-      sub_department TEXT NULL,
-      acknowledge_within_hours INTEGER NOT NULL DEFAULT 24,
-      is_active BOOLEAN NOT NULL DEFAULT true,
-      approval_l2 TEXT NULL,
-      approval_l2_name TEXT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (screen_name, department, sub_department)
-    )
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.notebook_acknowledgement_threshold
-      ADD COLUMN IF NOT EXISTS approval_l3 TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l3_name TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l4 TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l4_name TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l5 TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l5_name TEXT NULL,
-      ADD COLUMN IF NOT EXISTS l3_tat_hours INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS l4_tat_hours INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS l5_tat_hours INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS criticality TEXT NOT NULL DEFAULT 'High'
-  `);
-  await client.query(`
-    DELETE FROM ticketing_system.notebook_acknowledgement_threshold t
-    USING (
-      SELECT ctid,
-             ROW_NUMBER() OVER (
-               PARTITION BY screen_name, department, sub_department
-               ORDER BY updated_at DESC NULLS LAST, id DESC NULLS LAST, ctid
-             ) AS rn
-      FROM ticketing_system.notebook_acknowledgement_threshold
-    ) d
-    WHERE t.ctid = d.ctid
-      AND d.rn > 1
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS notebook_ack_threshold_screen_dept_subdept_uq
-    ON ticketing_system.notebook_acknowledgement_threshold (screen_name, department, sub_department)
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS notebook_ack_threshold_lookup_idx
-    ON ticketing_system.notebook_acknowledgement_threshold
-    (is_active, lower(trim(screen_name)), lower(trim(COALESCE(department, ''))), lower(trim(COALESCE(sub_department, ''))))
-  `);
-};
-
 const getAcknowledgementThresholdSelectColumns = async () => {
   const result = await client.query(`
     SELECT column_name
@@ -915,7 +616,6 @@ const getAcknowledgementThresholdSelectColumns = async () => {
 };
 
 const getSubmissionFrequencyConfigForNotebook = async (submission) => {
-  await ensureScreenFrequencyTable();
   const result = await client.query(
     `SELECT id, screen_name, department, sub_department, "range", frequency,
             approval_l1, criticality
@@ -939,7 +639,6 @@ const getSubmissionFrequencyConfigForNotebook = async (submission) => {
 };
 
 const getSubmissionFrequencyConfigForThreshold = async ({ screenName, department, subDepartment }) => {
-  await ensureScreenFrequencyTable();
   const result = await client.query(
     `SELECT id, screen_name, department, sub_department, "range", frequency,
             approval_l1, criticality
@@ -973,7 +672,6 @@ const getSubmissionFrequencyConfigForThreshold = async ({ screenName, department
 };
 
 const getAcknowledgementThresholdForNotebook = async (submission) => {
-  await ensureAcknowledgementThresholdTable();
   const result = await client.query(
     `SELECT id, screen_name, department, sub_department, acknowledge_within_hours,
             approval_l4, approval_l4_name, l4_tat_hours, criticality
@@ -1037,7 +735,6 @@ const recordPpNotebookSubmission = async ({
   submittedByName,
   submittedPayload
 }) => {
-  await ensureSubmittedNotebookTables();
   const notebookSubmissionId = buildSubmissionId({ notebook, entryId, sourceTable, sourceRecordId });
 
   // ack_due_at was always a flat 24 hours regardless of what's actually
@@ -1176,9 +873,7 @@ const createOverdueTicketForSubmission = async () => {
 };
 
 const generateOverdueNotebookTickets = async () => {
-  await ensureSubmittedNotebookTables();
   await ensureNotificationMetadataColumns();
-  await ensureTicketApprovalColumnsForBatchCheck();
 
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_ack_notebook_submission_uq
@@ -1337,7 +1032,6 @@ router.use(auth);
 
 router.post('/acknowledgement-thresholds', async (req, res, next) => {
   try {
-    await ensureAcknowledgementThresholdTable();
     const screenName = cleanText(req.body?.screen_name || req.body?.notebook || req.body?.input_screen);
     const department = cleanText(req.body?.department);
     const subDepartment = cleanText(req.body?.sub_department || req.body?.subDepartment);
@@ -1404,7 +1098,6 @@ router.post('/acknowledgement-thresholds', async (req, res, next) => {
 
 router.get('/acknowledgement-thresholds', async (req, res, next) => {
   try {
-    await ensureAcknowledgementThresholdTable();
     const selectColumns = await getAcknowledgementThresholdSelectColumns();
     const result = await client.query(
       `SELECT ${selectColumns}
@@ -1426,7 +1119,6 @@ router.get('/acknowledgement-thresholds', async (req, res, next) => {
 // existing stored value instead of being wiped to null.
 router.patch('/acknowledgement-thresholds/:id', async (req, res, next) => {
   try {
-    await ensureAcknowledgementThresholdTable();
 
     const { id } = req.params;
     const {
@@ -1492,7 +1184,6 @@ router.patch('/acknowledgement-thresholds/:id', async (req, res, next) => {
 
 router.patch('/acknowledgement-thresholds/:id/status', async (req, res, next) => {
   try {
-    await ensureAcknowledgementThresholdTable();
 
     const { id } = req.params;
     const { is_active } = req.body || {};
@@ -1525,7 +1216,6 @@ router.patch('/acknowledgement-thresholds/:id/status', async (req, res, next) =>
 
 router.delete('/acknowledgement-thresholds/:id', async (req, res, next) => {
   try {
-    await ensureAcknowledgementThresholdTable();
 
     const { id } = req.params;
 
@@ -1569,7 +1259,6 @@ router.get('/pp-batch-config', async (req, res, next) => {
 // separate from the global fallback in POST /pp-batch-config.
 router.post('/pp-batch-config/sub-department-tat', async (req, res, next) => {
   try {
-    await ensurePpBatchSubDepartmentConfigTable();
 
     const rows = Array.isArray(req.body?.rows) ? req.body.rows : [req.body];
     const saved = [];
@@ -1607,7 +1296,6 @@ router.post('/pp-batch-config/sub-department-tat', async (req, res, next) => {
 // and approval users for that notebook.
 router.get('/pp-notebook-threshold', async (req, res, next) => {
   try {
-    await ensurePpNotebookThresholdTable();
     const result = await client.query(
       `SELECT * FROM ticketing_system.pp_notebook_threshold ORDER BY notebook_label`
     );
@@ -1619,7 +1307,6 @@ router.get('/pp-notebook-threshold', async (req, res, next) => {
 
 router.post('/pp-notebook-threshold', async (req, res, next) => {
   try {
-    await ensurePpNotebookThresholdTable();
 
     const notebookLabel = cleanText(req.body?.notebook_label);
     if (!notebookLabel) {
@@ -1678,7 +1365,6 @@ router.post('/pp-notebook-threshold', async (req, res, next) => {
 
 router.delete('/pp-notebook-threshold/:id', async (req, res, next) => {
   try {
-    await ensurePpNotebookThresholdTable();
     const result = await client.query(
       `DELETE FROM ticketing_system.pp_notebook_threshold WHERE id = $1 RETURNING id`,
       [req.params.id]
@@ -1694,7 +1380,6 @@ router.delete('/pp-notebook-threshold/:id', async (req, res, next) => {
 
 router.patch('/pp-notebook-threshold/:id/status', async (req, res, next) => {
   try {
-    await ensurePpNotebookThresholdTable();
     const isActive = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
     const result = await client.query(
       `UPDATE ticketing_system.pp_notebook_threshold SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
@@ -1711,7 +1396,6 @@ router.patch('/pp-notebook-threshold/:id/status', async (req, res, next) => {
 
 router.post('/pp-batch-config', async (req, res, next) => {
   try {
-    await ensurePpBatchConfigTable();
 
     const completionThresholdHours = parseTatHours(req.body?.completion_threshold_hours);
     if (!completionThresholdHours) {
@@ -1785,8 +1469,6 @@ router.post('/pp-batch-completion-check', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    await ensureSubmittedNotebookTables();
-    await ensureAcknowledgementThresholdTable();
     const notebook = cleanText(req.body?.notebook || req.body?.title || req.body?.input_screen);
     if (!notebook) return res.status(400).json({ message: 'notebook is required' });
 
@@ -2023,7 +1705,6 @@ const buildSubmittedNotebookFilterOptions = (enrichedRows, filters) => {
 
 router.get('/', async (req, res, next) => {
   try {
-    await ensureSubmittedNotebookTables();
     const page = parsePositiveInt(req.query.page, 1);
     const requestedLimit = parsePositiveInt(req.query.limit, 20);
     const limit = Math.min(requestedLimit, MAX_LIMIT);
@@ -2162,7 +1843,6 @@ router.post('/generate-overdue-tickets', async (req, res, next) => {
 
 router.get('/:id', async (req, res, next) => {
   try {
-    await ensureSubmittedNotebookTables();
     const value = cleanText(req.params.id);
     const result = await client.query(
       `SELECT *
@@ -2187,7 +1867,6 @@ router.get('/:id', async (req, res, next) => {
 
 router.patch('/:id/acknowledge', async (req, res, next) => {
   try {
-    await ensureSubmittedNotebookTables();
     const value = cleanText(req.params.id);
     const current = await client.query(
       `SELECT *
@@ -2243,14 +1922,10 @@ router.patch('/:id/acknowledge', async (req, res, next) => {
 
 module.exports = {
   router,
-  ensureSubmittedNotebookTables,
-  ensureAcknowledgementThresholdTable,
   generateOverdueNotebookTickets,
   recordPpNotebookSubmission,
   runPpBatchCompletionCheck,
   runPpBatchTatCheck,
-  ensurePpBatchSubDepartmentConfigTable,
   getPpBatchSubDepartmentThresholds,
-  ensurePpNotebookThresholdTable,
   getPpNotebookThresholds
 };
