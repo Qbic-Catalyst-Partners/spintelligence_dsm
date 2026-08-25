@@ -404,7 +404,7 @@ export default function SupervisorDetails() {
     const summary = [
       `Ticket: ${displayTicketId}`,
       `Status: ${getSupervisorStatusLabel(ticket?.status)}`,
-      `Severity: ${ticket?.severity || "-"}`,
+      `Criticality: ${ticket?.severity || "-"}`,
       `Operator: ${ticket?.user_name || "-"}`,
       `Machine: ${ticket?.machine_name || ticket?.notebook || "-"}`,
       `Created At: ${formatDateTime(ticket?.created_at)}`,
@@ -499,14 +499,22 @@ export default function SupervisorDetails() {
     dashboardTicket?.tat_current_level || ticket?.tat_current_level || ticket?.tatCurrentLevel || "L1"
   ).trim().toUpperCase();
   const isL1OwnedTicket = !isAcknowledgeTicket && currentTicketLevel === "L1";
-  // Wheel Change Approval / PP Approval / Acknowledgement sitting at L4 (their
-  // final authority) get the same single "Fix and Submit" action as L1,
-  // instead of the Accept/Reject pair - see isL4SelfResolveTicket above.
-  const isL4SelfResolveOwnedTicket = isL4SelfResolveTicket(ticket) && currentTicketLevel === "L4";
+  // Wheel Change Approval and PP Approval are both genuine approve/reject
+  // decisions (approving applies the change / activates the PP id, rejecting
+  // sends it back to L1) - unlike Acknowledgement they keep the normal
+  // Accept/Reject pair at L4 instead of the single "Fix and Submit" action,
+  // even though they still use their own info card below
+  // (isL4SelfResolveTicket stays true for that, driving the card style not
+  // the button choice). handleApprove/handleReject already fully support
+  // both kinds server-side (applyRealUnderlyingDecision in
+  // supervisorTickets.routes.js).
+  const isWheelChangeTicket = getTicketKind(ticket) === TICKET_KIND.WHEEL_CHANGE;
+  const isPpApprovalTicket = getTicketKind(ticket) === TICKET_KIND.PP_APPROVAL;
+  const isL4SelfResolveOwnedTicket = isL4SelfResolveTicket(ticket) && currentTicketLevel === "L4" && !isWheelChangeTicket && !isPpApprovalTicket;
   // Replaces the "Resolution Submission" comment box for these ticket kinds
   // - they have no operator/fix-comment concept, so that box only ever read
   // "No comment submitted during fix and resubmit," which explained nothing.
-  const liveStatusPanel = isL4SelfResolveTicket(ticket) ? (
+  const liveStatusPanel = isL4SelfResolveTicket(ticket) && !isWheelChangeTicket && !isPpApprovalTicket ? (
     <p style={{ margin: 0, color: "#4b5563", fontSize: "13px", lineHeight: 1.5 }}>
       {isClosedTicket
         ? "This ticket is closed - the real record it was raised for has been confirmed done."
@@ -633,7 +641,7 @@ export default function SupervisorDetails() {
                   {getSupervisorStatusLabel(ticket.status)}
                 </span>
                 <span className={styles.severity}>
-                  Severity: {ticket.severity}
+                  Criticality: {ticket.severity}
                 </span>
               </div>
 
@@ -731,12 +739,18 @@ export default function SupervisorDetails() {
             // `overdue_screens`/`missing_screens` (plural) is the current
             // shape; `missing_screen` (singular) is kept as a fallback for
             // tickets filed while this was briefly one-ticket-per-department.
+            // missing_screens is every department not yet submitted;
+            // overdue_screens is only the subset whose own completion
+            // threshold has already elapsed (used to decide when to raise/
+            // escalate, not to describe what's actually missing) - preferring
+            // it here understated the real gap whenever some missing
+            // departments had a longer threshold than others.
             (() => {
               const details = ticket?.violation_details || {};
-              const missingDepartments = Array.isArray(details.overdue_screens) && details.overdue_screens.length
-                ? details.overdue_screens
-                : Array.isArray(details.missing_screens) && details.missing_screens.length
-                  ? details.missing_screens
+              const missingDepartments = Array.isArray(details.missing_screens) && details.missing_screens.length
+                ? details.missing_screens
+                : Array.isArray(details.overdue_screens) && details.overdue_screens.length
+                  ? details.overdue_screens
                   : details.missing_screen
                     ? [details.missing_screen]
                     : [];
@@ -814,13 +828,9 @@ export default function SupervisorDetails() {
               if (kind === TICKET_KIND.WHEEL_CHANGE) {
                 kindLabel = "Wheel Change Approval";
                 Icon = FaCogs;
-                const [rowTable, rowId] = String(details.wheel_change_row_key || "").split(":");
-                const proposalRef = rowTable && rowId
-                  ? `${rowTable.split(".")[0]?.replace(/^\w/, (c) => c.toUpperCase())} · Entry #${rowId}`
-                  : "-";
                 fields = [
                   { label: "Department", value: details.department || "-" },
-                  { label: "Proposal", value: proposalRef },
+                  { label: "Entry ID", value: details.entry_id || "-" },
                   { label: "Assigned To", value: assignedTo },
                   { label: "Approval Due", value: dueValue, overdue: isOverdue },
                   configuredTatField,
@@ -892,6 +902,7 @@ export default function SupervisorDetails() {
                   <thead>
                     <tr>
                       <th>NOTEBOOK TYPE</th>
+                      <th>ENTRY ID</th>
                       <th>PARAMETER</th>
                       <th>{isSubmissionTicket ? "FREQUENCY" : "ACTUAL VALUE"}</th>
                       <th>{isSubmissionTicket ? "OCCURRENCES" : "STANDARD VALUE"}</th>
@@ -904,6 +915,7 @@ export default function SupervisorDetails() {
                     {visibleParameterNames.map((key, i) => (
                       <tr key={i}>
                         <td>{ticket.notebook || ticket.machine_name || "-"}</td>
+                        <td>{ticket.entry_id || ticket.violation_details?.entry_id || "-"}</td>
                         <td>{key.toUpperCase()}</td>
                         <td style={{ color: "#CA0000" }}>
                           {isSubmissionTicket ? submissionFrequency : getTicketValueForParameter(ticket?.actual_value, key)}
@@ -1095,7 +1107,7 @@ export default function SupervisorDetails() {
           </div>
 
           <span className={styles.severity}>
-            Severity: {ticket.severity}
+            Criticality: {ticket.severity}
           </span>
         </div>
 
@@ -1109,6 +1121,11 @@ export default function SupervisorDetails() {
             <div>
               <span>NOTEBOOK TYPE</span>
               <p>{ticket.notebook || ticket.machine_name || "-"}</p>
+            </div>
+
+            <div>
+              <span>ENTRY ID</span>
+              <p>{ticket.entry_id || ticket.violation_details?.entry_id || "-"}</p>
             </div>
 
             <div>

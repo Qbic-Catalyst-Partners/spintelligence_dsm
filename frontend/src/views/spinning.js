@@ -24,6 +24,7 @@ import { fetchEmployeeOptions, normalizeEmployeeOptions } from "@/apis/employeeM
 import { sanitizeIntegerInput, sanitizeNumericInput, sanitizeSpindleListInput, sanitizeSpindleNumberInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import styles from "../styles/spinning.module.css";
 
@@ -1094,6 +1095,18 @@ function SpinningDepartment() {
                     previewItems,
                     user,
                 });
+                try {
+                    await createThresholdViolationTickets({
+                        department: "Quality Control",
+                        subDepartment: "Spinning",
+                        screenName: checkingType,
+                        machineName: checkingType,
+                        entryId,
+                        values: previewItems,
+                    });
+                } catch (ticketError) {
+                    console.error("Threshold ticket generation failed:", ticketError);
+                }
                 return;
             }
             const payload = buildPayload();
@@ -1121,6 +1134,18 @@ function SpinningDepartment() {
                         submitted_fields: payload,
                     },
                 });
+                try {
+                    await createThresholdViolationTickets({
+                        department: "Quality Control",
+                        subDepartment: "Spinning",
+                        screenName: checkingType,
+                        machineName: checkingType,
+                        entryId: realEntryId || entryId,
+                        values: previewItems,
+                    });
+                } catch (ticketError) {
+                    console.error("Threshold ticket generation failed:", ticketError);
+                }
             }
         } finally {
             submitInProgressRef.current = false;
@@ -1227,6 +1252,15 @@ function SpinningDepartment() {
                 { label: "Lycra Draft", value: lycraDraft || "-" },
                 { label: "No. of Readings", value: countReadingCount || "-" },
                 { label: "Generated Rows", value: countChangeRows.length },
+                // The actual measured averages - previously omitted here, so a
+                // Value Threshold rule configured on any of these (the fields
+                // that matter for this notebook) could never fire no matter
+                // how far out of range a reading was, since the ticketing
+                // helper only ever saw the metadata above.
+                { label: "Avg Reading", value: averageReadingValue || "-" },
+                { label: "Avg Count", value: averageCountValue || "-" },
+                { label: "Avg Strength", value: averageStrengthValue || "-" },
+                { label: "Overall CSP", value: overallAverageCsp || "-" },
             ]
             : isRingFrame
                 ? [

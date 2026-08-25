@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import { useSelector } from "react-redux";
 
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
@@ -14,6 +15,8 @@ import {
     submitTrialsDataEntry,
 } from "@/apis/carding";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useCardingCountOptions from "@/hooks/useCardingCountOptions";
 import useEmployeeOptions from "@/hooks/useEmployeeOptions";
 import styles from "./trialsDataEntry.module.css";
@@ -125,6 +128,7 @@ const DECIMAL_FIELD_CONFIG = {
 
 function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {}, showForm = false, entryId = "", reserveEntryId }) {
     const router = useRouter();
+    const user = useSelector((state) => state.auth?.user);
     const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
     const [time, setTime] = useState("");
     const [formData, setFormData] = useState({});
@@ -364,6 +368,24 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
             const payload = buildTrialsPayload();
             await submitTrialsDataEntry(payload);
 
+            // This sub-department ("Individual Card Performance") previously never
+            // registered its submission with submitted_notebooks at all, so an
+            // Acknowledgement Threshold configured for its one notebook could never
+            // fire - see recordSubmittedNotebook calls in the other carding screens
+            // for the established pattern.
+            try {
+                await recordSubmittedNotebook({
+                    department: "Quality Control",
+                    subDepartment: "Individual Card Performance",
+                    notebookName: selectedType || "Individual Card performance Data",
+                    entryId,
+                    registeredActions: { getPayload: () => payload },
+                    user,
+                });
+            } catch (recordError) {
+                console.warn("Individual Card Performance submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+            }
+
             const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
             if (entryId && customFieldEntries.length) {
                 try {
@@ -374,6 +396,19 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                 } catch (customFieldError) {
                     console.error("Failed to save custom field values:", customFieldError);
                 }
+            }
+
+            try {
+                await createThresholdViolationTickets({
+                    department: "Quality Control",
+                    subDepartment: "Individual Card Performance",
+                    screenName: selectedType || "Individual Card Performance",
+                    machineName: selectedType || "Individual Card Performance",
+                    entryId,
+                    values: requiredFields.map((field) => ({ label: field, value: formData[field] })),
+                });
+            } catch (ticketError) {
+                console.error("Threshold ticket generation failed:", ticketError);
             }
 
             setFormMessage("");

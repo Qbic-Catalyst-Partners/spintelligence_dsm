@@ -11,6 +11,7 @@ import {
 import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
+import useRoleDepartmentAccess from "@/hooks/useRoleDepartmentAccess";
 import styles from "@/styles/SubmissionThreshold.module.css";
 
 // Must match backend's PP_BATCH_NOTEBOOKS labels exactly (routes/submittedNotebooks.routes.js)
@@ -39,7 +40,7 @@ const createRule = () => ({
   subDepartmentSlug: "",
   notebookLabel: "",
   severity: "High",
-  approvalL1Ids: [],
+  approvalL1Id: "",
   entryWithinHours: "24",
   approvalL4Ids: [],
   approveWithinHours: "24",
@@ -77,6 +78,7 @@ function MultiUserSelect({
 }) {
   const containerRef = useRef(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -91,31 +93,51 @@ function MultiUserSelect({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isOpen) setSearchText("");
+  }, [isOpen]);
+
   const selectedIds = new Set(normalizeIdList(value));
   const selectedNames = options
     .filter((option) => selectedIds.has(String(option.id)))
     .map((option) => option.name);
   const selectedLabel =
-    selectedNames.length > 1 ? `${selectedNames.length} selected` : selectedNames[0] || placeholder;
+    selectedNames.length > 0
+      ? `${selectedNames.length} user${selectedNames.length > 1 ? "s" : ""} selected`
+      : placeholder;
+  const filteredOptions = searchText.trim()
+    ? options.filter((option) => option.name?.toLowerCase().includes(searchText.trim().toLowerCase()))
+    : options;
 
   return (
     <div ref={containerRef} className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}>
-      <button
-        type="button"
-        className={styles.multiSelectButton}
-        onClick={() => {
-          if (!disabled) setIsOpen((current) => !current);
-        }}
-        disabled={disabled}
-      >
-        <span className={styles.multiSelectValue}>{selectedLabel}</span>
-        <span className={styles.multiSelectChevron}>{isOpen ? "^" : "v"}</span>
-      </button>
+      <div className={styles.multiSelectButton}>
+        <input
+          type="text"
+          className={styles.multiSelectValue}
+          value={isOpen ? searchText : ""}
+          placeholder={selectedLabel}
+          onFocus={() => !disabled && setIsOpen(true)}
+          onChange={(event) => {
+            setSearchText(event.target.value);
+            if (!disabled) setIsOpen(true);
+          }}
+          disabled={disabled}
+        />
+        <span
+          className={styles.multiSelectChevron}
+          onClick={() => {
+            if (!disabled) setIsOpen((current) => !current);
+          }}
+        >
+          {isOpen ? "^" : "v"}
+        </span>
+      </div>
 
       {isOpen ? (
         <div className={styles.multiSelectMenu}>
-          {options.length ? (
-            options.map((option) => {
+          {filteredOptions.length ? (
+            filteredOptions.map((option) => {
               const optionId = String(option.id);
               const isChecked = selectedIds.has(optionId);
               return (
@@ -146,6 +168,96 @@ function MultiUserSelect({
   );
 }
 
+function SingleUserSelect({
+  value = "",
+  options = [],
+  onChange,
+  disabled = false,
+  placeholder = "Select",
+  emptyLabel = "No users available",
+}) {
+  const containerRef = useRef(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!containerRef.current?.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) setSearchText("");
+  }, [isOpen]);
+
+  const selectedId = String(value || "").trim();
+  const selectedOption = options.find((option) => String(option.id) === selectedId) || null;
+  const buttonLabel = selectedOption?.name || placeholder;
+  const filteredOptions = searchText.trim()
+    ? options.filter((option) => option.name?.toLowerCase().includes(searchText.trim().toLowerCase()))
+    : options;
+
+  return (
+    <div ref={containerRef} className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}>
+      <div className={styles.multiSelectButton}>
+        <input
+          type="text"
+          className={styles.multiSelectValue}
+          value={isOpen ? searchText : ""}
+          placeholder={buttonLabel}
+          onFocus={() => !disabled && setIsOpen(true)}
+          onChange={(event) => {
+            setSearchText(event.target.value);
+            if (!disabled) setIsOpen(true);
+          }}
+          disabled={disabled}
+        />
+        <span
+          className={styles.multiSelectChevron}
+          onClick={() => {
+            if (!disabled) setIsOpen((current) => !current);
+          }}
+        >
+          {isOpen ? "^" : "v"}
+        </span>
+      </div>
+
+      {isOpen ? (
+        <div className={styles.multiSelectMenu}>
+          {filteredOptions.length ? (
+            filteredOptions.map((option) => {
+              const optionId = String(option.id);
+              const isActive = optionId === selectedId;
+              return (
+                <button
+                  key={optionId}
+                  type="button"
+                  className={`${styles.singleSelectOption} ${isActive ? styles.singleSelectOptionActive : ""}`}
+                  onClick={() => {
+                    onChange?.(optionId);
+                    setIsOpen(false);
+                  }}
+                >
+                  {option.name}
+                </button>
+              );
+            })
+          ) : (
+            <div className={styles.multiSelectEmpty}>{emptyLabel}</div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // Shared PP timing is configured once above and applied to every notebook row.
 // Each row only chooses the department, sub-department, notebook, severity,
 // and L1 proposer.
@@ -156,6 +268,7 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
   const users = useSelector((state) => state.users?.users || []);
   const canAccessPage = isFullAccessUser(user);
+  const { hasDepartmentAccess } = useRoleDepartmentAccess(users);
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -168,7 +281,6 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
   const [sharedApprovalL4Ids, setSharedApprovalL4Ids] = useState([]);
   const [sharedApproveWithinHours, setSharedApproveWithinHours] = useState("24");
 
-  const l1Options = useMemo(() => buildUserOptions(users, "L1"), [users]);
   const l4Options = useMemo(() => buildUserOptions(users, "L4"), [users]);
 
   const availableDepartments = departmentDirectory;
@@ -278,7 +390,7 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
       subDepartmentSlug: matchedSubDepartment?.slug || "",
       notebookLabel: item.notebook_label || "",
       severity: item.severity || "High",
-      approvalL1Ids: normalizeIdList(item.approval_l1_user_ids),
+      approvalL1Id: normalizeIdList(item.approval_l1_user_ids)[0] || "",
       approvalL4Ids: [],
     }]);
     setSharedEntryWithinHours(String(item.completion_threshold_hours ?? "24"));
@@ -330,7 +442,7 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
           sub_department: subDepartment.name,
           severity: rule.severity,
           completion_threshold_hours: Number(sharedEntryWithinHours),
-          approval_l1_user_ids: rule.approvalL1Ids.map((id) => Number(id)),
+          approval_l1_user_ids: rule.approvalL1Id ? [Number(rule.approvalL1Id)] : [],
           approval_l4_user_ids: (rule.approvalL4Ids.length ? rule.approvalL4Ids : sharedApprovalL4Ids).map((id) => Number(id)),
           approve_within_hours: Number(sharedApproveWithinHours),
           is_active: true,
@@ -434,6 +546,12 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
             {rules.map((rule, index) => {
               const availableSubDepartments = getAvailableSubDepartments(rule.departmentSlug);
               const availableNotebooks = getAvailableNotebooks(rule.departmentSlug, rule.subDepartmentSlug);
+              const rowSubDepartmentName =
+                availableSubDepartments.find((item) => item.slug === rule.subDepartmentSlug)?.name || "";
+              const rowL1Options = buildUserOptions(
+                users.filter((candidate) => hasDepartmentAccess(candidate, rowSubDepartmentName)),
+                "L1"
+              );
               return (
                 <div className={styles.ruleCard} key={rule.id}>
                   <div className={styles.ruleGrid}>
@@ -442,7 +560,11 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
                       <select value={rule.departmentSlug} onChange={(event) => updateRule(rule.id, "departmentSlug", event.target.value)}>
                         <option value="">Select Department</option>
                         {availableDepartments.map((department) => (
-                          <option key={department.slug} value={department.slug}>
+                          <option
+                            key={department.slug}
+                            value={department.slug}
+                            disabled={department.slug === "electrical" || department.slug === "mechanical"}
+                          >
                             {department.name}
                           </option>
                         ))}
@@ -482,7 +604,7 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
                     </label>
 
                     <label className={styles.field} style={{ gridColumn: "4 / 5", gridRow: "1" }}>
-                      <span>Severity</span>
+                      <span>Criticality</span>
                       <select value={rule.severity} onChange={(event) => updateRule(rule.id, "severity", event.target.value)}>
                         {SEVERITY_OPTIONS.map((option) => (
                           <option key={option} value={option}>
@@ -494,10 +616,10 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
 
                     <label className={styles.field} style={{ gridColumn: "5 / 6", gridRow: "1" }}>
                       <span>L1 Proposer</span>
-                      <MultiUserSelect
-                        value={rule.approvalL1Ids}
-                        options={l1Options}
-                        onChange={(nextIds) => updateRule(rule.id, "approvalL1Ids", nextIds)}
+                      <SingleUserSelect
+                        value={rule.approvalL1Id}
+                        options={rowL1Options}
+                        onChange={(nextId) => updateRule(rule.id, "approvalL1Id", nextId)}
                         placeholder="Select L1 user"
                         emptyLabel="No L1 users available"
                       />

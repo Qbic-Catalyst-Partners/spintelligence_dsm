@@ -2194,7 +2194,11 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
-    await closeWheelChangeApprovalTicket('drawframe.wheel_change', id);
+    await closeWheelChangeApprovalTicket('drawframe.wheel_change', id, {
+      decision: 'approved',
+      performedBy: req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
     res.status(200).json({
       message: 'Draw frame wheel change entry approved',
       data: withScreenEntryId('wheel_change', hydrateWheelChangeRow(result.rows[0]))
@@ -2222,7 +2226,11 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
-    await closeWheelChangeApprovalTicket('drawframe.wheel_change', id);
+    await closeWheelChangeApprovalTicket('drawframe.wheel_change', id, {
+      decision: 'rejected',
+      performedBy: req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
     res.status(200).json({
       message: 'Draw frame wheel change entry rejected',
       data: withScreenEntryId('wheel_change', hydrateWheelChangeRow(result.rows[0]))

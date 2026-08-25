@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchSupervisorTickets } from "../../store/slices/supervisorSlice";
 import Pagination from "@/components/Pagination";
+import SearchableSelect from "@/components/SearchableSelect";
 import { FiCalendar, FiX } from "react-icons/fi";
 import { MdFilterList } from "react-icons/md";
 import { getProcessParameterTickets, fetchApprovalQueueApi } from "../../apis/operatorApi";
@@ -182,18 +183,20 @@ const getDisplayLevelType = (ticket, fallbackLevel = "L1") =>
     "L1"
   ).trim().toUpperCase();
 
-// Wheel Change Approval, PP Approval, and Acknowledgement all land on L4 as
-// the final authority with nobody else's work to approve/reject - L4 is the
-// one actually resolving them (approving a Wheel Change is applying it,
-// clearing an Acknowledgement is acting on the overdue item), so that action
+// Acknowledgement lands on L4 as the final authority with nobody else's work
+// to approve/reject - L4 is the one actually resolving it (clearing an
+// Acknowledgement is acting on the overdue item directly), so that action
 // reads the same "Fix and Submit" as L1's own resolve action rather than
-// "Approve or Reject". If one of these is missed and escalates on to L5 (the
-// final PDF-defined escalation authority), L5 is now genuinely stepping in
-// to review L4's inaction, so L5 keeps "Approve or Reject" as normal.
+// "Approve or Reject". Wheel Change Approval and PP Approval are both
+// excluded from this group - approving/rejecting either is a genuine
+// accept/reject decision (rejecting sends it back to L1), so they keep
+// "Approve or Reject" like a normal reviewer tier once they're back at L4,
+// same as SupervisorDetails.js's isL4SelfResolveOwnedTicket. If Acknowledgement
+// is missed and escalates on to L5 (the final PDF-defined escalation
+// authority), L5 is now genuinely stepping in to review L4's inaction, so L5
+// keeps "Approve or Reject" as normal regardless.
 const isL4SelfResolveTicket = (ticket) =>
-  isAcknowledgementReviewTicket(ticket) ||
-  isWheelChangeApprovalTicketRecord(ticket) ||
-  isPpApprovalTicketRecord(ticket);
+  isAcknowledgementReviewTicket(ticket);
 
 // What the level actually sitting on a ticket right now needs to DO with it:
 // L1 is always the one fixing/resubmitting the underlying data; every level
@@ -255,7 +258,12 @@ const getResolutionDisplay = (ticket, resolutionSlaMap = {}) => {
   const level = String(ticket?.tat_current_level || ticket?.tatCurrentLevel || ticket?.levelType || "L1").toUpperCase();
   const resolutionHours = Number(resolutionSlaMap[level]);
   const definedMinutes = Number.isFinite(resolutionHours) && resolutionHours > 0 ? resolutionHours * 60 : null;
-  const resolvedAt = getTicketResolvedAt(ticket);
+  // Actual Res Time / Resolution Gap only mean anything once the ticket has
+  // actually been resolved (Closed/Submit) - a still-open ticket's updated_at
+  // (getTicketResolvedAt's own fallback) changes on every edit, not just on
+  // resolution, so without this gate an open ticket could show a stale/wrong
+  // "actual" time and gap color from its last unrelated update.
+  const resolvedAt = isTicketResolved(ticket?.status) ? getTicketResolvedAt(ticket) : null;
   const actualMinutes = resolvedAt ? diffMinutes(ticket?.created_at, resolvedAt) : null;
 
   return {
@@ -432,6 +440,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [search, setSearch] = useState("");
+  const [entrySearch, setEntrySearch] = useState("");
   const [page, setPage] = useState(1);
   const [showFilter, setShowFilter] = useState(false);
   // Changing any filter shrinks/reshuffles the result set, but page never
@@ -607,9 +616,15 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
         // it's now awaiting L2 review. For L2-L4 the submitted ticket comes
         // from the approval queue (queueTickets below) instead, so exclude the
         // "Submit" record here to avoid showing it twice at those levels.
+        // "Closed" is included for every level though - a closed ticket has
+        // no live row in the approval queue anymore (see getApprovalQueue's
+        // Pending-only default), so there's no duplication risk, and every
+        // other ticket type (Wheel Change, PP, Acknowledgement) already shows
+        // its closed tickets here without this extra filter - Value was the
+        // only kind that made them disappear entirely for L2-L4.
         const visibleStatuses = mode === "L1"
-          ? ["open", "in progress", "reopened", "submit"]
-          : ["open", "in progress", "reopened"];
+          ? ["open", "in progress", "reopened", "submit", "closed"]
+          : ["open", "in progress", "reopened", "closed"];
         return visibleStatuses.includes(normalizedStatus);
       })
       .map((ticket) => {
@@ -654,6 +669,13 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
         // same Created At. ticket_created_at is the actual ot.created_at.
         created_at: row.ticket_created_at || row.approval_created_at,
         tat_current_level: "L2",
+        // The approval-queue endpoint didn't used to select a resolution
+        // timestamp at all, so Actual Res Time/Resolution Gap always showed
+        // "--:--" for every Value/Submission Frequency ticket in this feed
+        // even once Closed - resolved_at now comes from the same
+        // ticket_logs-based resolution_log join the main ticket list uses.
+        resolved_at: row.resolved_at,
+        entry_id: row.entry_id,
       });
       return applyTicketOverdueStatus({
         ...transformed,
@@ -742,7 +764,9 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
       (!level || t.levelType === level) &&
       (!search ||
         t.ticket_id?.toLowerCase().includes(search.toLowerCase()) ||
-        t.userName?.toLowerCase().includes(search.toLowerCase()))
+        t.userName?.toLowerCase().includes(search.toLowerCase())) &&
+      (!entrySearch ||
+        (t.entry_id || t.entryId || "").toLowerCase().includes(entrySearch.toLowerCase()))
     );
   });
 
@@ -754,6 +778,16 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
     ...new Set(
       mergedTickets
         .flatMap((t) => (Array.isArray(t.userNameList) && t.userNameList.length ? t.userNameList : [t.userName]))
+        .filter((value) => value && value !== "-")
+    ),
+  ].sort();
+  const uniqueTicketIds = [
+    ...new Set(mergedTickets.map((t) => t.ticket_id).filter(Boolean)),
+  ].sort();
+  const uniqueEntryIds = [
+    ...new Set(
+      mergedTickets
+        .map((t) => t.entry_id || t.entryId)
         .filter((value) => value && value !== "-")
     ),
   ].sort();
@@ -852,6 +886,34 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
 
         <div className={styles["sup-filters"]}>
           <div className={styles["sup-filter"]}>
+            <label>Ticket ID</label>
+            <SearchableSelect
+              className={styles["sup-select"]}
+              value={search}
+              onChange={setSearch}
+              options={uniqueTicketIds}
+              placeholder="Search Ticket ID"
+              includeEmptyOption
+              emptyOptionLabel="All"
+              ariaLabel="Ticket ID"
+            />
+          </div>
+
+          <div className={styles["sup-filter"]}>
+            <label>Entry ID</label>
+            <SearchableSelect
+              className={styles["sup-select"]}
+              value={entrySearch}
+              onChange={setEntrySearch}
+              options={uniqueEntryIds}
+              placeholder="Search Entry ID"
+              includeEmptyOption
+              emptyOptionLabel="All"
+              ariaLabel="Entry ID"
+            />
+          </div>
+
+          <div className={styles["sup-filter"]}>
             <label>Ticket Type</label>
             <select
               className={styles["sup-select"]}
@@ -882,7 +944,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
           )}
 
           <div className={styles["sup-filter"]}>
-            <label>Severity</label>
+            <label>Criticality</label>
             <select
               className={styles["sup-select"]}
               value={severity}
@@ -924,6 +986,12 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
               ))}
             </select>
           </div>
+
+          {/* Forces the date pair onto its own fresh row every time, regardless
+              of how many filters precede it - L1's row has one fewer filter
+              (no Level dropdown) than L2-L5, so without this the From/To
+              Date pair wrapped to a different position per login level. */}
+          <div aria-hidden="true" style={{ flexBasis: "100%", width: 0, height: 0, margin: 0, padding: 0 }} />
 
           <div className={styles["sup-date-group"]}>
             <div className={styles["sup-filter"]}>
@@ -979,6 +1047,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
               setStartDate("");
               setEndDate("");
               setSearch("");
+              setEntrySearch("");
             }}
             style={{
               display: "flex",
@@ -995,6 +1064,9 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
               borderRadius: 6,
               cursor: "pointer",
               whiteSpace: "nowrap",
+              flex: "0 0 auto",
+              alignSelf: "flex-end",
+              marginLeft: "auto",
             }}
           >
             <FiX aria-hidden="true" /> Clear
@@ -1006,12 +1078,13 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
             <thead>
               <tr>
                 <th>TICKET ID</th>
+                <th>ENTRY ID</th>
                 <th>TICKET TYPE</th>
                 <th>OWNED/DELEGATE</th>
                 <th>LEVEL TYPE</th>
                 <th>USER NAME</th>
                 <th>STATUS</th>
-                <th>SEVERITY</th>
+                <th>CRITICALITY</th>
                 <th>DEFINED RES TIME</th>
                 <th>ACTUAL RES TIME</th>
                 <th>RESOLUTION GAP</th>
@@ -1035,6 +1108,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                     >
                       {t.ticket_id}
                     </td>
+                    <td>{t.entry_id || t.entryId || "-"}</td>
                     <td>{t.ticketType}</td>
                     <td>
                       {t.ownership.label}
@@ -1044,7 +1118,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                     </td>
                     <td>
                       {t.levelType}
-                      {getLevelActionLabel(t.levelType, t) ? (
+                      {getSupervisorStatusLabel(t.status) !== "Closed" && getLevelActionLabel(t.levelType, t) ? (
                         <div
                           className={`${styles["sup-small-label"]} ${styles["sup-ticket-link"]}`}
                           onClick={(event) => {
@@ -1076,7 +1150,19 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                       </span>
                     </td>
                     <td>{t.resolution.defined}</td>
-                    <td>{t.resolution.actual}</td>
+                    <td
+                      style={{
+                        color:
+                          t.resolution.isGapPositive === null
+                            ? "#98a2b3"
+                            : t.resolution.isGapPositive
+                              ? "#12b76a"
+                              : "#f04438",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {t.resolution.actual}
+                    </td>
                     <td
                       style={{
                         color:
@@ -1095,7 +1181,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                 ))
               ) : (
                 <tr>
-                  <td colSpan="11" style={{ textAlign: "center", padding: "24px" }}>
+                  <td colSpan="12" style={{ textAlign: "center", padding: "24px" }}>
                     No tickets found
                   </td>
                 </tr>
@@ -1127,13 +1213,16 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                   <div className={styles["sup-card-title"]}>
                     {t.ticket_id} | {t.ticketType}
                   </div>
+                  {(t.entry_id || t.entryId) && (
+                    <div className={styles["sup-small-label"]}>Entry ID: {t.entry_id || t.entryId}</div>
+                  )}
                   <div className={styles["sup-card-date"]}>
                     {formatDateTime(t.created_at)}
                   </div>
                 </div>
 
                 <span className={`${styles["sup-badge"]} ${styles[t.severity?.toLowerCase()]}`}>
-                  Severity: {t.severity}
+                  Criticality: {t.severity}
                 </span>
               </div>
 
@@ -1147,7 +1236,14 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                   <div className={styles["sup-small-label"]}>Resolution Gap</div>
                   <div
                     className={styles["sup-actual-value"]}
-                    style={{ color: t.resolution.isGapPositive ? "#12b76a" : "#f04438" }}
+                    style={{
+                      color:
+                        t.resolution.isGapPositive === null
+                          ? "#98a2b3"
+                          : t.resolution.isGapPositive
+                            ? "#12b76a"
+                            : "#f04438",
+                    }}
                   >
                     {t.resolution.gapLabel}
                   </div>
@@ -1186,6 +1282,32 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
               </div>
 
               <div className={styles["sup-filter-body"]}>
+                <div className={styles["sup-filter-group"]}>
+                  <label>Ticket ID</label>
+                  <SearchableSelect
+                    value={search}
+                    onChange={setSearch}
+                    options={uniqueTicketIds}
+                    placeholder="Search Ticket ID"
+                    includeEmptyOption
+                    emptyOptionLabel="All"
+                    ariaLabel="Ticket ID"
+                  />
+                </div>
+
+                <div className={styles["sup-filter-group"]}>
+                  <label>Entry ID</label>
+                  <SearchableSelect
+                    value={entrySearch}
+                    onChange={setEntrySearch}
+                    options={uniqueEntryIds}
+                    placeholder="Search Entry ID"
+                    includeEmptyOption
+                    emptyOptionLabel="All"
+                    ariaLabel="Entry ID"
+                  />
+                </div>
+
                 <div className={styles["sup-filter-group"]}>
                   <label>Ticket Type</label>
                   <select
@@ -1228,7 +1350,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                 </div>
 
                 <div className={styles["sup-filter-group"]}>
-                  <label>Severity</label>
+                  <label>Criticality</label>
                   <select
                     value={severity}
                     onChange={(e) => setSeverity(e.target.value)}
@@ -1281,6 +1403,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                       setStartDate("");
                       setEndDate("");
                       setSearch("");
+                      setEntrySearch("");
                     }}
                   >
                     Reset

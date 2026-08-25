@@ -617,7 +617,8 @@ const autoCreateTicket = async ({
   department,
   sub_department,
   user_name,
-  values
+  values,
+  entry_id
 }) => {
   if (!machine_name || !department || !sub_department) return null;
 
@@ -737,7 +738,7 @@ const autoCreateTicket = async ({
       department,
       sub_department,
       ticketReason,
-      JSON.stringify({ missing_fields: missingFields, threshold_breaches: breaches }),
+      JSON.stringify({ missing_fields: missingFields, threshold_breaches: breaches, entry_id: entry_id || null }),
       approvalL1UserIds,
       approvalL2UserIds
     ]
@@ -2151,7 +2152,8 @@ router.post('/openness', async (req, res, next) => {
         department: req.body.department || req.body.management_field,
         sub_department: req.body.sub_department || req.body.erp_product_code,
         user_name: req.body.user_name,
-        values
+        values,
+        entry_id: savedEntryId
       });
     }
 

@@ -79,7 +79,13 @@ export const getOperatorStatusLabel = (status) => status;
 
 export const getTicketStatusLabel = (status) => status;
 
-const RESOLVED_STATUS_KEYS = new Set(["closed", "approved", "submit", "acknowledged", "resolved"]);
+// "reopened" is included here too - not because it's resolved, but because a
+// rejection can happen after the ticket's original SLA window (measured from
+// its first created_at) has already elapsed. Without this, a freshly
+// reopened ticket - which L1 hasn't even had a chance to act on yet - got
+// immediately relabeled "Overdue" again by the SLA check below instead of
+// showing "Reopened", hiding the fact that it just came back for a fix.
+const RESOLVED_STATUS_KEYS = new Set(["closed", "approved", "submit", "acknowledged", "resolved", "reopened"]);
 
 const normalizeLevel = (value) => String(value || "").trim().toUpperCase();
 

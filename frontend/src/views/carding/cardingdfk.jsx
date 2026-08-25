@@ -10,6 +10,7 @@ import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { fetchCardingDfkPressure, submitCardingDfkPressure } from "@/store/slices/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import styles from "./cardingdfk.module.css";
 
 const DFK_TYPE = "Card DFK Data";
@@ -153,6 +154,19 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
         });
       } catch (recordError) {
         console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+      }
+
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Carding",
+          screenName: selectedType || DFK_TYPE,
+          machineName: selectedType || DFK_TYPE,
+          entryId: nextEntryId,
+          values: previewItems,
+        });
+      } catch (ticketError) {
+        console.error("Threshold ticket generation failed:", ticketError);
       }
 
       const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');

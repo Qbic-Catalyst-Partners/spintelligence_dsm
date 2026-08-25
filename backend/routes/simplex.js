@@ -282,7 +282,11 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
-    await closeWheelChangeApprovalTicket('simplex.wheel_change', id);
+    await closeWheelChangeApprovalTicket('simplex.wheel_change', id, {
+      decision: 'approved',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
     res.status(200).json({
       message: 'Simplex wheel change entry approved',
       data: withScreenEntryId('simplex_wheel_change', result.rows[0])
@@ -311,7 +315,11 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
-    await closeWheelChangeApprovalTicket('simplex.wheel_change', id);
+    await closeWheelChangeApprovalTicket('simplex.wheel_change', id, {
+      decision: 'rejected',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
     res.status(200).json({
       message: 'Simplex wheel change entry rejected',
       data: withScreenEntryId('simplex_wheel_change', result.rows[0])

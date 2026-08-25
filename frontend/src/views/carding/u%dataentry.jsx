@@ -11,6 +11,7 @@ import { fetchCardingUqcMasterDropdown, fetchCardingUqcMasterVarieties } from "@
 import { clearCardingState, getCardingUqcEntries, submitCardingUqc } from "@/store/slices/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 
 export const STATIC_SHIFT_OPTIONS = [
   { value: "Shift 1", label: "Shift 1" },
@@ -184,6 +185,19 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "", re
         });
       } catch (recordError) {
         console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+      }
+
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Carding",
+          screenName: selectedType,
+          machineName: form.mc_no || selectedType,
+          entryId: nextEntryId,
+          values: previewItems,
+        });
+      } catch (ticketError) {
+        console.error("Threshold ticket generation failed:", ticketError);
       }
 
       const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
