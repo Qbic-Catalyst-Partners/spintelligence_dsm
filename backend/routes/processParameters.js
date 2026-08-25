@@ -1,5 +1,6 @@
 const express = require('express');
 const client = require('../connection');
+const { generateTicketId } = require('../utils/ticketId');
 const {
   peekNextProcessParameterEntryId,
   normalizeProcessParameterEntryId,
@@ -20,42 +21,6 @@ const router = express.Router();
 // "Rejected" by L4 is not a separate stored stage - it sends the PP back to
 // in_progress (departments need to fix and resubmit), with the reason kept
 // in review_remarks for context.
-const ensureProcessParameterMasterTableImpl = async () => {
-  await client.query('CREATE SCHEMA IF NOT EXISTS process_parameters');
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS process_parameters.master (
-      id BIGSERIAL PRIMARY KEY,
-      entry_id TEXT NOT NULL UNIQUE,
-      created_by_user_id INTEGER NULL,
-      created_by_name TEXT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await client.query(`
-    ALTER TABLE process_parameters.master
-      ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'in_progress',
-      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
-      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS review_remarks TEXT,
-      ADD COLUMN IF NOT EXISTS pending_approval_notebook_label TEXT
-  `);
-};
-
-// This is a one-time schema migration, but every caller (across spinning.js,
-// processParameters.js, etc.) awaits it on every request - memoize the
-// promise so the actual CREATE/ALTER statements only ever run once per
-// server process; every call after that resolves immediately.
-let ensureProcessParameterMasterTablePromise = null;
-const ensureProcessParameterMasterTable = () => {
-  if (!ensureProcessParameterMasterTablePromise) {
-    ensureProcessParameterMasterTablePromise = ensureProcessParameterMasterTableImpl().catch((error) => {
-      ensureProcessParameterMasterTablePromise = null;
-      throw error;
-    });
-  }
-  return ensureProcessParameterMasterTablePromise;
-};
 
 // One entry per department/type screen that shares the PP entry_id system.
 // Each maps to the table + column that already exists today; nothing here
@@ -323,26 +288,7 @@ const getUsersAtLevel = async (level) => {
 // responsible... TAT: configurable." This table holds that per-instance
 // config; when no specific L4 user is configured, ticket creation falls back
 // to the previous "any current L4 user" behavior so existing setups keep working.
-const ensurePpApprovalConfigTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.pp_approval_config (
-      config_key TEXT PRIMARY KEY DEFAULT 'global',
-      l4_user_id INTEGER NULL,
-      tat_hours INTEGER NOT NULL DEFAULT 24,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  // Admin can assign as many L4 approvers as needed, not just one - l4_user_ids
-  // is now the source of truth; the older single l4_user_id column is kept
-  // (and folded into the array) so existing saved configs keep working.
-  await client.query(`
-    ALTER TABLE ticketing_system.pp_approval_config
-      ADD COLUMN IF NOT EXISTS l4_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]
-  `);
-};
-
 const getPpApprovalConfig = async () => {
-  await ensurePpApprovalConfigTable();
   const result = await client.query(
     `SELECT * FROM ticketing_system.pp_approval_config WHERE config_key = 'global'`
   );
@@ -356,29 +302,12 @@ const getPpApprovalConfig = async () => {
   return { ...row, l4_user_ids: l4UserIds };
 };
 
-const ensureApprovalTicketSchema = async () => {
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-      ADD COLUMN IF NOT EXISTS approval_l1_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l2_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l3_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l4_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l5_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS tat_current_level text NULL,
-      ADD COLUMN IF NOT EXISTS l4_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS l5_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
-  `);
-};
-
 // notebookLabel is the last-completed department's PP notebook (see
 // getLastCompletedDepartmentKey) - when it has its own per-notebook config
 // (approval_l4_user_ids/approve_within_hours/severity, set from the
 // combined PP Threshold + Approval config screen), that governs this
 // ticket; otherwise falls back to the old single global pp_approval_config.
 const createPpApprovalTicket = async (entry_id, notebookLabel = null) => {
-  await ensureApprovalTicketSchema();
-
   const existing = await client.query(
     `SELECT ticket_id FROM ticketing_system.operator_tickets
      WHERE ticket_type = 'PP_APPROVAL' AND (violation_details->>'entry_id') = $1 AND status <> 'Closed'
@@ -411,19 +340,20 @@ const createPpApprovalTicket = async (entry_id, notebookLabel = null) => {
     message: `PP id ${entry_id} has completed all departments and is awaiting L4 approval.`
   };
 
+  const ticketId = await generateTicketId(client);
   const ticket = await client.query(
     `INSERT INTO ticketing_system.operator_tickets
      (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
       severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
       violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
      VALUES (
-       'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-       $1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
-       $5, 'Open', NOW(), 'MISSING_VALUE', 'PP_APPROVAL', 'pp_approval',
-       $2::jsonb, $3::int[], 'L4', $4
+       $1,
+       $2, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+       $6, 'Open', NOW(), 'MISSING_VALUE', 'PP_APPROVAL', 'pp_approval',
+       $3::jsonb, $4::int[], 'L4', $5
      )
      RETURNING ticket_id`,
-    [entry_id, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity]
+    [ticketId, entry_id, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity]
   );
   const insertedTicketId = ticket.rows[0]?.ticket_id || null;
 
@@ -457,6 +387,19 @@ const createPpApprovalTicket = async (entry_id, notebookLabel = null) => {
 // approver for it.
 const runPpApprovalOverdueCheck = async () => {
   await ensureProcessParameterMasterTable();
+
+  // refreshProcessParameterStatus only ever runs reactively, off a GET to
+  // /master, /master/:entry_id, or /approvals - if nobody opens one of those
+  // pages after a batch's last department finishes, it stays 'in_progress'
+  // forever and this overdue check (which only looks at 'pending_approval'
+  // rows) would silently never see it, no matter how much time passes. This
+  // worker is the one guaranteed periodic entry point, so it has to do that
+  // same catch-up refresh itself rather than rely on a page view.
+  const inProgress = await client.query(
+    `SELECT entry_id FROM process_parameters.master WHERE status = 'in_progress'`
+  );
+  await Promise.all(inProgress.rows.map((row) => refreshProcessParameterStatus(row.entry_id)));
+
   const pending = await client.query(
     `SELECT entry_id, updated_at, pending_approval_notebook_label
      FROM process_parameters.master
@@ -485,26 +428,125 @@ const runPpApprovalOverdueCheck = async () => {
   return created;
 };
 
-const closePpApprovalTicket = async (entry_id) => {
+const closePpApprovalTicket = async (entry_id, options = {}) => {
   await ensureApprovalTicketSchema();
-  await client.query(
+  const closed = await client.query(
     `UPDATE ticketing_system.operator_tickets
      SET status = 'Closed'
-     WHERE ticket_type = 'PP_APPROVAL' AND (violation_details->>'entry_id') = $1 AND status <> 'Closed'`,
+     WHERE ticket_type = 'PP_APPROVAL' AND (violation_details->>'entry_id') = $1 AND status <> 'Closed'
+     RETURNING ticket_id`,
     [entry_id]
   );
+
+  // The ticket list's Actual Res Time/Resolution Gap are read from a matching
+  // ticket_logs row (see supervisorTickets.routes.js's resolution_log join) -
+  // without logging the closing action here, a closed PP Approval ticket
+  // always showed "--:--" even though it really was resolved.
+  const action = options.decision === 'rejected' ? 'REJECTED' : 'APPROVED';
+  for (const row of closed.rows) {
+    // eslint-disable-next-line no-await-in-loop
+    await client.query(
+      `INSERT INTO ticketing_system.ticket_logs
+       (ticket_id, action, performed_by, role, created_at)
+       VALUES ($1, $2, $3, $4, NOW())`,
+      [row.ticket_id, action, options.performedBy || 'Supervisor', options.role || 'L4']
+    );
+  }
 };
 
 // PP Approval is owned by L4 fully and directly - there's no configured L5
-// approver anywhere in PP Notebook Threshold (only L1/L4), so a missed L4
-// TAT used to escalate to "any current L5 user" system-wide - the exact
-// blind-notify-everyone pattern removed from every other threshold type this
-// session. A ticket past its TAT just stays at L4 and shows Overdue
-// (computed client-side from l4_tat_due_at) - L5 already has full oversight
-// visibility via its Mapped-only view without needing a fake reassignment.
-// Kept as a no-op (rather than removed) so the worker registration in
-// server.js doesn't need touching.
-const runPpApprovalTatCheck = async () => [];
+// approver anywhere in PP Notebook Threshold (only L1/L4), so this does not
+// reassign to a different tier the way other threshold types escalate (that
+// would mean blindly notifying "any current L5 user" system-wide, which
+// every other threshold type deliberately avoids too). Instead, once a
+// PP_APPROVAL ticket's L4 TAT has elapsed with the ticket still open, a
+// second reminder ticket is raised against the same L4 approver(s) - same
+// entry_id, so closePpApprovalTicket (called on the real approve/reject)
+// closes both together once the PP is actually actioned.
+const runPpApprovalTatCheck = async () => {
+  await ensureApprovalTicketSchema();
+
+  const overdueTickets = await client.query(
+    `SELECT * FROM ticketing_system.operator_tickets
+     WHERE ticket_type = 'PP_APPROVAL'
+       AND tat_current_level = 'L4'
+       AND status <> 'Closed'
+       AND l4_tat_due_at IS NOT NULL
+       AND l4_tat_due_at <= NOW()`
+  );
+
+  const created = [];
+  for (const ticket of overdueTickets.rows) {
+    const entryId = ticket.violation_details?.entry_id;
+    if (!entryId) continue; // eslint-disable-line no-continue
+
+    // eslint-disable-next-line no-await-in-loop
+    const existingReminder = await client.query(
+      `SELECT ticket_id FROM ticketing_system.operator_tickets
+       WHERE ticket_type = 'PP_APPROVAL'
+         AND (violation_details->>'entry_id') = $1
+         AND (violation_details->>'escalation_of') = $2
+         AND status <> 'Closed'
+       LIMIT 1`,
+      [entryId, ticket.ticket_id]
+    );
+    if (existingReminder.rows[0]?.ticket_id) continue; // eslint-disable-line no-continue
+
+    const l4UserIds = Array.isArray(ticket.approval_l4_user_ids) ? ticket.approval_l4_user_ids : [];
+    const notebookLabel = ticket.violation_details?.notebook_label || null;
+    const violationDetails = {
+      category: 'MISSED_FREQUENCY',
+      ticket_type: 'PP_APPROVAL',
+      entry_id: entryId,
+      notebook_label: notebookLabel,
+      escalation_of: ticket.ticket_id,
+      message: `PP id ${entryId} was not approved by L4 within the configured time and is now overdue.`
+    };
+
+    // eslint-disable-next-line no-await-in-loop
+    const reminder = await client.query(
+      `INSERT INTO ticketing_system.operator_tickets
+       (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+        severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
+        violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
+       VALUES (
+         'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+         $1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+         'High', 'Open', NOW(), 'MISSING_VALUE', 'PP_APPROVAL', 'pp_approval',
+         $2::jsonb, $3::int[], 'L4', NULL
+       )
+       RETURNING ticket_id`,
+      [ticket.machine_name, JSON.stringify(violationDetails), l4UserIds]
+    );
+    const reminderTicketId = reminder.rows[0]?.ticket_id;
+    if (reminderTicketId) created.push(reminderTicketId);
+
+    // eslint-disable-next-line no-await-in-loop
+    await client.query(
+      `INSERT INTO ticketing_system.ticket_logs
+       (ticket_id, action, performed_by, role, created_at)
+       VALUES ($1, 'OVERDUE_REMINDER_RAISED', 'System', 'System', NOW())`,
+      [ticket.ticket_id]
+    );
+
+    if (reminderTicketId && l4UserIds.length) {
+      // eslint-disable-next-line no-await-in-loop
+      await createNotificationsForUsers(l4UserIds, {
+        ticketId: reminderTicketId,
+        type: 'PP_APPROVAL',
+        category: 'Tickets',
+        priority: 'High',
+        title: (user) => `Hi ${user.full_name || 'there'} (L4), a PP approval is overdue`,
+        body: (user) =>
+          `${user.full_name || 'You'} (L4) - PP entry ${entryId} was not approved in time (ticket ${ticket.ticket_id}) and is now overdue.`,
+        linkUrl: `/supervisor-tickets/${reminderTicketId}`,
+        payload: { ticket_id: reminderTicketId, entry_id: entryId }
+      });
+    }
+  }
+
+  return created;
+};
 
 router.get('/approval-config', async (req, res, next) => {
   try {
@@ -517,8 +559,6 @@ router.get('/approval-config', async (req, res, next) => {
 
 router.post('/approval-config', async (req, res, next) => {
   try {
-    await ensurePpApprovalConfigTable();
-
     const l4UserIds = (Array.isArray(req.body?.l4_user_ids) ? req.body.l4_user_ids : [])
       .map((id) => Number(id))
       .filter((id) => Number.isInteger(id) && id > 0);
@@ -561,7 +601,6 @@ router.get('/next-id', async (req, res, next) => {
 // department's own form is actually saved against this entry_id.
 router.post('/master', async (req, res, next) => {
   try {
-    await ensureProcessParameterMasterTable();
     // createProcessParameterEntryId() already inserts the master row for this
     // entry_id (via ensureProcessParameterMasterRow) as part of minting the id
     // - so this must UPDATE that existing row rather than INSERT a second one,
@@ -591,7 +630,6 @@ router.post('/master', async (req, res, next) => {
 // completion and its current lifecycle status.
 router.get('/master', async (req, res, next) => {
   try {
-    await ensureProcessParameterMasterTable();
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
@@ -642,7 +680,6 @@ router.get('/master', async (req, res, next) => {
 // "pick a PP id, go fill its remaining sub-forms" flow.
 router.get('/master/:entry_id', async (req, res, next) => {
   try {
-    await ensureProcessParameterMasterTable();
     const entry_id = normalizeProcessParameterEntryId(req.params.entry_id);
 
     const result = await client.query(
@@ -699,7 +736,6 @@ const canActOnPpApproval = (req) => {
 // active/inactive.
 router.get('/approvals', async (req, res, next) => {
   try {
-    await ensureProcessParameterMasterTable();
     if (!canActOnPpApproval(req)) {
       return res.status(200).json({ data: [] });
     }
@@ -745,7 +781,6 @@ router.get('/approvals', async (req, res, next) => {
 
 router.post('/:entry_id/approve', async (req, res, next) => {
   try {
-    await ensureProcessParameterMasterTable();
     if (!canActOnPpApproval(req)) {
       return res.status(403).json({ message: 'Only L4, L5, or Admin can approve a PP id' });
     }
@@ -762,7 +797,11 @@ router.post('/:entry_id/approve', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(409).json({ message: 'This PP id is not awaiting approval (already actioned, or not yet complete).' });
     }
-    await closePpApprovalTicket(entry_id);
+    await closePpApprovalTicket(entry_id, {
+      decision: 'approved',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
 
     res.status(200).json({ message: 'PP id approved — now Active', data: result.rows[0] });
   } catch (error) {
@@ -772,7 +811,6 @@ router.post('/:entry_id/approve', async (req, res, next) => {
 
 router.post('/:entry_id/reject', async (req, res, next) => {
   try {
-    await ensureProcessParameterMasterTable();
     if (!canActOnPpApproval(req)) {
       return res.status(403).json({ message: 'Only L4, L5, or Admin can reject a PP id' });
     }
@@ -792,7 +830,11 @@ router.post('/:entry_id/reject', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(409).json({ message: 'This PP id is not awaiting approval (already actioned, or not yet complete).' });
     }
-    await closePpApprovalTicket(entry_id);
+    await closePpApprovalTicket(entry_id, {
+      decision: 'rejected',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
 
     res.status(200).json({ message: 'PP id rejected — back to In Progress', data: result.rows[0] });
   } catch (error) {
@@ -802,11 +844,9 @@ router.post('/:entry_id/reject', async (req, res, next) => {
 
 module.exports = router;
 module.exports.PP_DEPARTMENTS = PP_DEPARTMENTS;
-module.exports.ensureProcessParameterMasterTable = ensureProcessParameterMasterTable;
 module.exports.refreshProcessParameterStatus = refreshProcessParameterStatus;
 module.exports.runPpApprovalTatCheck = runPpApprovalTatCheck;
 module.exports.runPpApprovalOverdueCheck = runPpApprovalOverdueCheck;
 module.exports.createPpApprovalTicket = createPpApprovalTicket;
 module.exports.closePpApprovalTicket = closePpApprovalTicket;
-module.exports.ensurePpApprovalConfigTable = ensurePpApprovalConfigTable;
 module.exports.getPpApprovalConfig = getPpApprovalConfig;

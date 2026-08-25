@@ -10,6 +10,7 @@ import { clearCardingState, submitCardingCardThickPlace } from "@/store/slices/c
 import { fetchCardingMasterMachines } from "@/apis/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import styles from "./cardThickPlaceEntry.module.css";
 
 const defaultMachines = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
@@ -225,6 +226,19 @@ function CardThickPlaceEntry({
                 });
             } catch (recordError) {
                 console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+            }
+
+            try {
+                await createThresholdViolationTickets({
+                    department: "Quality Control",
+                    subDepartment: "Carding",
+                    screenName: selectedType,
+                    machineName: selectedType,
+                    entryId: nextEntryId,
+                    values: previewItems,
+                });
+            } catch (ticketError) {
+                console.error("Threshold ticket generation failed:", ticketError);
             }
             setShowSuccess(true);
 

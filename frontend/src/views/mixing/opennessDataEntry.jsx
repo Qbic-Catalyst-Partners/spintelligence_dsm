@@ -7,6 +7,7 @@ import styles from "@/styles/opennessDataEntry.module.css";
 import { mixingOpennessDataEntry } from "@/apis/mixing";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 
 const MACHINE_NAME_OPTIONS = [
   "Circular Bale Pulker",
@@ -287,6 +288,10 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
         apparent_specific_volume: Number(row.asv),
         actual_op_value: Number(row.aov),
         openness_percentage: stage.openness === "" ? null : Number(stage.openness),
+        avg_weight: stage.avgWeight === "" ? null : Number(stage.avgWeight),
+        avg_volume: stage.avgVol === "" ? null : Number(stage.avgVol),
+        avg_apparent_specific_volume: stage.avgAsv === "" ? null : Number(stage.avgAsv),
+        avg_actual_op_value: stage.avgAov === "" ? null : Number(stage.avgAov),
       }))
     ),
     user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
@@ -298,6 +303,22 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       await mixingOpennessDataEntry(payload);
 
       const linkedEntryId = payload.entry_id;
+
+      // Registered here, immediately after the save itself succeeds — see cottonHVIDataEntry.jsx
+      // for why this can no longer live in the parent's post-submit/success-modal flow.
+      try {
+        await recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Mixing",
+          notebookName: "Openness Data Entry",
+          entryId: linkedEntryId,
+          registeredActions: { getPayload: () => payload },
+          user,
+        });
+      } catch (recordError) {
+        console.warn("Mixing submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+      }
+
       const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
       if (linkedEntryId && customFieldEntries.length) {
         try {

@@ -13,7 +13,9 @@ export const thresholdScreenCatalog = {
         "blow-room": [
             "Blow Room Sync",
             "Process Parameter",
-            "BR Waste Study Entry",
+            "BR Waste Study Entry Type 1",
+            "BR Waste Study Entry Type 2",
+            "BR Waste Study Entry Type 3",
             "Drop Test Data Entry",
             "B/R CV1M Data Entry Within Lap",
             "B/R Between Lap CV%",
@@ -42,6 +44,11 @@ export const thresholdScreenCatalog = {
         ],
         "individual-card-performance": [
             "Individual Card performance Data",
+        ],
+        wrapping: [
+            "Carding",
+            "Drawing",
+            "Simplex",
         ],
         "draw-frame": [
             "1 Yard / Half Yard CV Entry",
@@ -77,12 +84,15 @@ export const thresholdScreenCatalog = {
             "Lycra Out of Centering",
             "RSM & Lycrasensor Checking Online",
             "RSM & Lycrasensor Checking Offline",
-            "Wheel Change",
+            "Wheel Change Type 1",
+            "Wheel Change Type 2",
+            "Wheel Change Type 3",
         ],
         autoconer: [
             "Process Parameter",
             "PP - Autoconer Q2",
             "PP - Autoconer Q3",
+            "PP - Autoconer Q4",
             "Rewinding Study",
             "Cone Density",
             "Cone Packing Audit",

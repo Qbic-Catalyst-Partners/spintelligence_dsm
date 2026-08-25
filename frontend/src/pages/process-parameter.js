@@ -42,10 +42,10 @@ import {
   fetchAutoconerQ4Entries,
   fetchAutoconerConsigneeMaster,
 } from "@/apis/autoconer";
-import { fetchPpThresholdsAPI } from "@/apis/ppThresholdApi";
+import { fetchPpNotebookThresholdsAPI } from "@/apis/ppNotebookThresholdApi";
 import { fetchSupervisorTicketsApi } from "@/apis/supervisorApi";
 import { fetchNextProcessParameterId } from "@/apis/processParameter";
-import { getColumnForNotebookKey } from "@/utils/ppNotebookKeys";
+import { getColumnForNotebookKey, getColumnForNotebookThresholdLabel } from "@/utils/ppNotebookKeys";
 import styles from "@/styles/processParameterPage.module.css";
 
 const updateExistingColumns = [
@@ -493,24 +493,29 @@ export default function ProcessParameterPage() {
     };
   }, []);
 
-  // Per-notebook completion thresholds (PP Threshold page) and any
-  // PP_NOTEBOOK_INCOMPLETE tickets already raised for this PP id/notebook —
-  // used to mark overdue cells and link to an existing escalation ticket.
+  // Per-notebook completion thresholds (PP Notebook Threshold, ticketing_system.pp_notebook_threshold)
+  // and any PP_NOTEBOOK_INCOMPLETE tickets already raised for this PP id/notebook — used to mark
+  // overdue cells and link to an existing escalation ticket. Previously read from pp_thresholds,
+  // whose only admin/edit screen (PPThresholdPage.jsx) has no route and can never be populated —
+  // switched to pp_notebook_threshold, which has a live, reachable admin UI (ThresholdsHub.jsx's
+  // "PP Threshold" tab).
   useEffect(() => {
     let cancelled = false;
 
-    fetchPpThresholdsAPI()
+    fetchPpNotebookThresholdsAPI()
       .then((rows) => {
         if (cancelled) return;
         const map = {};
         (Array.isArray(rows) ? rows : []).forEach((row) => {
-          const notebookName = String(
-            row?.notebook_name || row?.notebookName || row?.notebook || row?.screen_name || ""
-          ).trim();
-          if (!notebookName) return;
+          const rawLabel = String(row?.notebook_label || row?.notebookLabel || "").trim();
+          if (!rawLabel) return;
+          // pp_notebook_threshold keys rows by its own admin-page label convention
+          // (e.g. "Mixing Process Parameter"), not the short column names this grid
+          // uses ("Mixing") — translate before using as the map key.
+          const columnName = getColumnForNotebookThresholdLabel(rawLabel);
           const hours = Number(row?.completion_threshold_hours ?? row?.completionThresholdHours);
           if (!Number.isFinite(hours) || hours <= 0) return;
-          map[notebookName] = hours;
+          map[columnName] = hours;
         });
         setPpThresholdMap(map);
       })

@@ -77,6 +77,7 @@ const createInitialForm = () => ({
   weight: "",
   noOfCuts: "",
   breakPerLakhMeter: "",
+  remarks: "",
 });
 
 const createReadingRows = (count = "", drumNo = "", weight = "") => {
@@ -340,7 +341,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
       cone_tip: form.coneTip,
       no_of_cuts: toNumberOrNull(form.noOfCuts),
       break_per_million_meter: toNumberOrNull(breakPerMillionMeter) || 0,
-      remarks: "Normal",
+      remarks: form.remarks || null,
       readings: filledRows.map((row) => ({
         drum_no: toNumberOrNull(row.drumNo) || 0,
         no_of_cones: toNumberOrNull(row.noOfCones) || 0,
@@ -695,6 +696,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countNameDropdownOptions, placeholder: "Select count name" },
     { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoconerDropdownOptions, placeholder: "Select auto coner" },
     { label: "Cone Tip", field: "coneTip", type: "select", options: coneTipOptions, placeholder: "Select cone tip" },
+    { label: "Remarks", field: "remarks", type: "text", placeholder: "Enter remarks" },
   ];
 
   const topPortalTarget =

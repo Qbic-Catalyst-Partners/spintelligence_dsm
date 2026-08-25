@@ -44,8 +44,6 @@ const getAuthenticatedOperatorName = (req) =>
 const isUniqueViolation = (err) => err && err.code === '23505';
 const ALLOWED_SHIFT_TYPES = new Set(['Shift 1', 'Shift 2', 'Shift 3']);
 const CDG_MACHINE_REGEX = /^CDG[-\s]?\d+/i;
-let cardWasteTypeMasterReady = false;
-
 const withoutCardWasteStudyIds = (record) => {
   if (!record || typeof record !== 'object') return record;
   const { lot_no, waste_study_id, ...rest } = record;
@@ -148,263 +146,6 @@ const getPrepMixingDropdown = async (req, res, next) => {
   }
 };
 
-const ensureCardingEntryIdColumns = async () => {
-  await client.query(`
-    ALTER TABLE carding.nati_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  await client.query(`
-    ALTER TABLE carding.nati_data_entry
-      DROP COLUMN IF EXISTS nati_id;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS nati_data_entry_entry_id_uq
-    ON carding.nati_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE carding.u_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS u_data_entry_entry_id_uq
-    ON carding.u_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE carding.card_dfk_pressure_checking
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    ALTER TABLE carding.card_dfk_pressure_checking
-      ALTER COLUMN dfk TYPE TEXT USING dfk::text,
-      ALTER COLUMN ccd TYPE TEXT USING ccd::text,
-      ALTER COLUMN icfd_1 TYPE TEXT USING icfd_1::text,
-      ALTER COLUMN lt TYPE TEXT USING lt::text,
-      ALTER COLUMN cds TYPE TEXT USING cds::text,
-      ALTER COLUMN silver_draft TYPE TEXT USING silver_draft::text,
-      ALTER COLUMN icfd_2 TYPE TEXT USING icfd_2::text,
-      ALTER COLUMN idf_in TYPE TEXT USING idf_in::text,
-      ALTER COLUMN idf_out TYPE TEXT USING idf_out::text,
-      ALTER COLUMN al_on TYPE TEXT USING al_on::text;
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS card_dfk_pressure_checking_entry_id_idx
-    ON carding.card_dfk_pressure_checking (entry_id);
-  `);
-
-  await client.query(`
-    ALTER TABLE carding.carding_qc_header
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS carding_qc_header_entry_id_uq
-    ON carding.carding_qc_header (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-  // Process Parameter never persisted who submitted it — same fix as Blow Room's Process
-  // Parameter/Openness/AFIS/Fibre/Moisture: give the row its own operator column so Custom
-  // Report's Operator resolution has something to find (this screen never registers into
-  // submitted_notebooks either, so that fallback path never resolves it).
-  await client.query(`
-    ALTER TABLE carding.carding_qc_header
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-
-  await client.query(`
-    ALTER TABLE carding.carding_change_request
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS carding_change_request_entry_id_uq
-    ON carding.carding_change_request (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-};
-
-const ensureCardingChangeTables = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS carding.carding_change_request (
-      id BIGSERIAL PRIMARY KEY,
-      type TEXT NOT NULL,
-      test_no INTEGER,
-      entry_date DATE NOT NULL,
-      cdo_no TEXT,
-      cdg_no_proposed TEXT,
-      mixing_existing TEXT,
-      mixing_proposed TEXT,
-      blend_percent_existing TEXT,
-      blend_percent_proposed TEXT,
-      del_hank_existing NUMERIC(10,3),
-      del_hank_proposed NUMERIC(10,3),
-      feed_weight_existing NUMERIC(10,3),
-      feed_weight_proposed NUMERIC(10,3),
-      speed_existing NUMERIC(10,2),
-      speed_proposed NUMERIC(10,2),
-      licker_in_speed_1_existing NUMERIC(10,2),
-      licker_in_speed_1_proposed NUMERIC(10,2),
-      cylinder_speed_existing NUMERIC(10,2),
-      cylinder_speed_proposed NUMERIC(10,2),
-      flats_speed_mm_min_existing NUMERIC(10,3),
-      flats_speed_mm_min_proposed NUMERIC(10,3),
-      feed_plate_to_licker_in_existing NUMERIC(10,3),
-      feed_plate_to_licker_in_proposed NUMERIC(10,3),
-      sfl_existing NUMERIC(10,3),
-      sfl_proposed NUMERIC(10,3),
-      sfd_existing NUMERIC(10,3),
-      sfd_proposed NUMERIC(10,3),
-      cylinder_to_flats_existing NUMERIC(10,3),
-      cylinder_to_flats_proposed NUMERIC(10,3),
-      cylinder_in_doffer_existing NUMERIC(10,3),
-      cylinder_in_doffer_proposed NUMERIC(10,3),
-      web_speed_draft_mw_v4_existing NUMERIC(10,3),
-      web_speed_draft_mw_v4_proposed NUMERIC(10,3),
-      lc_wing_setting_existing NUMERIC(10,3),
-      lc_wing_setting_proposed NUMERIC(10,3),
-      rr_rk_beater_speed_existing NUMERIC(10,2),
-      rr_rk_beater_speed_proposed NUMERIC(10,2),
-      remarks TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    ALTER TABLE carding.carding_change_request
-      ADD COLUMN IF NOT EXISTS operator TEXT,
-      ADD COLUMN IF NOT EXISTS department TEXT,
-      ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending',
-      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
-      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS review_remarks TEXT;
-  `);
-  // ADD COLUMN IF NOT EXISTS above is a no-op once the column already exists,
-  // so a stale/incorrect default from an older migration would otherwise
-  // persist forever. Force it explicitly on every startup.
-  await client.query(`
-    ALTER TABLE carding.carding_change_request ALTER COLUMN approval_status SET DEFAULT 'pending';
-  `);
-  // cdg_no_proposed was TEXT[] on some pre-existing databases (from an older
-  // schema version); the route has always sent a plain string, which
-  // Postgres rejects with "malformed array literal" against an array column.
-  // CREATE TABLE IF NOT EXISTS never fixes an already-created table, so force
-  // the column back to TEXT on every startup, same as the default fix above.
-  await client.query(`
-    ALTER TABLE carding.carding_change_request ALTER COLUMN cdg_no_proposed TYPE TEXT USING array_to_string(cdg_no_proposed, ', ');
-  `).catch(() => {});
-};
-
-const ensureCardWasteStudyTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS carding.card_waste_study (
-      id BIGSERIAL PRIMARY KEY,
-      entry_id TEXT,
-      waste_study_id TEXT,
-      date DATE,
-      operator TEXT,
-      variety TEXT,
-      study_type TEXT,
-      carding_production_kg NUMERIC(12,4),
-      type_entries NUMERIC(12,4),
-      flat_speed NUMERIC(12,4),
-      delivery_speed NUMERIC(12,4),
-      wing1_speed NUMERIC(12,4),
-      wing2_speed NUMERIC(12,4),
-      lickerin_speed_1 NUMERIC(12,4),
-      lickerin_speed_2 NUMERIC(12,4),
-      lickerin_speed_3 NUMERIC(12,4),
-      mc_no TEXT,
-      mc_production NUMERIC(12,4),
-      waste_type TEXT,
-      waste_kg NUMERIC(12,4),
-      waste_percent NUMERIC(12,4),
-      overall_percent NUMERIC(12,4),
-      remarks TEXT,
-      entry_type TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    ALTER TABLE carding.card_waste_study
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS entry_type TEXT,
-      ADD COLUMN IF NOT EXISTS operator TEXT,
-      ADD COLUMN IF NOT EXISTS waste_type_entries NUMERIC(12,4);
-  `);
-
-  await client.query(`
-    ALTER TABLE carding.card_waste_study
-      DROP COLUMN IF EXISTS lot_no;
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS carding.card_waste_study_type_rows (
-      id BIGSERIAL PRIMARY KEY,
-      study_id BIGINT NOT NULL REFERENCES carding.card_waste_study(id) ON DELETE CASCADE,
-      row_no INTEGER NOT NULL,
-      cylinder_speed NUMERIC(12,4),
-      lickerin_speed NUMERIC(12,4),
-      flat_speed NUMERIC(12,4),
-      doffer_speed NUMERIC(12,4),
-      delivery_speed NUMERIC(12,4),
-      wing_setting_1 NUMERIC(12,4),
-      wing_setting_2 NUMERIC(12,4),
-      mc_no TEXT,
-      mc_production NUMERIC(12,4),
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  // Type 3's three Lickerin Speed fields (first/second/third) have their own columns, distinct
-  // from the single shared `lickerin_speed` column Types 1/2 use — without these the POST
-  // /card-waste-study handler had nowhere to write them, so every Type 3 save silently dropped
-  // those 3 required fields instead of persisting them.
-  await client.query(`
-    ALTER TABLE carding.card_waste_study_type_rows
-      ADD COLUMN IF NOT EXISTS lickerin_speed_1 NUMERIC(12,4),
-      ADD COLUMN IF NOT EXISTS lickerin_speed_2 NUMERIC(12,4),
-      ADD COLUMN IF NOT EXISTS lickerin_speed_3 NUMERIC(12,4);
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS carding.card_waste_study_waste_rows (
-      id BIGSERIAL PRIMARY KEY,
-      study_id BIGINT NOT NULL REFERENCES carding.card_waste_study(id) ON DELETE CASCADE,
-      row_no INTEGER NOT NULL,
-      waste_type TEXT,
-      waste_kgs_value NUMERIC(12,4),
-      waste_kgs_percent NUMERIC(12,4),
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS card_waste_study_type_rows_study_id_idx
-    ON carding.card_waste_study_type_rows (study_id)
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS card_waste_study_waste_rows_study_id_idx
-    ON carding.card_waste_study_waste_rows (study_id)
-  `);
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS card_waste_study_waste_study_id_uq
-    ON carding.card_waste_study (waste_study_id)
-    WHERE waste_study_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS card_waste_study_entry_id_uq
-    ON carding.card_waste_study (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-};
-
 const CARD_WASTE_TYPE_DEFAULTS = [
   'Luckerin waste',
   'Flat waste',
@@ -417,50 +158,7 @@ const CARD_WASTE_TYPE_DEFAULTS = [
   'Lap waste',
 ];
 
-const ensureCardWasteTypeMasterTable = async () => {
-  if (cardWasteTypeMasterReady) return;
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS carding.card_waste_type_master (
-      id BIGSERIAL PRIMARY KEY,
-      waste_type TEXT NOT NULL,
-      waste_type_key TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    ALTER TABLE carding.card_waste_type_master
-      ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;
-  `);
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS card_waste_type_master_waste_type_key_uq
-    ON carding.card_waste_type_master (waste_type_key)
-    WHERE waste_type_key IS NOT NULL;
-  `);
-
-  for (const wasteType of CARD_WASTE_TYPE_DEFAULTS) {
-    const wasteTypeKey = wasteType.toLowerCase();
-    await client.query(
-      `INSERT INTO carding.card_waste_type_master (waste_type, waste_type_key, sort_order)
-       VALUES (
-         $1,
-         $2,
-         COALESCE((SELECT MAX(sort_order) FROM carding.card_waste_type_master), 0) + 1
-       )
-       ON CONFLICT (waste_type_key) DO NOTHING`,
-      [wasteType, wasteTypeKey]
-    );
-  }
-
-  cardWasteTypeMasterReady = true;
-};
-
 const upsertCardWasteType = async (wasteType) => {
-  await ensureCardWasteTypeMasterTable();
-
   const normalizedWasteType = normalizeWasteType(wasteType);
   if (!normalizedWasteType) return null;
 
@@ -482,8 +180,6 @@ const upsertCardWasteType = async (wasteType) => {
 };
 
 const fetchCardWasteTypes = async (prefix = '') => {
-  await ensureCardWasteTypeMasterTable();
-
   const result = await client.query(
     `SELECT id, waste_type, created_at
      FROM carding.card_waste_type_master
@@ -516,7 +212,6 @@ const ensureCardThickPlaceTables = async () => {
       machine TEXT NOT NULL,
       cv_value NUMERIC(12,4),
       cv_5m_value NUMERIC(12,4),
-      unit TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
@@ -1564,14 +1259,13 @@ router.post('/card-thick-place', async (req, res) => {
           if (!row.machine) continue;
           await client.query(
             `INSERT INTO carding.card_thick_place_values
-             (header_id, machine, cv_value, cv_5m_value, unit)
-             VALUES ($1, $2, $3, $4, $5)`,
+             (header_id, machine, cv_value, cv_5m_value)
+             VALUES ($1, $2, $3, $4)`,
             [
               header.id,
               row.machine,
               row.cv_value ?? null,
-              row.cv_5m ?? row.five_m_cv ?? null,
-              row.unit ?? null
+              row.cv_5m ?? row.five_m_cv ?? null
             ]
           );
         }
@@ -1807,6 +1501,7 @@ router.post('/between-within-card', async (req, res) => {
             inspection_type,
             mc_name,
             inspection_date,
+            test_id,
         } = req.body;
         const entry_id = String(req.body.entry_id || '').trim() || createBetweenWithinEntryId();
         const { sample_weights, hanks } = getBwcArrays(req.body);
@@ -1831,9 +1526,9 @@ router.post('/between-within-card', async (req, res) => {
 
         await client.query(
             `INSERT INTO carding.inspections
-            (id, type_category, inspection_type, mc_name, inspection_date, num_entries, operator)
-            VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-            [id, type_category, inspection_type, mc_name, inspection_date, num_entries, operatorName]
+            (id, type_category, inspection_type, mc_name, inspection_date, num_entries, operator, test_id)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [id, type_category, inspection_type, mc_name, inspection_date, num_entries, operatorName, test_id || null]
         );
 
         for (let i = 0; i < sample_weights.length; i++) {
@@ -2115,7 +1810,6 @@ router.get('/between-within-card', async (req, res) => {
  */
 router.post('/nati-data-entry', async (req, res) => {
     try {
-        await ensureCardingEntryIdColumns();
         const { entry_id, type, entry_date, variety, entries, user_name } = req.body;
 
         if (!entry_id) {
@@ -2231,7 +1925,6 @@ router.post('/nati-data-entry', async (req, res) => {
  */
 router.get('/nati-data-entry', async (req, res) => {
     try {
-        await ensureCardingEntryIdColumns();
         const result = await client.query(`
             SELECT
                 qc.id,
@@ -2334,7 +2027,6 @@ router.get('/nati-data-entry', async (req, res) => {
  */
 router.post('/uqc', async (req, res) => {
     try {
-        await ensureCardingEntryIdColumns();
         console.log("UQC BODY:", req.body);
 
         const {
@@ -2375,8 +2067,8 @@ router.post('/uqc', async (req, res) => {
         const result = await client.query(
             `INSERT INTO carding.u_data_entry
             (entry_id, entry_type, entry_date, shift, variety, mc_no,
-             u_percent, cvm, cvm_1m, cvm_3m, remarks)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+             u_percent, cvm, cvm_1m, cvm_3m, remarks, operator)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             RETURNING *`,
             [
                 entry_id,
@@ -2389,7 +2081,8 @@ router.post('/uqc', async (req, res) => {
                 toNumber(cvm),
                 toNumber(cvm_1m),
                 toNumber(cvm_3m),
-                remarks
+                remarks,
+                String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null
             ]
         );
 
@@ -2562,7 +2255,6 @@ router.get('/uqc/global', async (req, res) => {
  */
 router.post('/dfk-pressure', async (req, res) => {
     try {
-        await ensureCardingEntryIdColumns();
         const { entry_id, inspection_type, entry_date, data } = req.body;
 
         if (!entry_id) {
@@ -2580,8 +2272,8 @@ router.post('/dfk-pressure', async (req, res) => {
                 `INSERT INTO carding.card_dfk_pressure_checking
                 (entry_id, inspection_type, entry_date, machine_name,
                  dfk, ccd, icfd_1, lt, cds,
-                 silver_draft, icfd_2, idf_in, idf_out, al_on)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                 silver_draft, icfd_2, idf_in, idf_out, al_on, operator)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
                 [
                     entry_id,
                     inspection_type,
@@ -2596,7 +2288,8 @@ router.post('/dfk-pressure', async (req, res) => {
                     row.icfd_2 ?? null,
                     row.idf_in ?? null,
                     row.idf_out ?? null,
-                    row.al_on ?? null
+                    row.al_on ?? null,
+                    String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null
                 ]
             );
         }
@@ -2792,7 +2485,6 @@ router.get('/dfk-pressure', async (req, res) => {
  */
 router.post('/qc-header', async (req, res, next) => {
   try {
-    await ensureCardingEntryIdColumns();
     const {
       entry_id,
       type,
@@ -2807,7 +2499,6 @@ router.post('/qc-header', async (req, res, next) => {
       draft_speed,
       tension_draft,
       delivery_hank,
-      setting,
       feed_roll_to_lickerin,
       lickerin_to_cylinder,
       cylinder_to_flats,
@@ -2841,7 +2532,7 @@ router.post('/qc-header', async (req, res, next) => {
         entry_id, type, count_name, consignee_name, creation_date,
         machine_no, lickerin_speed, cylinder_speed, flats_speed,
         delivery_speed, draft_speed, tension_draft, delivery_hank,
-        setting, feed_roll_to_lickerin, lickerin_to_cylinder,
+        feed_roll_to_lickerin, lickerin_to_cylinder,
         cylinder_to_flats, cylinder_to_doffer,
         sfl, sfd, lickerin, cylinder, doffer, flats, operator
       )
@@ -2849,16 +2540,16 @@ router.post('/qc-header', async (req, res, next) => {
         $1,$2,$3,$4,$5,
         $6,$7,$8,$9,
         $10,$11,$12,$13,
-        $14,$15,$16,
-        $17,$18,
-        $19,$20,$21,$22,$23,$24,$25
+        $14,$15,
+        $16,$17,
+        $18,$19,$20,$21,$22,$23,$24
       )
       RETURNING *`,
       [
         resolvedEntryId, type, count_name, consignee_name, creation_date,
         machine_no, lickerin_speed, cylinder_speed, flats_speed,
         delivery_speed, draft_speed, tension_draft, delivery_hank,
-        setting, feed_roll_to_lickerin, lickerin_to_cylinder,
+        feed_roll_to_lickerin, lickerin_to_cylinder,
         cylinder_to_flats, cylinder_to_doffer,
         sfl, sfd, lickerin, cylinder, doffer, flats, user_name || null
       ]
@@ -2902,7 +2593,6 @@ router.post('/qc-header', async (req, res, next) => {
  */
 router.get('/qc-header', async (req, res, next) => {
   try {
-    await ensureCardingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -3035,7 +2725,6 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
       draft_speed,
       tension_draft,
       delivery_hank,
-      setting,
       feed_roll_to_lickerin,
       lickerin_to_cylinder,
       cylinder_to_flats,
@@ -3063,19 +2752,18 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
            draft_speed = $10,
            tension_draft = $11,
            delivery_hank = $12,
-           setting = $13,
-           feed_roll_to_lickerin = $14,
-           lickerin_to_cylinder = $15,
-           cylinder_to_flats = $16,
-           cylinder_to_doffer = $17,
-           sfl = $18,
-           sfd = $19,
-           lickerin = $20,
-           cylinder = $21,
-           doffer = $22,
-           flats = $23,
-           operator = COALESCE($24, operator)
-       WHERE id = $25
+           feed_roll_to_lickerin = $13,
+           lickerin_to_cylinder = $14,
+           cylinder_to_flats = $15,
+           cylinder_to_doffer = $16,
+           sfl = $17,
+           sfd = $18,
+           lickerin = $19,
+           cylinder = $20,
+           doffer = $21,
+           flats = $22,
+           operator = COALESCE($23, operator)
+       WHERE id = $24
        RETURNING *`,
       [
         type,
@@ -3090,7 +2778,6 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
         draft_speed,
         tension_draft,
         delivery_hank,
-        setting,
         feed_roll_to_lickerin,
         lickerin_to_cylinder,
         cylinder_to_flats,
@@ -3265,13 +2952,10 @@ const toNumericOrNull = (value) => {
 
 router.post('/change-control', async (req, res, next) => {
   try {
-    await ensureCardingChangeTables();
-    await ensureCardingEntryIdColumns();
 
     const {
       entry_id,
       type,
-      test_no,
       entry_date,
       cdo_no,
       cdg_no_proposed,
@@ -3283,8 +2967,6 @@ router.post('/change-control', async (req, res, next) => {
       del_hank_proposed,
       feed_weight_existing,
       feed_weight_proposed,
-      speed_existing,
-      speed_proposed,
       licker_in_speed_1_existing,
       licker_in_speed_1_proposed,
       licker_in_speed_2_existing,
@@ -3311,6 +2993,7 @@ router.post('/change-control', async (req, res, next) => {
       rr_rk_beater_speed_proposed,
       remarks,
       operator,
+      department,
     } = req.body;
 
     if (!entry_id) {
@@ -3336,12 +3019,11 @@ router.post('/change-control', async (req, res, next) => {
       `INSERT INTO carding.carding_change_request
        (
          entry_id,
-         type, test_no, entry_date, cdo_no, cdg_no_proposed,
+         type, entry_date, cdo_no, cdg_no_proposed,
          mixing_existing, mixing_proposed,
          blend_percent_existing, blend_percent_proposed,
          del_hank_existing, del_hank_proposed,
          feed_weight_existing, feed_weight_proposed,
-         speed_existing, speed_proposed,
          licker_in_speed_1_existing, licker_in_speed_1_proposed,
          licker_in_speed_2_existing, licker_in_speed_2_proposed,
          cylinder_speed_existing, cylinder_speed_proposed,
@@ -3354,34 +3036,32 @@ router.post('/change-control', async (req, res, next) => {
          web_speed_draft_mw_v4_existing, web_speed_draft_mw_v4_proposed,
          lc_wing_setting_existing, lc_wing_setting_proposed,
          rr_rk_beater_speed_existing, rr_rk_beater_speed_proposed,
-         remarks, operator
+         remarks, operator, department
        )
        VALUES (
-         $1, $2, $3, $4, $5, $6,
-         $7, $8,
-         $9, $10,
-         $11, $12,
-         $13, $14,
-         $15, $16,
-         $17, $18,
-         $19, $20,
-         $21, $22,
-         $23, $24,
-         $25, $26,
-         $27, $28,
-         $29, $30,
-         $31, $32,
-         $33, $34,
-         $35, $36,
-         $37, $38,
-         $39, $40,
-         $41, $42
+         $1, $2, $3, $4, $5,
+         $6, $7,
+         $8, $9,
+         $10, $11,
+         $12, $13,
+         $14, $15,
+         $16, $17,
+         $18, $19,
+         $20, $21,
+         $22, $23,
+         $24, $25,
+         $26, $27,
+         $28, $29,
+         $30, $31,
+         $32, $33,
+         $34, $35,
+         $36, $37,
+         $38, $39, $40
        )
        RETURNING *`,
       [
         entry_id,
         type,
-        test_no ?? null,
         entry_date,
         cdo_no ?? null,
         normalizedCdgNoProposed,
@@ -3393,8 +3073,6 @@ router.post('/change-control', async (req, res, next) => {
         toNumericOrNull(del_hank_proposed),
         toNumericOrNull(feed_weight_existing),
         toNumericOrNull(feed_weight_proposed),
-        toNumericOrNull(speed_existing),
-        toNumericOrNull(speed_proposed),
         toNumericOrNull(licker_in_speed_1_existing),
         toNumericOrNull(licker_in_speed_1_proposed),
         toNumericOrNull(licker_in_speed_2_existing),
@@ -3420,7 +3098,8 @@ router.post('/change-control', async (req, res, next) => {
         toNumericOrNull(rr_rk_beater_speed_existing),
         toNumericOrNull(rr_rk_beater_speed_proposed),
         remarks ?? null,
-        operator ?? null
+        operator ?? null,
+        department ?? null
       ]
     );
 
@@ -3466,7 +3145,6 @@ router.post('/change-control', async (req, res, next) => {
  */
 router.get('/change-control', async (req, res, next) => {
   try {
-    await ensureCardingChangeTables();
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.max(1, parseInt(req.query.limit, 10) || 10);
@@ -3527,8 +3205,6 @@ router.get('/change-control', async (req, res, next) => {
 
 router.get('/change-control/approvals', async (req, res, next) => {
   try {
-    await ensureCardingChangeTables();
-    await ensureCardingEntryIdColumns();
     const status = String(req.query.status ?? '').trim();
     const whereClause = status ? 'WHERE approval_status = $1' : '';
     const result = await client.query(
@@ -3543,7 +3219,6 @@ router.get('/change-control/approvals', async (req, res, next) => {
 
 router.post('/change-control/approvals/:id/approve', async (req, res, next) => {
   try {
-    await ensureCardingChangeTables();
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
@@ -3559,7 +3234,11 @@ router.post('/change-control/approvals/:id/approve', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
-    await closeWheelChangeApprovalTicket('carding.carding_change_request', id);
+    await closeWheelChangeApprovalTicket('carding.carding_change_request', id, {
+      decision: 'approved',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
     res.status(200).json({
       message: 'Carding change control entry approved',
       data: withScreenEntryId('card_change_control', result.rows[0])
@@ -3571,7 +3250,6 @@ router.post('/change-control/approvals/:id/approve', async (req, res, next) => {
 
 router.post('/change-control/approvals/:id/reject', async (req, res, next) => {
   try {
-    await ensureCardingChangeTables();
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
@@ -3588,7 +3266,11 @@ router.post('/change-control/approvals/:id/reject', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
-    await closeWheelChangeApprovalTicket('carding.carding_change_request', id);
+    await closeWheelChangeApprovalTicket('carding.carding_change_request', id, {
+      decision: 'rejected',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
     res.status(200).json({
       message: 'Carding change control entry rejected',
       data: withScreenEntryId('card_change_control', result.rows[0])
@@ -3600,7 +3282,6 @@ router.post('/change-control/approvals/:id/reject', async (req, res, next) => {
 
 router.post('/card-waste-study', async (req, res, next) => {
   try {
-    await ensureCardWasteStudyTable();
 
     const {
       type,
@@ -3662,18 +3343,17 @@ router.post('/card-waste-study', async (req, res, next) => {
 
     const result = await client.query(
       `INSERT INTO carding.card_waste_study (
-        entry_id, waste_study_id, date, operator, variety, entry_type, study_type,
+        entry_id, date, operator, variety, entry_type, study_type,
         carding_production_kg, type_entries, waste_type_entries,
         waste_type, waste_kg, waste_percent, overall_percent,
         remarks
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
       )
       RETURNING *`,
       [
         entry_id || null,
-        null,
         resolvedDate,
         String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null,
         variety,
@@ -3751,7 +3431,6 @@ router.post('/card-waste-study', async (req, res, next) => {
 
 router.get('/card-waste-study', async (req, res, next) => {
   try {
-    await ensureCardWasteStudyTable();
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.max(1, parseInt(req.query.limit, 10) || 10);
@@ -3850,9 +3529,9 @@ router.post('/nre', async (req, res, next) => {
         flat_specs, flat_tonnage_1, flat_tonnage_2,
         lickerin_specs, lickerin_tonnage_1, lickerin_tonnage_2,
         silver_hank, delivery_mtr_min,
-        fibre_nep_gms_card_mat, fibre_nep_gms_silver, carding_nre_percent
+        fibre_nep_gms_card_mat, fibre_nep_gms_silver, carding_nre_percent, operator
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING *`,
       [
         entry_id,
@@ -3874,7 +3553,8 @@ router.post('/nre', async (req, res, next) => {
         delivery_mtr_min || null,
         fibre_nep_gms_card_mat || null,
         fibre_nep_gms_silver || null,
-        carding_nre_percent || null
+        carding_nre_percent || null,
+        String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null
       ]
     );
 

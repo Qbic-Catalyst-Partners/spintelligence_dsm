@@ -11,6 +11,7 @@ import { clearCardingState, submitCardingNati } from "@/store/slices/carding";
 import { fetchCardingMasterMachines, fetchCardingMasterVarieties } from "@/apis/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import styles from "./natiDataEntry.module.css";
 
 const emptyCardingState = {
@@ -219,6 +220,30 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
                 });
             } catch (recordError) {
                 console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+            }
+
+            // previewItems' per-row labels are prefixed ("Row 1 MC No") for
+            // display clarity - none of those match a Value Threshold rule's
+            // field name, which is configured against the unprefixed catalog
+            // names ("MC No", "Ratio into size-1.0" etc, see fieldCatalog.js's
+            // "Carding::Nati Data Entry" entry). Build a separate, unprefixed
+            // values array here so every row's value gets a real chance to match.
+            try {
+                await createThresholdViolationTickets({
+                    department: "Quality Control",
+                    subDepartment: "Carding",
+                    screenName: selectedType,
+                    machineName: selectedType,
+                    entryId: nextEntryId,
+                    values: entries.flatMap((entry) => ([
+                        { label: "MC No", value: entry.mc_no },
+                        { label: "Ratio into size-1.0", value: entry.ratio_size_1 },
+                        { label: "Ratio into size-0.7", value: entry.ratio_size_07 },
+                        { label: "Ratio into size-0.5", value: entry.ratio_size_05 },
+                    ])),
+                });
+            } catch (ticketError) {
+                console.error("Threshold ticket generation failed:", ticketError);
             }
             setShowSuccess(true);
 

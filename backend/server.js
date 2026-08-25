@@ -168,6 +168,25 @@ const ENTRY_ID_ROUTE_TABLES = {
   '/drawframe/wheel-change/type1': 'drawframe.wheel_change',
   '/drawframe/wheel-change/type2': 'drawframe.wheel_change',
   '/drawframe/wheel-change/type3': 'drawframe.wheel_change',
+  // Without this mapping, "next entry id" for Simplex Wheel Change had no real table to check
+  // against - it only trusted ticketing_system.frontend_entry_registry (reservations), which can
+  // drift behind what's actually committed to simplex.wheel_change. The frontend's own fallback
+  // (fetchPath: "/simplex/notebook") makes this worse, not better - it points at a completely
+  // different table (simplex.simplex_notebook) that Wheel Change never writes to, so it can never
+  // see prior submissions either. Net effect: every save kept reserving "SWC-0001", so any save
+  // after the very first collided on the unique entry_id index and failed with 409 Duplicate.
+  '/simplex/wheel-change': 'simplex.wheel_change',
+  // Same missing-mapping bug, same fix, across the equivalent Spinning screens - none of these
+  // five route_paths were registered, so each one's "next entry id" only trusted the reservation
+  // registry instead of checking the real table, risking the same duplicate-entry_id collision
+  // once frontend_entry_registry drifts behind what's actually committed.
+  '/spinning/qc': 'spinning.spinning_qc_header',
+  '/spinning/count-change': 'spinning.count_change_inspections',
+  '/spinning/ring-frame': 'spinning.ring_frame_inspections',
+  '/spinning/lycra-missing': 'spinning.lycra_missing',
+  '/spinning/wheel-change/type1': 'spinning.wheel_change_inspection',
+  '/spinning/wheel-change/type2': 'spinning.wheel_change_v2',
+  '/spinning/wheel-change/type3': 'spinning.wheel_change',
   '/drawframe/a-percent': 'wrapping.a_percent',
   '/drawframe/stretch-percent': 'wrapping.stretch_percent',
   '/drawframe/stretch-percentage': 'wrapping.stretch_percent',
@@ -205,7 +224,13 @@ const ENTRY_ID_ROUTE_PREFIXES = {
   '/autoconer/splice-strength': { prefix: 'ASS', width: 4, separator: '-' },
   '/autoconer/drum-wise': { prefix: 'ADA', width: 4, separator: '-' },
   '/autoconer/parameter-entries/pending-csp': { prefix: 'ACS', width: 4, separator: '-' },
-  '/autoconer/parameter-entries/pending-quality': { prefix: 'AUP', width: 4, separator: '-' }
+  '/autoconer/parameter-entries/pending-quality': { prefix: 'AUP', width: 4, separator: '-' },
+  // Without this mapping, the generic fallback in getNextEntryIdForRoute has no prefix to
+  // apply and hands out a bare number (e.g. "0013") instead of "BDT-0013" whenever it's
+  // invoked directly (bypassing the frontend's own per-study reservation + per-tuft "-01"
+  // suffixing) — that's how blowroom.drop_test ended up with unprefixed entry_id rows like
+  // "0004", "0005", "0006".
+  '/blowroom/drop-test': { prefix: 'BDT', width: 4, separator: '-' }
 };
 
 // Extract only the TRAILING run of digits (the actual sequence number), not
@@ -704,15 +729,4 @@ const startThresholdTicketWorker = () => {
 };
 
 startThresholdTicketWorker();
-
-// value_threshold_rules' comparison_mode column (and the table itself) was
-// previously only migrated lazily, the first time someone hit the
-// /operator-tickets/thresholds routes - notebook submit routes that evaluate
-// against it (mixing.js's autoCreateTicket) never triggered that migration
-// themselves, so a fresh deploy's very first threshold breach could 500 on a
-// missing column. Ensure it once at boot instead.
-db.initPromise
-  .then(() => operatorTicketRoutes.ensureValueThresholdRulesTable())
-  .catch((error) => console.warn('[value-threshold-rules] schema ensure skipped:', error.message));
-
 

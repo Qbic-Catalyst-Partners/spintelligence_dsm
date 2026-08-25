@@ -30,3 +30,27 @@ export const getNotebookKeyForColumn = (label) =>
 // rows saved under the old free-text label before this fix.
 export const getColumnForNotebookKey = (notebookKey) =>
   PP_NOTEBOOK_COLUMNS.find((item) => normalize(item.notebookKey) === normalize(notebookKey))?.label || notebookKey;
+
+// ticketing_system.pp_notebook_threshold (PPNotebookThresholdPage.jsx's PP_NOTEBOOK_OPTIONS) keys
+// its rows by a third, distinct naming convention from both the short column labels above and the
+// registered notebook names in PP_NOTEBOOK_COLUMNS — e.g. "Mixing Process Parameter",
+// "Drawframe Process Parameter (Breaker)", "Autoconer Process Parameter (Q2)". Needed for the
+// "Update Existing PP" matrix's per-column overdue-threshold lookup, which reads this table.
+const PP_NOTEBOOK_THRESHOLD_LABEL_TO_COLUMN = [
+  { label: "Mixing", notebookThresholdLabel: "Mixing Process Parameter" },
+  { label: "Blow Room", notebookThresholdLabel: "Blowroom Process Parameter" },
+  { label: "Carding", notebookThresholdLabel: "Carding Process Parameter" },
+  { label: "DF Breaker", notebookThresholdLabel: "Drawframe Process Parameter (Breaker)" },
+  { label: "DF Finisher", notebookThresholdLabel: "Drawframe Process Parameter (Finisher)" },
+  { label: "Simplex", notebookThresholdLabel: "Simplex Process Parameter" },
+  { label: "Spinning", notebookThresholdLabel: "Spinning Process Parameter" },
+  { label: "Autoconer PP", notebookThresholdLabel: "Autoconer Process Parameter" },
+  { label: "AC-Q2", notebookThresholdLabel: "Autoconer Process Parameter (Q2)" },
+  { label: "AC-Q3", notebookThresholdLabel: "Autoconer Process Parameter (Q3)" },
+  { label: "AC-Q4", notebookThresholdLabel: "Autoconer Process Parameter (Q4)" },
+];
+
+export const getColumnForNotebookThresholdLabel = (notebookThresholdLabel) =>
+  PP_NOTEBOOK_THRESHOLD_LABEL_TO_COLUMN.find(
+    (item) => normalize(item.notebookThresholdLabel) === normalize(notebookThresholdLabel)
+  )?.label || notebookThresholdLabel;

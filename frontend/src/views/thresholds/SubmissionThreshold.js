@@ -15,13 +15,14 @@ import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
+import useRoleDepartmentAccess from "@/hooks/useRoleDepartmentAccess";
 import styles from "@/styles/SubmissionThreshold.module.css";
 
 const createRule = () => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   l1User: "",
-  frequency: "1",
-  everyDays: "1",
+  frequency: "",
+  everyDays: "",
   isActive: true,
   criticality: "",
 });
@@ -148,6 +149,25 @@ const resolveUsers = (users, values) =>
     .map((value) => resolveUser(users, value))
     .filter(Boolean);
 
+// Prefers a stored name field, then a live lookup by id/email/etc against the
+// current users list, and only as a last resort falls back to the raw stored
+// value - unless that raw value is a bare numeric id, in which case showing
+// it would look like a broken name, so it renders blank ("-" downstream)
+// instead.
+const resolveApprovalL1Display = (users, item) => {
+  const nameCandidate = String(item?.approval_l1_name || item?.approvalL1Name || "").trim();
+  if (nameCandidate) return nameCandidate;
+
+  const idCandidate = item?.approval_l1 || item?.approvalL1;
+  const resolvedName =
+    getUserDisplayName(resolveUsers(users, idCandidate)[0]) ||
+    getUserDisplayName(resolveUser(users, idCandidate));
+  if (resolvedName) return resolvedName;
+
+  const rawValue = String(idCandidate ?? "").trim();
+  return /^\d+$/.test(rawValue) ? "" : rawValue;
+};
+
 function ExpandableCell({ values = [], fallback = "-" }) {
   const normalizedValues = Array.from(
     new Set(
@@ -192,6 +212,7 @@ function SingleSelectDropdown({
 }) {
   const containerRef = useRef(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -206,38 +227,54 @@ function SingleSelectDropdown({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isOpen) setSearchText("");
+  }, [isOpen]);
+
   const selectedValues = Array.isArray(value)
     ? value.map((item) => String(item || "").trim()).filter(Boolean)
     : normalizeNameList(value);
   const selectedSet = new Set(selectedValues.map((item) => item.toLowerCase()));
   const selectedLabel =
-    selectedValues.length > 1
-      ? `${selectedValues.length} selected`
-      : selectedValues[0] || placeholder;
+    selectedValues.length > 0
+      ? `${selectedValues.length} user${selectedValues.length > 1 ? "s" : ""} selected`
+      : placeholder;
+  const filteredOptions = searchText.trim()
+    ? options.filter((option) => option.name?.toLowerCase().includes(searchText.trim().toLowerCase()))
+    : options;
 
   return (
     <div
       ref={containerRef}
       className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}
     >
-      <button
-        type="button"
-        className={styles.multiSelectButton}
-        onClick={() => {
-          if (!disabled) {
-            setIsOpen((current) => !current);
-          }
-        }}
-        disabled={disabled}
-      >
-        <span className={styles.multiSelectValue}>{selectedLabel}</span>
-        <span className={styles.multiSelectChevron}>{isOpen ? "^" : "v"}</span>
-      </button>
+      <div className={styles.multiSelectButton}>
+        <input
+          type="text"
+          className={styles.multiSelectValue}
+          value={isOpen ? searchText : ""}
+          placeholder={selectedLabel}
+          onFocus={() => !disabled && setIsOpen(true)}
+          onChange={(event) => {
+            setSearchText(event.target.value);
+            if (!disabled) setIsOpen(true);
+          }}
+          disabled={disabled}
+        />
+        <span
+          className={styles.multiSelectChevron}
+          onClick={() => {
+            if (!disabled) setIsOpen((current) => !current);
+          }}
+        >
+          {isOpen ? "^" : "v"}
+        </span>
+      </div>
 
       {isOpen ? (
         <div className={styles.multiSelectMenu}>
-          {options.length ? (
-            options.map((option) => (
+          {filteredOptions.length ? (
+            filteredOptions.map((option) => (
               <button
                 key={option.id}
                 type="button"
@@ -279,6 +316,98 @@ function SingleSelectDropdown({
   );
 }
 
+function SingleUserSelect({
+  value = "",
+  options = [],
+  onChange,
+  placeholder = "Select",
+  disabled = false,
+  emptyLabel = "No users available",
+}) {
+  const containerRef = useRef(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!containerRef.current?.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) setSearchText("");
+  }, [isOpen]);
+
+  const selectedValue = String(value || "").trim();
+  const buttonLabel = selectedValue || placeholder;
+  const filteredOptions = searchText.trim()
+    ? options.filter((option) => option.name?.toLowerCase().includes(searchText.trim().toLowerCase()))
+    : options;
+
+  return (
+    <div
+      ref={containerRef}
+      className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}
+    >
+      <div className={styles.multiSelectButton}>
+        <input
+          type="text"
+          className={styles.multiSelectValue}
+          value={isOpen ? searchText : ""}
+          placeholder={buttonLabel}
+          onFocus={() => !disabled && setIsOpen(true)}
+          onChange={(event) => {
+            setSearchText(event.target.value);
+            if (!disabled) setIsOpen(true);
+          }}
+          disabled={disabled}
+        />
+        <span
+          className={styles.multiSelectChevron}
+          onClick={() => {
+            if (!disabled) setIsOpen((current) => !current);
+          }}
+        >
+          {isOpen ? "^" : "v"}
+        </span>
+      </div>
+
+      {isOpen ? (
+        <div className={styles.multiSelectMenu}>
+          {filteredOptions.length ? (
+            filteredOptions.map((option) => {
+              const optionName = String(option.name || "").trim();
+              const isActive = optionName.toLowerCase() === selectedValue.toLowerCase();
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`${styles.singleSelectOption} ${isActive ? styles.singleSelectOptionActive : ""}`}
+                  onClick={() => {
+                    onChange?.(optionName);
+                    setIsOpen(false);
+                  }}
+                >
+                  {optionName}
+                </button>
+              );
+            })
+          ) : (
+            <div className={styles.multiSelectEmpty}>{emptyLabel}</div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function SubmissionThreshold({ standalone = true, editItem = null, onEditItemHandled } = {}) {
   const dispatch = useDispatch();
   const router = useRouter();
@@ -286,6 +415,7 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
   const users = useSelector((state) => state.users?.users || []);
   const canAccessPage = isFullAccessUser(user);
+  const { hasDepartmentAccess } = useRoleDepartmentAccess(users);
 
   const [activeTab, setActiveTab] = useState("new");
   const [configs, setConfigs] = useState([]);
@@ -304,7 +434,7 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
   const [deletingId, setDeletingId] = useState("");
   const [previewPayload, setPreviewPayload] = useState(null);
 
-  const availableDepartments = departmentDirectory.filter((item) => item.enabled);
+  const availableDepartments = departmentDirectory;
   const selectedDepartment =
     availableDepartments.find((item) => item.slug === selectedDepartmentSlug) || null;
   const availableSubDepartments = (selectedDepartment?.subDepartments || []).filter(
@@ -321,7 +451,15 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
     [availableSubDepartments]
   );
 
-  const l1Options = useMemo(() => buildUserOptions(users, "L1"), [users]);
+  const selectedSubDepartmentName = subDepartmentNameBySlug[selectedSubDepartmentSlug] || "";
+
+  const l1Options = useMemo(
+    () =>
+      buildUserOptions(users, "L1").filter((option) =>
+        hasDepartmentAccess(option, selectedSubDepartmentName)
+      ),
+    [users, selectedSubDepartmentName, hasDepartmentAccess]
+  );
 
   const totalThresholds = configs.length;
   const activeThresholds = configs.filter((item) => item?.is_active).length;
@@ -529,10 +667,7 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
         .find((department) => department.slug === departmentSlug)
         ?.subDepartments?.find((subDepartment) => subDepartment.name === item?.sub_department)?.slug ||
       "";
-    const resolvedL1Name =
-      getUserDisplayName(resolveUsers(users, item?.approval_l1_name || item?.approval_l1)[0]) ||
-      getUserDisplayName(resolveUser(users, item?.approval_l1_name || item?.approval_l1)) ||
-      String(item?.approval_l1_name || item?.approval_l1 || "").trim();
+    const resolvedL1Name = resolveApprovalL1Display(users, item);
     setSelectedDepartmentSlug(departmentSlug);
     setSelectedSubDepartmentSlug(subDepartmentSlug);
     setSelectedScreenName(item?.screen_name || "");
@@ -780,7 +915,11 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                   <select value={selectedDepartmentSlug} onChange={handleDepartmentChange}>
                     <option value="">Select Department</option>
                     {availableDepartments.map((department) => (
-                      <option key={department.slug} value={department.slug}>
+                      <option
+                        key={department.slug}
+                        value={department.slug}
+                        disabled={department.slug === "electrical" || department.slug === "mechanical"}
+                      >
                         {department.name}
                       </option>
                     ))}
@@ -825,37 +964,33 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                   <div key={rule.id} className={styles.ruleCard}>
                     <div className={styles.ruleGrid}>
                       <label className={styles.field}>
+                        <span>Frequency (times)</span>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          autoComplete="off"
+                          value={rule.frequency}
+                          onChange={(event) =>
+                            handleRuleChange(rule.id, "frequency", event.target.value)
+                          }
+                          placeholder="Enter frequency"
+                        />
+                      </label>
+
+                      <label className={styles.field}>
                         <span>In Every (Days)</span>
                         <input
                           type="number"
                           min="1"
                           step="1"
+                          autoComplete="off"
                           value={rule.everyDays}
                           onChange={(event) =>
                             handleRuleChange(rule.id, "everyDays", event.target.value)
                           }
                           placeholder="Enter days"
                         />
-                      </label>
-
-                      <label className={styles.field}>
-                        <span>Assigned to</span>
-                        <select
-                          value={rule.l1User}
-                          onChange={(event) => handleRuleChange(rule.id, "l1User", event.target.value)}
-                          disabled={!l1Options.length}
-                        >
-                          <option value="">{l1Options.length ? "Selected L1 Users" : "No L1 users available"}</option>
-                          {l1Options.map((user) => {
-                            const displayName = getUserDisplayName(user);
-        const value = displayName;
-                            return (
-                              <option key={value} value={value}>
-                                {displayName}
-                              </option>
-                            );
-                          })}
-                        </select>
                       </label>
 
                       <label className={styles.field}>
@@ -874,16 +1009,17 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                       </label>
 
                       <label className={styles.field}>
-                        <span>Frequency</span>
-                        <input
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={rule.frequency}
-                          onChange={(event) =>
-                            handleRuleChange(rule.id, "frequency", event.target.value)
-                          }
-                          placeholder="Enter frequency"
+                        <span>Assigned to</span>
+                        <SingleUserSelect
+                          value={rule.l1User}
+                          options={l1Options.map((user) => ({
+                            id: user?.id,
+                            name: getUserDisplayName(user),
+                          }))}
+                          disabled={!l1Options.length}
+                          placeholder={l1Options.length ? "Select" : "No L1 users available"}
+                          emptyLabel="No L1 users available"
+                          onChange={(nextValue) => handleRuleChange(rule.id, "l1User", nextValue)}
                         />
                       </label>
 
@@ -1034,7 +1170,7 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                       <th>Frequency</th>
                       <th>In Every (Days)</th>
                       <th>Status</th>
-                      <th>Created At</th>
+                      <th>Updated At</th>
                       <th>Action</th>
                     </tr>
                   </thead>
@@ -1066,7 +1202,7 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                             <ExpandableCell values={item.screen_name} />
                           </td>
                           <td>
-                            <ExpandableCell values={item.approval_l1} />
+                            <ExpandableCell values={resolveApprovalL1Display(users, item)} />
                           </td>
                           <td>
                             <span
@@ -1092,7 +1228,11 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                               {item.is_active ? "Active" : "Inactive"}
                             </span>
                           </td>
-                          <td>{formatTimestamp(item.created_at || item.createdAt)}</td>
+                          <td>
+                            {formatTimestamp(
+                                item.updated_at || item.updatedAt || item.created_at || item.createdAt
+                            )}
+                          </td>
                           <td>
                             <div className={styles.actionMenuWrap} data-submission-menu="true">
                               <button

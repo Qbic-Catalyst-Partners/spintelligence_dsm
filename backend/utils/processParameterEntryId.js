@@ -246,7 +246,8 @@ const findExistingPpIdForCombo = async (countName, consigneeName) => {
 // inserting a new header row so the mismatch is caught prior to any write.
 const getCountNameConflict = async (entry_id, count_name, exclude = null) => {
   const existing = await getExistingCountNameForEntryId(entry_id, exclude);
-  if (existing && count_name && existing !== count_name) {
+  const normalize = (value) => String(value || '').trim().toLowerCase();
+  if (existing && count_name && normalize(existing) !== normalize(count_name)) {
     return existing;
   }
   return null;

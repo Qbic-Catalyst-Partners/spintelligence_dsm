@@ -35,6 +35,7 @@ import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { formatEntryId } from "@/utils/entryIds";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
 import { normalizeOcrDisplayRow, normalizeOcrDisplayValue } from "@/utils/ocrDisplayValues";
@@ -192,7 +193,6 @@ const FINISHER_PREFIXES = String(
 
 const createMachineEntry = (machineName = "") => ({
   machineName,
-  mcNo: "",
   fanWaste: "",
   cotChange: "",
   stripperWaste: "",
@@ -751,7 +751,6 @@ function DrawFrame() {
   const aPercentFileInputRef = useRef(null);
   const [machineNameOptions, setMachineNameOptions] = useState([]);
   const [yarnCvMachineOptions, setYarnCvMachineOptions] = useState([]);
-  const [machineMasterByName, setMachineMasterByName] = useState({});
   const [aPercentFile, setAPercentFile] = useState(null);
   const [aPercentOcrBusy, setAPercentOcrBusy] = useState(false);
   const [aPercentOcrMessage, setAPercentOcrMessage] = useState("");
@@ -856,24 +855,19 @@ function DrawFrame() {
         if (!isMounted) return;
         const machines = Array.isArray(dropdown?.mcNos) ? dropdown.mcNos : [];
         const names = [];
-        const nextMasterByName = {};
         machines.forEach((item) => {
           const machineName = normalizeMachineName(item);
-          const mcNo = String(item?.mc_no || item?.value || item?.machine_no || item?.machineNo || item?.mcNo || "").trim();
           if (!machineName) return;
           names.push(machineName);
-          nextMasterByName[machineName] = { mcNo: mcNo || machineName };
         });
         setYarnCvMachineOptions(
           mergeUniqueMachineNames(names, [...cvMachineOptions, ...STATIC_BR_COTS_MACHINE_NAMES])
         );
-        setMachineMasterByName(nextMasterByName);
       } catch (_error) {
         if (isMounted) {
           setYarnCvMachineOptions(
             mergeUniqueMachineNames([], [...cvMachineOptions, ...STATIC_BR_COTS_MACHINE_NAMES])
           );
-          setMachineMasterByName({});
         }
       }
     };
@@ -1008,9 +1002,6 @@ function DrawFrame() {
           ? {
               ...item,
               [field]: value,
-              ...(field === "machineName"
-                ? { mcNo: machineMasterByName[value]?.mcNo || item.mcNo || "" }
-                : {}),
             }
           : item
       )
@@ -1554,7 +1545,17 @@ function DrawFrame() {
               remarks: uPercentForm.remarks,
             },
           },
-        }).catch((error) => console.error("Submitted notebook creation failed:", error));
+        }).catch((error) => console.error("Submitted notebook creation failed:", error))
+          .then(() =>
+            createThresholdViolationTickets({
+              department: "Quality Control",
+              subDepartment: "Draw Frame",
+              screenName: form.type,
+              machineName: form.type,
+              entryId,
+              values: buildPreviewItems,
+            }).catch((ticketError) => console.error("Threshold ticket generation failed:", ticketError))
+          );
       }).finally(() => {
         suppressAutoSuccessRef.current = false;
       });
@@ -1588,6 +1589,18 @@ function DrawFrame() {
             }),
           },
         });
+        try {
+          await createThresholdViolationTickets({
+            department: "Quality Control",
+            subDepartment: "Draw Frame",
+            screenName: form.type,
+            machineName: form.type,
+            entryId,
+            values: buildPreviewItems,
+          });
+        } catch (ticketError) {
+          console.error("Threshold ticket generation failed:", ticketError);
+        }
         await reserveEntryId();
         showSuccessOnce();
       } catch (submitError) {
@@ -1615,6 +1628,18 @@ function DrawFrame() {
             submitted_fields: payload,
           },
         }).catch((error) => console.error("Submitted notebook creation failed:", error));
+        try {
+          await createThresholdViolationTickets({
+            department: "Quality Control",
+            subDepartment: "Draw Frame",
+            screenName: form.type,
+            machineName: form.type,
+            entryId,
+            values: wheelChangePreviewItems,
+          });
+        } catch (ticketError) {
+          console.error("Threshold ticket generation failed:", ticketError);
+        }
         await reserveEntryId();
         await wheelChangeRef.current?.loadLatestSaved?.();
         showSuccessOnce();
@@ -1639,7 +1664,6 @@ function DrawFrame() {
           operator: operatorName,
           machines: machineEntries.map((item) => ({
             mc_name: item.machineName,
-            mc_no: item.mcNo || item.machineName,
             fan_waste: item.fanWaste || "",
             cot_change: item.cotChange || "",
             stripper_w: item.stripperWaste || "",
@@ -1686,17 +1710,34 @@ function DrawFrame() {
           return null;
         }
         void saveCustomFields(entryId);
+        // Acknowledgement Threshold's screen catalog tracks Cots Data Entry as two
+        // separate notebooks ("Draw Frame Cots Data Entry - Breaker" / "- Finisher"),
+        // not the single generic type name in the Type dropdown — append the
+        // selected process type so a threshold configured for either exact screen
+        // actually fires. The Yarn CV branch ("1 Yard / Half Yard CV Entry") has no
+        // such split in the catalog, so its name is left as-is.
+        const cotsNotebookName = isCots ? `${form.type} - ${form.processType}` : form.type;
         return recordSubmittedNotebook({
           department: "Quality Control",
           subDepartment: "Draw Frame",
-          notebookName: form.type,
+          notebookName: cotsNotebookName,
           entryId,
           previewItems: buildPreviewItems,
           user,
           extra: {
             submitted_fields: payload,
           },
-        }).catch((error) => console.error("Submitted notebook creation failed:", error));
+        }).catch((error) => console.error("Submitted notebook creation failed:", error))
+          .then(() =>
+            createThresholdViolationTickets({
+              department: "Quality Control",
+              subDepartment: "Draw Frame",
+              screenName: cotsNotebookName,
+              machineName: cotsNotebookName,
+              entryId,
+              values: buildPreviewItems,
+            }).catch((ticketError) => console.error("Threshold ticket generation failed:", ticketError))
+          );
       }).finally(() => {
         suppressAutoSuccessRef.current = false;
       });

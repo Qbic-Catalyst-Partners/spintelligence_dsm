@@ -117,16 +117,6 @@ const ensureDashboardAccess = (req, res, userId) => {
   return true;
 };
 
-const ensureDashboardBuilderTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS users.dashboard_builder_configs (
-      user_id integer PRIMARY KEY REFERENCES users.user_details(id) ON DELETE CASCADE,
-      widgets jsonb NOT NULL DEFAULT '[]'::jsonb,
-      updated_at timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-};
-
 const ensureUserDashboardPagesTable = async () => {
   await client.query(`
     CREATE TABLE IF NOT EXISTS users.user_dashboard_pages (
@@ -330,7 +320,6 @@ const validateWidget = async (widget) => {
 };
 
 const getConfig = async (userId) => {
-  await ensureDashboardBuilderTable();
   const result = await client.query(
     `SELECT widgets, updated_at
      FROM users.dashboard_builder_configs
@@ -345,7 +334,6 @@ const getConfig = async (userId) => {
 };
 
 const saveConfig = async (userId, widgets) => {
-  await ensureDashboardBuilderTable();
   const result = await client.query(
     `INSERT INTO users.dashboard_builder_configs (user_id, widgets, updated_at)
      VALUES ($1, $2::jsonb, now())
@@ -800,9 +788,16 @@ const handleStatisticsAnalyticsFilters = async (req, res, next) => {
   }
 };
 
-const getTicketScope = ({ userId, userEmployeeId = '' }) => {
+const getTicketScope = ({ userId, userEmployeeId = '', userLevel = '', userRole = '' }) => {
   const isAdmin001 = String(userEmployeeId || '').trim().toUpperCase() === 'ADMIN001';
-  if (isAdmin001) {
+  const role = String(userRole || '').trim().toLowerCase();
+  const isAdminRole = role === 'admin' || role === 'super admin' || role === 'superadmin';
+  // L5 is the top of the approval hierarchy (Executive Leadership) - it sees
+  // every ticket system-wide, same as admin, rather than only the ones that
+  // happened to reach its own approval_l1-l3_user_ids arrays.
+  const isL5 = String(userLevel || '').trim().toUpperCase() === 'L5';
+
+  if (isAdmin001 || isAdminRole || isL5) {
     return {
       canViewAllTickets: true,
       whereSql: '1=1',
@@ -812,7 +807,7 @@ const getTicketScope = ({ userId, userEmployeeId = '' }) => {
 
   return {
     canViewAllTickets: false,
-    whereSql: `(user_id = $1 OR $1 = ANY(COALESCE(approval_l1_user_ids, ARRAY[]::int[])) OR $1 = ANY(COALESCE(approval_l2_user_ids, ARRAY[]::int[])) OR $1 = ANY(COALESCE(approval_l3_user_ids, ARRAY[]::int[])))`,
+    whereSql: `(user_id = $1 OR $1 = ANY(COALESCE(approval_l1_user_ids, ARRAY[]::int[])) OR $1 = ANY(COALESCE(approval_l2_user_ids, ARRAY[]::int[])) OR $1 = ANY(COALESCE(approval_l3_user_ids, ARRAY[]::int[])) OR $1 = ANY(COALESCE(approval_l4_user_ids, ARRAY[]::int[])) OR $1 = ANY(COALESCE(approval_l5_user_ids, ARRAY[]::int[])))`,
     params: [userId]
   };
 };
@@ -872,7 +867,7 @@ const fetchWidgetData = async ({ widget, period = '1W', userId = null, userLevel
     const metricKey = String(
       widget?.metric_key || widget?.ticket_metric || widget?.input_field || ''
     ).toLowerCase().trim();
-    const ticketScope = getTicketScope({ userId, userEmployeeId, userRole });
+    const ticketScope = getTicketScope({ userId, userEmployeeId, userLevel, userRole });
     const ticketScopeWhere = ticketScope.whereSql;
     const queryParams = ticketScope.params;
     const countQueryByMetric = {

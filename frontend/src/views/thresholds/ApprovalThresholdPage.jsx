@@ -53,6 +53,7 @@ function MultiUserSelect({
 }) {
   const containerRef = useRef(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -67,34 +68,54 @@ function MultiUserSelect({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isOpen) setSearchText("");
+  }, [isOpen]);
+
   const selectedIds = new Set(normalizeIdList(value));
   const selectedNames = options
     .filter((option) => selectedIds.has(String(option.id)))
     .map((option) => option.name);
   const selectedLabel =
-    selectedNames.length > 1 ? `${selectedNames.length} selected` : selectedNames[0] || placeholder;
+    selectedNames.length > 0
+      ? `${selectedNames.length} user${selectedNames.length > 1 ? "s" : ""} selected`
+      : placeholder;
+  const filteredOptions = searchText.trim()
+    ? options.filter((option) => option.name?.toLowerCase().includes(searchText.trim().toLowerCase()))
+    : options;
 
   return (
     <div
       ref={containerRef}
       className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}
     >
-      <button
-        type="button"
-        className={styles.multiSelectButton}
-        onClick={() => {
-          if (!disabled) setIsOpen((current) => !current);
-        }}
-        disabled={disabled}
-      >
-        <span className={styles.multiSelectValue}>{selectedLabel}</span>
-        <span className={styles.multiSelectChevron}>{isOpen ? "^" : "v"}</span>
-      </button>
+      <div className={styles.multiSelectButton}>
+        <input
+          type="text"
+          className={styles.multiSelectValue}
+          value={isOpen ? searchText : ""}
+          placeholder={selectedLabel}
+          onFocus={() => !disabled && setIsOpen(true)}
+          onChange={(event) => {
+            setSearchText(event.target.value);
+            if (!disabled) setIsOpen(true);
+          }}
+          disabled={disabled}
+        />
+        <span
+          className={styles.multiSelectChevron}
+          onClick={() => {
+            if (!disabled) setIsOpen((current) => !current);
+          }}
+        >
+          {isOpen ? "^" : "v"}
+        </span>
+      </div>
 
       {isOpen ? (
         <div className={styles.multiSelectMenu}>
-          {options.length ? (
-            options.map((option) => {
+          {filteredOptions.length ? (
+            filteredOptions.map((option) => {
               const optionId = String(option.id);
               const isChecked = selectedIds.has(optionId);
               return (

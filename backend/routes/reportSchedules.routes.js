@@ -86,26 +86,6 @@ const validateResendFromAddress = (from) => {
   }
 };
 
-const ensureReportSchedulesTable = async () => {
-  await client.query(`
-    CREATE SCHEMA IF NOT EXISTS reports;
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS reports.report_schedules (
-      id text PRIMARY KEY,
-      schedule jsonb NOT NULL,
-      mail_payload jsonb NOT NULL,
-      active boolean NOT NULL DEFAULT true,
-      frequency varchar(30),
-      last_auto_sent_key text,
-      last_sent_at timestamptz,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      updated_at timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-};
-
 const padDatePart = (value) => String(value).padStart(2, '0');
 
 const toInputDate = (date) =>
@@ -486,7 +466,7 @@ const GENERAL_REPORT_SOURCE_CANDIDATES = {
     udataentry: ['carding.u_data_entry'],
     upercentdataentry: ['carding.u_data_entry'],
     carddfkpressurechecking: ['carding.card_dfk_pressure_checking'],
-    wheelchange: ['carding.card_change_control']
+    wheelchange: ['carding.carding_change_request']
   },
   comber: {
     ribbonlapcvdataentry: ['comber.ribbon_lap_cv_qc'],
@@ -890,7 +870,6 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         LEFT JOIN blowroom.br_waste_study_waste_rows wr ON wr.study_id = w.id AND wr.row_no = t.row_no`,
       selectColumns: [
         'w.entry_id',
-        'w.waste_study_id',
         'w.date',
         'w.variety',
         'w.study_type',
@@ -1084,7 +1063,6 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'pv.machine',
         'pv.cv_value',
         'pv.cv_5m_value',
-        'pv.unit',
         'ph.remarks',
         'ph.created_at'
       ],
@@ -1184,7 +1162,6 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
       selectColumns: [
         'entry_id',
         'type',
-        'test_no',
         'entry_date',
         'cdo_no',
         'cdg_no_proposed',
@@ -1196,8 +1173,6 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'del_hank_proposed',
         'feed_weight_existing',
         'feed_weight_proposed',
-        'speed_existing',
-        'speed_proposed',
         'licker_in_speed_1_existing',
         'licker_in_speed_1_proposed',
         'licker_in_speed_2_existing',
@@ -1239,7 +1214,6 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         LEFT JOIN carding.card_waste_study_waste_rows wr ON wr.study_id = w.id AND wr.row_no = t.row_no`,
       selectColumns: [
         'w.entry_id',
-        'w.waste_study_id',
         'w.date',
         'w.variety',
         'w.study_type',
@@ -1343,7 +1317,7 @@ GENERAL_REPORT_CUSTOM_SOURCES.drawframe = {
       'd.stripper_w',
       'd.auto_level',
       'd.silver_worn',
-      'd.main_tin',
+      'd.mass_thick_place AS main_tin',
       'd.scanning',
       'e.created_at'
     ],
@@ -2156,8 +2130,6 @@ const upsertSchedule = async ({ schedule, mailPayload }) => {
     }
   };
 
-  await ensureReportSchedulesTable();
-
   const result = await client.query(
     `INSERT INTO reports.report_schedules
       (id, schedule, mail_payload, active, frequency, updated_at)
@@ -2182,8 +2154,6 @@ const upsertSchedule = async ({ schedule, mailPayload }) => {
 };
 
 const sendStoredSchedule = async (id, { automatic = false, occurrenceKey = '', mailPayload = null } = {}) => {
-  await ensureReportSchedulesTable();
-
   const result = await client.query(
     `SELECT *
      FROM reports.report_schedules
@@ -2293,7 +2263,6 @@ const sendStoredSchedule = async (id, { automatic = false, occurrenceKey = '', m
 
 router.get('/schedules', async (req, res, next) => {
   try {
-    await ensureReportSchedulesTable();
     const result = await client.query(`
       SELECT *
       FROM reports.report_schedules
@@ -2351,7 +2320,6 @@ router.put('/schedules/:id', async (req, res, next) => {
 
 router.patch('/schedules/:id/status', async (req, res, next) => {
   try {
-    await ensureReportSchedulesTable();
     const active = req.body?.active !== false;
     const result = await client.query(
       `UPDATE reports.report_schedules
@@ -2375,7 +2343,6 @@ router.patch('/schedules/:id/status', async (req, res, next) => {
 
 router.delete('/schedules/:id', async (req, res, next) => {
   try {
-    await ensureReportSchedulesTable();
     await client.query(`DELETE FROM reports.report_schedules WHERE id = $1`, [req.params.id]);
     res.json({ message: 'Schedule deleted' });
   } catch (error) {
@@ -2449,7 +2416,6 @@ const runDueSchedules = async () => {
   workerRunning = true;
 
   try {
-    await ensureReportSchedulesTable();
     const now = new Date();
     const intervalMs = Number.isFinite(workerIntervalMs) && workerIntervalMs > 0 ? workerIntervalMs : 60000;
     const previousRun = workerLastRunAt || new Date(now.getTime() - Math.max(intervalMs, 60000));

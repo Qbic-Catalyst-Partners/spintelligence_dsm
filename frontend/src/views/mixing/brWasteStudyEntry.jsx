@@ -171,6 +171,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     variety: externalVariety,
     onVarietyChange = null,
     hideVarietyField = false,
+    onStudyTypeChange = null,
 }, ref) {
     const dispatch = useDispatch();
     const { success } = useSelector((state) => state.blowroom ?? DEFAULT_BLOWROOM_STATE);
@@ -217,6 +218,17 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
             setFormData((prev) => ({ ...prev, variety: externalVariety }));
         }
     }, [externalVariety, onVarietyChange]);
+
+    // Lets a caller (e.g. carding.js, whose Acknowledgement Threshold screen
+    // catalog splits this shared component's single "Individual Card Waste
+    // Study" screen into per-study-type entries "...Type 1"/"Type 2"/"Type 3")
+    // know which study type is currently selected, so it can build the
+    // catalog-matching notebook name for recordSubmittedNotebook itself.
+    // Optional and a no-op for existing callers (Blow Room, generic Mixing
+    // usage) that don't pass it.
+    useEffect(() => {
+        onStudyTypeChange?.(studyType);
+    }, [studyType, onStudyTypeChange]);
 
     const handleVarietyChange = (value) => {
         handleChange('variety', value);

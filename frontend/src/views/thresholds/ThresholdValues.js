@@ -18,6 +18,7 @@ import { deleteThresholdAPI, fetchThresholdsAPI, saveThresholdsBulkAPI, updateTh
 import Pagination from "@/components/Pagination";
 import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
+import useRoleDepartmentAccess from "@/hooks/useRoleDepartmentAccess";
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import { formatDateTime } from "@/utils/formatDateTime";
@@ -158,8 +159,8 @@ const buildInitialFilters = () => ({
     status: "",
 });
 
-const getScreenFieldOptions = (screenName, thresholds) => {
-    const catalogFields = getThresholdFieldsForScreen(screenName);
+const getScreenFieldOptions = (screenName, thresholds, context) => {
+    const catalogFields = getThresholdFieldsForScreen(screenName, context);
 
     if (catalogFields.length) {
         return catalogFields;
@@ -280,7 +281,12 @@ const resolveUserName = (users, value) => {
         );
     });
 
-    return getUserDisplayName(matchedUser) || String(value ?? "").trim();
+    if (matchedUser) {
+        return getUserDisplayName(matchedUser);
+    }
+
+    const rawValue = String(value ?? "").trim();
+    return /^\d+$/.test(rawValue) ? "" : rawValue;
 };
 
 const resolveDisplayValues = (users, candidates) => {
@@ -396,6 +402,7 @@ function MultiSelectDropdown({
 }) {
     const containerRef = useRef(null);
     const [isOpen, setIsOpen] = useState(false);
+    const [searchText, setSearchText] = useState("");
 
     useEffect(() => {
         const handleOutsideClick = (event) => {
@@ -410,8 +417,16 @@ function MultiSelectDropdown({
         };
     }, []);
 
+    useEffect(() => {
+        if (!isOpen) {
+            setSearchText("");
+        }
+    }, [isOpen]);
+
     const selectedValues = Array.isArray(values) ? values : [];
-    const buttonLabel = selectedValues.length ? "Selected" : placeholder;
+    const buttonLabel = selectedValues.length
+        ? `${selectedValues.length} user${selectedValues.length > 1 ? "s" : ""} selected`
+        : placeholder;
 
     const toggleValue = (option) => {
         if (disabled) {
@@ -425,29 +440,44 @@ function MultiSelectDropdown({
         onChange?.(nextValues);
     };
 
+    const filteredOptions = searchText.trim()
+        ? options.filter((option) =>
+              option.name?.toLowerCase().includes(searchText.trim().toLowerCase())
+          )
+        : options;
+
     return (
         <div
             ref={containerRef}
             className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}
         >
-            <button
-                type="button"
-                className={styles.multiSelectButton}
-                onClick={() => {
-                    if (!disabled) {
-                        setIsOpen((current) => !current);
-                    }
-                }}
-                disabled={disabled}
-            >
-                <span className={styles.multiSelectValue}>{buttonLabel}</span>
-                <span className={styles.multiSelectChevron}>{isOpen ? "˄" : "˅"}</span>
-            </button>
+            <div className={styles.multiSelectButton}>
+                <input
+                    type="text"
+                    className={styles.multiSelectValue}
+                    value={isOpen ? searchText : ""}
+                    placeholder={buttonLabel}
+                    onFocus={() => !disabled && setIsOpen(true)}
+                    onChange={(event) => {
+                        setSearchText(event.target.value);
+                        if (!disabled) setIsOpen(true);
+                    }}
+                    disabled={disabled}
+                />
+                <span
+                    className={styles.multiSelectChevron}
+                    onClick={() => {
+                        if (!disabled) setIsOpen((current) => !current);
+                    }}
+                >
+                    {isOpen ? "˄" : "˅"}
+                </span>
+            </div>
 
             {isOpen ? (
                 <div className={styles.multiSelectMenu}>
-                    {options.length ? (
-                        options.map((option) => (
+                    {filteredOptions.length ? (
+                        filteredOptions.map((option) => (
                             <label key={option.id} className={styles.multiSelectOption}>
                                 <input
                                     type="checkbox"
@@ -473,6 +503,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
     const isHydrated = useSelector((state) => state.auth?.isHydrated);
     const users = useSelector((state) => state.users?.users || []);
     const canAccessPage = isFullAccessUser(user);
+    const { hasDepartmentAccess } = useRoleDepartmentAccess(users);
 
     const [activeTab, setActiveTab] = useState("new");
     const [thresholds, setThresholds] = useState([]);
@@ -593,13 +624,16 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
         : [];
 
     const fieldOptions = useMemo(
-        () => getScreenFieldOptions(selectedScreenName, thresholds),
-        [selectedScreenName, thresholds]
+        () => getScreenFieldOptions(selectedScreenName, thresholds, selectedSubDepartment?.name),
+        [selectedScreenName, thresholds, selectedSubDepartment]
     );
 
     const l1Options = useMemo(
-        () => buildUserOptions(users, (item) => normalizeLookupValue(item?.level) === "l1"),
-        [users]
+        () =>
+            buildUserOptions(users, (item) => normalizeLookupValue(item?.level) === "l1").filter((option) =>
+                hasDepartmentAccess(option, selectedSubDepartment?.name)
+            ),
+        [users, selectedSubDepartment, hasDepartmentAccess]
     );
 
     useEffect(() => {
@@ -1176,7 +1210,11 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                         >
                                             <option value="">Select Department</option>
                                             {availableDepartments.map((department) => (
-                                                <option key={department.slug} value={department.slug}>
+                                                <option
+                                                    key={department.slug}
+                                                    value={department.slug}
+                                                    disabled={department.slug === "electrical" || department.slug === "mechanical"}
+                                                >
                                                     {department.name}
                                                 </option>
                                             ))}
@@ -1271,9 +1309,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                                 <option value="High">High</option>
                                                             </select>
                                                         </label>
-                                                    </div>
 
-                                                    <div className={styles.ruleTopGrid}>
                                                         <label className={styles.field}>
                                                             <span>L1</span>
                                                             <MultiSelectDropdown
@@ -1286,7 +1322,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                                 }
                                                             />
                                                         </label>
-
                                                     </div>
 
                                                     <div className={styles.ruleBottomGrid}>
@@ -1421,9 +1456,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                     value={existingFilters.departmentSlug}
                                     onChange={(event) => {
                                         const nextDepartmentSlug = event.target.value;
-                                        const nextDepartment = availableDepartments.find(
-                                            (item) => item.slug === nextDepartmentSlug
-                                        );
 
                                         setExistingFilters((current) => ({
                                             ...current,
@@ -1435,7 +1467,11 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                 >
                                     <option value="">Select Department</option>
                                     {availableDepartments.map((department) => (
-                                        <option key={department.slug} value={department.slug}>
+                                        <option
+                                            key={department.slug}
+                                            value={department.slug}
+                                            disabled={department.slug === "electrical" || department.slug === "mechanical"}
+                                        >
                                             {department.name}
                                         </option>
                                     ))}
@@ -1552,7 +1588,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                 <th>Plus (+)</th>
                                                 <th>Minus (-)</th>
                                                 <th>Status</th>
-                                                <th>Created At</th>
+                                                <th>Updated At</th>
                                                 <th>Action</th>
                                             </tr>
                                         </thead>
@@ -1614,7 +1650,11 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                             {item?.is_active ? "Active" : "Inactive"}
                                                         </span>
                                                     </td>
-                                                    <td>{formatTimestamp(item.created_at || item.createdAt)}</td>
+                                                    <td>
+                                                        {formatTimestamp(
+                                                            item.updated_at || item.updatedAt || item.created_at || item.createdAt
+                                                        )}
+                                                    </td>
                                                     <td>
                                                         <div className={styles.actionMenuWrap} data-threshold-menu="true">
                                                             <button

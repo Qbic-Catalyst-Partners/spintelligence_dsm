@@ -244,7 +244,7 @@ export default function TicketDetails() {
     const summary = [
       `Ticket: ${displayTicketId}`,
       `Status: ${getOperatorStatusLabel(resolvedTicket?.status)}`,
-      `Severity: ${resolvedTicket?.severity || "-"}`,
+      `Criticality: ${resolvedTicket?.severity || "-"}`,
       `Machine: ${resolvedTicket?.machine_name || resolvedTicket?.notebook || "-"}`,
       `Created At: ${formatCompactDateTime(resolvedTicket?.created_at || resolvedTicket?.rawCreatedAt)}`,
     ].join("\n");
@@ -337,7 +337,7 @@ export default function TicketDetails() {
               )}
             </div>
             <span className={`${styles["severity-badge"]} ${severityClassName}`}>
-              Severity: {resolvedTicket.severity}
+              Criticality: {resolvedTicket.severity}
             </span>
           </div>
 
@@ -452,10 +452,19 @@ export default function TicketDetails() {
               // as the purpose-built layout in SupervisorDetails.js.
               (() => {
                 const details = resolvedTicket?.violation_details || {};
-                const missingDepartments = Array.isArray(details.overdue_screens) && details.overdue_screens.length
-                  ? details.overdue_screens
-                  : Array.isArray(details.missing_screens) && details.missing_screens.length
-                    ? details.missing_screens
+                // missing_screens is every department not yet submitted for
+                // this PP entry; overdue_screens is only the subset whose OWN
+                // completion threshold has already elapsed (used to decide
+                // when to raise/escalate the ticket, not to describe what's
+                // actually missing). Showing overdue_screens here understated
+                // the real gap - e.g. only Carding submitted but Mixing and
+                // Blowroom happened to have shorter thresholds, so Draw
+                // Frame/Simplex/Spinning/Autoconer etc. (still missing, just
+                // not yet overdue) silently dropped off the list.
+                const missingDepartments = Array.isArray(details.missing_screens) && details.missing_screens.length
+                  ? details.missing_screens
+                  : Array.isArray(details.overdue_screens) && details.overdue_screens.length
+                    ? details.overdue_screens
                     : details.missing_screen
                       ? [details.missing_screen]
                       : [];
@@ -499,6 +508,7 @@ export default function TicketDetails() {
               <>
                 <div className={styles["table-head"]}>
                   <span>Notebook Type</span>
+                  <span>Entry ID</span>
                   <span>Parameter</span>
                   <span>{isSubmissionTicket ? "Frequency" : "Idle Value"}</span>
                   <span>{isSubmissionTicket ? "Occurrences" : "Standard Value"}</span>
@@ -509,6 +519,9 @@ export default function TicketDetails() {
                 {visibleRows.map((item, index) => (
                   <div className={styles["table-row"]} key={`${item.name}-${index}`}>
                     <span className={styles["value-strong"]}>{resolvedTicket.machine_name || resolvedTicket.notebook || "-"}</span>
+                    <span className={styles["value-strong"]}>
+                      {resolvedTicket.entry_id || resolvedTicket.violation_details?.entry_id || "-"}
+                    </span>
                     <span className={styles["value-strong"]}>{item.name}</span>
                     <span className={`${styles["value-strong"]} ${styles.danger}`}>{isSubmissionTicket ? submissionFrequency : item.actual}</span>
                     <span className={styles["value-strong"]}>{isSubmissionTicket ? submissionOccurrences : item.standard}</span>

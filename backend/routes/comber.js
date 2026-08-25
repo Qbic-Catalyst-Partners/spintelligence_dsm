@@ -28,96 +28,6 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
 };
 const isUniqueViolation = (err) => err && err.code === '23505';
 
-// `id` on these tables was never given a PRIMARY KEY, so the GET routes' `GROUP BY qc.id`
-// (selecting other qc.* columns via functional dependency) fail with "must appear in the GROUP
-// BY clause" on every request. Add the missing PK (id is a NOT NULL serial with no duplicates)
-// so those report queries can actually run.
-const ensureComberPrimaryKeys = async () => {
-  const tables = ['ribbon_lap_cv_qc'];
-  for (const table of tables) {
-    await client.query(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint
-          WHERE conrelid = 'comber.${table}'::regclass AND contype = 'p'
-        ) THEN
-          ALTER TABLE comber.${table} ADD PRIMARY KEY (id);
-        END IF;
-      END $$;
-    `);
-  }
-};
-
-// Ribbon Lap CV1M/Nati/U% store created_at/updated_at as `timestamp WITHOUT time zone`
-// (CURRENT_TIMESTAMP default), unlike Comber NRE%/Efficiency's `timestamp WITH time zone` — on
-// this DB, a "without time zone" default silently gets written using a different offset than the
-// session's own display timezone, so Custom Report's "Created At" comes out shifted by several
-// hours (sometimes onto the wrong calendar day) for these three screens while NRE%/Efficiency
-// display correctly. Converting the column type to timestamptz makes new rows store an
-// unambiguous absolute instant, matching NRE%/Efficiency's already-correct behavior.
-const ensureComberTimestampColumnsHaveTimezone = async () => {
-  const columnsByTable = {
-    ribbon_lap_cv_qc: ['created_at', 'updated_at'],
-    nati_data_entry: ['created_at', 'updated_at'],
-    u_data_entry: ['created_at']
-  };
-  for (const [table, columns] of Object.entries(columnsByTable)) {
-    for (const column of columns) {
-      await client.query(`
-        DO $$
-        BEGIN
-          IF EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'comber' AND table_name = '${table}' AND column_name = '${column}'
-              AND data_type = 'timestamp without time zone'
-          ) THEN
-            ALTER TABLE comber.${table}
-              ALTER COLUMN ${column} TYPE timestamptz USING ${column} AT TIME ZONE 'UTC';
-            ALTER TABLE comber.${table}
-              ALTER COLUMN ${column} SET DEFAULT now();
-          END IF;
-        END $$;
-      `);
-    }
-  }
-};
-
-const ensureComberEntryIdColumns = async () => {
-  await ensureComberPrimaryKeys();
-  await ensureComberTimestampColumnsHaveTimezone();
-  await client.query(`
-    ALTER TABLE comber.ribbon_lap_cv_qc
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS ribbon_lap_cv_qc_entry_id_uq
-    ON comber.ribbon_lap_cv_qc (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE comber.nati_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS comber_nati_data_entry_entry_id_uq
-    ON comber.nati_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE comber.u_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS comber_u_data_entry_entry_id_uq
-    ON comber.u_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-};
-
 router.get('/thresholds', async (req, res, next) => {
   try {
     const { management_field, erp_product_code, machine_name, parameters } = req.query;
@@ -608,13 +518,11 @@ const withTransaction = async (callback) => {
  */
 router.post('/lap-cv', async (req, res) => {
     try {
-        await ensureComberEntryIdColumns();
         const {
             entry_id,
             record_date,
             machine_name,
             variety,
-            type,
             lap_weight,
             lap_length,
             grams_per_meter,
@@ -639,9 +547,9 @@ router.post('/lap-cv', async (req, res) => {
 
             const main = await client.query(
                 `INSERT INTO comber.ribbon_lap_cv_qc
-                (entry_id, entry_type, sample_count, record_date, machine_name, variety, type, lap_weight,
+                (entry_id, entry_type, sample_count, record_date, machine_name, variety, lap_weight,
                  lap_length, grams_per_meter, average, minimum, maximum, std_deviation, cv_percent, operator)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
                 RETURNING id`,
                 [
                     entry_id,
@@ -650,7 +558,6 @@ router.post('/lap-cv', async (req, res) => {
                     record_date,
                     machine_name,
                     variety,
-                    type,
                     lap_weight,
                     lap_length,
                     grams_per_meter,
@@ -764,7 +671,6 @@ router.post('/lap-cv', async (req, res) => {
  */
 router.get('/lap-cv', async (req, res) => {
     try {
-        await ensureComberEntryIdColumns();
         const result = await client.query(`
             SELECT
                 qc.*,
@@ -843,7 +749,6 @@ router.get('/lap-cv', async (req, res) => {
  */
 router.post('/nati-data-entry', async (req, res) => {
     try {
-        await ensureComberEntryIdColumns();
         const { entry_id, type, entry_date, variety, entries, user_name } = req.body;
 
         if (!entry_id) {
@@ -861,7 +766,7 @@ router.post('/nati-data-entry', async (req, res) => {
                 (entry_id, type, entry_date, variety, operator)
                 VALUES ($1,$2,$3,$4,$5)
                 RETURNING id`,
-                [entry_id, type, entry_date, variety, user_name || null]
+                [entry_id, type, entry_date, variety, user_name || String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null]
             );
 
             const qc_id = main.rows[0].id;
@@ -869,17 +774,17 @@ router.post('/nati-data-entry', async (req, res) => {
             await client.query(
                 `INSERT INTO comber.neps_details
                 (qc_id, mc_no, ratio_size_1, ratio_size_07, ratio_size_05)
-                SELECT 
+                SELECT
                     $1, mc_no, r1, r07, r05
                 FROM unnest(
-                    $2::int[],
+                    $2::varchar[],
                     $3::numeric[],
                     $4::numeric[],
                     $5::numeric[]
                 ) AS t(mc_no, r1, r07, r05)`,
                 [
                     qc_id,
-                    entries.map(e => e.mc_no),
+                    entries.map(e => (e.mc_no === null || e.mc_no === undefined ? null : String(e.mc_no))),
                     entries.map(e => e.ratio_size_1),
                     entries.map(e => e.ratio_size_07),
                     entries.map(e => e.ratio_size_05)
@@ -956,7 +861,6 @@ router.post('/nati-data-entry', async (req, res) => {
  */
 router.get('/nati-data-entry', async (req, res) => {
     try {
-        await ensureComberEntryIdColumns();
         const result = await client.query(`
             SELECT
                 qc.id,
@@ -1017,8 +921,8 @@ router.post('/nre', async (req, res) => {
         const result = await client.query(
             `INSERT INTO comber.nre_data_entry
             (entry_id, type, silver_hank, delivery_mtr_min, comber_neps_min, feed_mm_per_nep,
-             fiber_nep_in_comber_lap_gms, fiber_nep_gms_in_silver, comber_nre_percent)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+             fiber_nep_in_comber_lap_gms, fiber_nep_gms_in_silver, comber_nre_percent, operator)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
             RETURNING *`,
             [
                 entry_id,
@@ -1029,7 +933,8 @@ router.post('/nre', async (req, res) => {
                 feed_mm_per_nep,
                 fiber_nep_in_comber_lap_gms,
                 fiber_nep_gms_in_silver,
-                comber_nre_percent
+                comber_nre_percent,
+                String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null
             ]
         );
 
@@ -1082,8 +987,8 @@ router.post('/efficiency', async (req, res) => {
 
         const result = await client.query(
             `INSERT INTO comber.efficiency_data_entry
-            (entry_id, type, mc_name, span_length_50_lap, span_length_50_sliver, combining_efficiency_formula)
-            VALUES ($1,$2,$3,$4,$5,$6)
+            (entry_id, type, mc_name, span_length_50_lap, span_length_50_sliver, combining_efficiency_formula, operator)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)
             RETURNING *`,
             [
                 entry_id,
@@ -1091,7 +996,8 @@ router.post('/efficiency', async (req, res) => {
                 mc_name,
                 span_length_50_lap,
                 span_length_50_sliver,
-                combining_efficiency_formula
+                combining_efficiency_formula,
+                String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null
             ]
         );
 
@@ -1185,7 +1091,6 @@ router.get('/efficiency', async (req, res) => {
  */
 router.post('/uqc', async (req, res) => {
     try {
-        await ensureComberEntryIdColumns();
         console.log("UQC BODY:", req.body);
 
         const {
@@ -1220,8 +1125,8 @@ router.post('/uqc', async (req, res) => {
         const result = await client.query(
             `INSERT INTO comber.u_data_entry
             (entry_id, entry_type, entry_date, shift, variety, mc_no,
-             u_percent, cvm, cvm_1m, cvm_3m, remarks)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+             u_percent, cvm, cvm_1m, cvm_3m, remarks, operator)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             RETURNING *`,
             [
                 entry_id,
@@ -1234,7 +1139,8 @@ router.post('/uqc', async (req, res) => {
                 toNumber(cvm),
                 toNumber(cvm_1m),
                 toNumber(cvm_3m),
-                remarks
+                remarks,
+                String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null
             ]
         );
 
@@ -1281,7 +1187,6 @@ router.post('/uqc', async (req, res) => {
  */
 router.get('/uqc', async (req, res) => {
     try {
-        await ensureComberEntryIdColumns();
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
