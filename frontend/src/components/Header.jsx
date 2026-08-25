@@ -897,11 +897,11 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                     })}
                 </nav>
 
-                <div className={styles["sidebar-version"]} title="Version 2.1.2">
+                <div className={styles["sidebar-version"]} title="Version 2.1.4">
                     <span className={styles["sidebar-version-badge"]}>
                         <span className={styles["sidebar-version-dot"]} />
                         <span className={styles["sidebar-version-label"]}>Version</span>
-                        <span className={styles["sidebar-version-number"]}>2.1.3</span>
+                        <span className={styles["sidebar-version-number"]}>2.1.4</span>
                     </span>
                 </div>
             </aside>
