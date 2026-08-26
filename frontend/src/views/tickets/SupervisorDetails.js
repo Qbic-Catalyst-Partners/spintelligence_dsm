@@ -390,6 +390,40 @@ export default function SupervisorDetails() {
     );
   };
 
+  // PP Approval tickets don't decide anything from this generic ticket page
+  // anymore - same as Acknowledgement's handoff to Submitted Notebooks above,
+  // Accept/Reject here just hand off to the real PP Approvals screen
+  // (Management Hub), where the reviewer sees the full combined PP preview
+  // and the actual approve/reject-with-reason action lives. The PP id is
+  // passed through so that page can auto-open this exact entry instead of
+  // dropping the reviewer on the bare queue.
+  const handlePpApprovalRedirect = () => {
+    const entryId = ticket?.violation_details?.entry_id || ticket?.entry_id || "";
+    router.push(
+      entryId ? `/pp-approvals?openEntryId=${encodeURIComponent(entryId)}` : "/pp-approvals"
+    );
+  };
+
+  // Same handoff pattern as PP Approval above - Wheel Change Approval tickets
+  // don't decide anything from this generic ticket page either, they just
+  // hand off to the real Wheel Change Approvals screen for that specific
+  // department, where the reviewer sees the full proposal and the actual
+  // approve/reject-with-reason action lives. Each department saves its
+  // Wheel Change into its own table (see WHEEL_CHANGE_DEPARTMENTS in
+  // backend/routes/spinning.js), each with its own separate approvals page.
+  const WHEEL_CHANGE_DEPARTMENT_TO_PATH = {
+    spinning: "/wheel-change-approvals",
+    drawframe: "/drawframe-wheel-change-approvals",
+    carding: "/carding-change-control-approvals",
+    simplex: "/simplex-wheel-change-approvals",
+  };
+  const handleWheelChangeApprovalRedirect = () => {
+    const department = String(ticket?.violation_details?.department || "").trim().toLowerCase();
+    const path = WHEEL_CHANGE_DEPARTMENT_TO_PATH[department] || "/wheel-change-approvals";
+    const entryId = ticket?.violation_details?.entry_id || ticket?.entry_id || "";
+    router.push(entryId ? `${path}?openEntryId=${encodeURIComponent(entryId)}` : path);
+  };
+
   const handleCopyTicketId = async () => {
     try {
       await navigator.clipboard.writeText(displayTicketId);
@@ -701,6 +735,22 @@ export default function SupervisorDetails() {
                       disabled={actionLoading}
                     >
                       Fix &amp; Submit
+                    </button>
+                  ) : isPpApprovalTicket ? (
+                    <button
+                      className={styles.accept}
+                      onClick={handlePpApprovalRedirect}
+                      disabled={actionLoading}
+                    >
+                      Confirm Action
+                    </button>
+                  ) : isWheelChangeTicket ? (
+                    <button
+                      className={styles.accept}
+                      onClick={handleWheelChangeApprovalRedirect}
+                      disabled={actionLoading}
+                    >
+                      Confirm Action
                     </button>
                   ) : (
                     <>
@@ -1241,6 +1291,22 @@ export default function SupervisorDetails() {
                 disabled={actionLoading}
               >
                 Fix &amp; Submit
+              </button>
+            ) : isPpApprovalTicket ? (
+              <button
+                className={styles.accept}
+                onClick={handlePpApprovalRedirect}
+                disabled={actionLoading}
+              >
+                Confirm Action
+              </button>
+            ) : isWheelChangeTicket ? (
+              <button
+                className={styles.accept}
+                onClick={handleWheelChangeApprovalRedirect}
+                disabled={actionLoading}
+              >
+                Confirm Action
               </button>
             ) : (
               <>

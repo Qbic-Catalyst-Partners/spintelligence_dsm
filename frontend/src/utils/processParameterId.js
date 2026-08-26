@@ -25,6 +25,14 @@ export const normalizeProcessParameterId = (value) => {
 
 export const coerceProcessParameterId = normalizeProcessParameterId;
 
+// True when an error from one of the autoconer POST endpoints is the
+// backend's "Duplicate entry_id" conflict (a department table already has a
+// row for this PP id) - used by the Q2/Q3/Q4 sibling auto-fill helpers to
+// treat that specific case as "already done" rather than a real failure,
+// since that's the outcome they were trying to reach anyway.
+export const isDuplicateEntryIdError = (error) =>
+  /duplicate entry_id/i.test(String(error?.message || ""));
+
 // Most department save routes put entry_id at the top level of the response
 // body, but Autoconer's (/process, /q2, /q3) nest the saved row under `data`
 // (e.g. { message, data: { entry_id, ... } }) — check both shapes so callers

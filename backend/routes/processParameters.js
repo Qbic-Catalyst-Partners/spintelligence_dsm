@@ -18,9 +18,13 @@ const router = express.Router();
 //   active           - L4 approved it; usable for exactly one Wheel Change
 //   inactive         - a Wheel Change has been saved against it (locked -
 //                      reverts to active if that Wheel Change is rejected)
-// "Rejected" by L4 is not a separate stored stage - it sends the PP back to
-// in_progress (departments need to fix and resubmit), with the reason kept
-// in review_remarks for context.
+//   rejected         - a per-department reject sent one department's data
+//                      back (POST .../departments/:department_key/reject
+//                      deletes that department's row so it can be
+//                      resubmitted; the reason is kept in review_remarks).
+//                      Automatically returns to pending_approval, same as
+//                      in_progress, once every department has a row again
+//                      (see refreshProcessParameterStatus).
 
 // One entry per department/type screen that shares the PP entry_id system.
 // Each maps to the table + column that already exists today; nothing here
@@ -47,6 +51,8 @@ const PP_DEPARTMENTS = [
   // a submitted row, so completion simply never reaches 100% until Q4 ships.
   { key: 'autoconer_q4', label: 'Autoconer Q4', table: 'autoconer.autoconer_q4_inspection', idColumn: 'id' },
 ];
+
+const PP_DEPARTMENTS_BY_KEY = new Map(PP_DEPARTMENTS.map((dept) => [dept.key, dept]));
 
 // Maps this file's PP_DEPARTMENTS keys onto the notebook labels used by
 // submittedNotebooks.routes.js's pp_notebook_threshold config (these are two
@@ -226,6 +232,105 @@ const getPpFullDetailsForEntryId = async (entry_id) => {
   return Object.fromEntries(results);
 };
 
+// Defensive schema guard for process_parameters.master - mirrors
+// processParameterEntryId.js's ensureProcessParameterMasterRow (which also
+// inserts the entry_id's own row) minus the insert, since callers here only
+// need the table/columns to exist before querying across every entry_id.
+// This was previously called but never actually defined anywhere in the
+// codebase, silently breaking runPpApprovalOverdueCheck below on every run
+// (caught by server.js's try/catch and logged as "overdue worker skipped" -
+// meaning L4 PP Approval TAT tickets were never being raised at all).
+const ensureProcessParameterMasterTable = async () => {
+  await client.query('CREATE SCHEMA IF NOT EXISTS process_parameters');
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS process_parameters.master (
+      id BIGSERIAL PRIMARY KEY,
+      entry_id TEXT NOT NULL UNIQUE,
+      created_by_user_id INTEGER NULL,
+      created_by_name TEXT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await client.query(`
+    ALTER TABLE process_parameters.master
+      ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'in_progress',
+      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
+      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS review_remarks TEXT,
+      ADD COLUMN IF NOT EXISTS pending_approval_notebook_label TEXT
+  `);
+};
+
+// Defensive schema guard for the PP-Approval-specific columns on
+// ticketing_system.operator_tickets. connection.js's own startup migration
+// already creates most of operator_tickets' base columns, but not these -
+// like ensureProcessParameterMasterTable above, this was called but never
+// defined, so every closePpApprovalTicket call (i.e. every real Approve/
+// Reject click) threw here and aborted after the process_parameters.master
+// row had already been updated - the PP itself was correctly
+// approved/rejected, but the matching PP_APPROVAL ticket was never closed
+// and the request came back as a 500 to the reviewer.
+const ensureApprovalTicketSchema = async () => {
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+      ADD COLUMN IF NOT EXISTS ticket_kind TEXT,
+      ADD COLUMN IF NOT EXISTS tat_current_level TEXT,
+      ADD COLUMN IF NOT EXISTS approval_l4_user_ids INTEGER[],
+      ADD COLUMN IF NOT EXISTS l4_tat_due_at TIMESTAMPTZ
+  `);
+  // Backstops createPpApprovalTicket's/runPpApprovalTatCheck's own
+  // check-then-insert dedup (both just SELECT for an existing open ticket
+  // before INSERTing, with nothing stopping two near-simultaneous calls -
+  // e.g. two backend instances - from both passing that check). Distinct
+  // from entry_id alone by COALESCE(...->>'escalation_of", '') so the one
+  // original ticket and its one reminder-per-original can coexist, matching
+  // how the app's own dedup logic already treats them as separate things.
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_pp_approval_open_uq
+    ON ticketing_system.operator_tickets (
+      (violation_details->>'entry_id'),
+      (COALESCE(violation_details->>'escalation_of', ''))
+    )
+    WHERE ticket_type = 'PP_APPROVAL' AND status <> 'Closed'
+  `);
+};
+
+// Per-department accept/reject decisions within one PP id's approval review -
+// separate from process_parameters.master's single overall status, which
+// only tracks the PP id as a whole. One row per (entry_id, department_key);
+// re-deciding the same department just overwrites its previous decision.
+const ensureDepartmentDecisionsTable = async () => {
+  await client.query('CREATE SCHEMA IF NOT EXISTS process_parameters');
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS process_parameters.department_decisions (
+      entry_id TEXT NOT NULL,
+      department_key TEXT NOT NULL,
+      decision TEXT NOT NULL CHECK (decision IN ('accepted', 'rejected')),
+      reason TEXT,
+      decided_by TEXT,
+      decided_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (entry_id, department_key)
+    )
+  `);
+};
+
+// { PP-0014: { mixing: { decision: 'accepted', reason: null, decided_by: '...', decided_at: ... } } }
+const getDepartmentDecisionsForEntryIds = async (entryIds) => {
+  const decisionsByEntryId = new Map(entryIds.map((id) => [id, {}]));
+  if (!entryIds.length) return decisionsByEntryId;
+
+  const result = await client.query(
+    `SELECT * FROM process_parameters.department_decisions WHERE entry_id = ANY($1::text[])`,
+    [entryIds]
+  );
+  for (const row of result.rows) {
+    const decisions = decisionsByEntryId.get(row.entry_id);
+    if (decisions) decisions[row.department_key] = row;
+  }
+  return decisionsByEntryId;
+};
+
 // Auto-advances in_progress -> pending_approval the moment every department
 // has a submitted row. Never touches active/inactive (those only change via
 // the explicit approve/reject-by-L4 and Wheel Change save/reject actions
@@ -247,7 +352,14 @@ const refreshProcessParameterStatus = async (entry_id) => {
     [entry_id]
   );
   const status = current.rows[0]?.status;
-  if (status !== 'in_progress') return status || null;
+  // 'rejected' now IS re-checked alongside 'in_progress' - unlike the old
+  // whole-PP reject (which left every department's row untouched, so
+  // "does a row exist" was already true before rejection and this would've
+  // flipped straight back with no real resubmission), the per-department
+  // reject flow (POST .../departments/:department_key/reject) actually
+  // DELETEs that one department's row, so completion genuinely goes back to
+  // incomplete and this only fires again once it's genuinely been redone.
+  if (status !== 'in_progress' && status !== 'rejected') return status || null;
 
   const completion = (await getCompletionStatusForEntryIds([entry_id])).get(entry_id) || {};
   const allComplete = Object.keys(completion).length > 0 && Object.values(completion).every(Boolean);
@@ -260,6 +372,15 @@ const refreshProcessParameterStatus = async (entry_id) => {
      SET status = 'pending_approval', updated_at = NOW(), pending_approval_notebook_label = $2
      WHERE entry_id = $1`,
     [entry_id, lastCompletedNotebookLabel]
+  );
+  // Clear out only the stale 'rejected' decisions - the department that was
+  // rejected just resubmitted fresh data and needs a fresh Accept/Reject
+  // from L4, but a sibling department that was already 'accepted' shouldn't
+  // be forced through review again just because this one got fixed.
+  await ensureDepartmentDecisionsTable();
+  await client.query(
+    `DELETE FROM process_parameters.department_decisions WHERE entry_id = $1 AND decision = 'rejected'`,
+    [entry_id]
   );
   return 'pending_approval';
 };
@@ -307,7 +428,17 @@ const getPpApprovalConfig = async () => {
 // (approval_l4_user_ids/approve_within_hours/severity, set from the
 // combined PP Threshold + Approval config screen), that governs this
 // ticket; otherwise falls back to the old single global pp_approval_config.
-const createPpApprovalTicket = async (entry_id, notebookLabel = null) => {
+// submittedAt is when the PP id actually finished all departments and
+// entered pending_approval (process_parameters.master.updated_at) - NOT
+// when this ticket happens to get inserted, which only happens once the TAT
+// window has already elapsed (plus up to one worker-cycle's delay on top).
+// Both the ticket's own created_at and its approval-due date are anchored
+// to submittedAt so the ticket reads as "created when the PP was submitted,
+// due <TAT hours> after that" (e.g. submitted 2pm + 2hr TAT = due 4pm),
+// matching what actually happened, rather than to whenever the overdue
+// check happened to notice.
+const createPpApprovalTicket = async (entry_id, notebookLabel = null, submittedAt = null) => {
+  await ensureApprovalTicketSchema();
   const existing = await client.query(
     `SELECT ticket_id FROM ticketing_system.operator_tickets
      WHERE ticket_type = 'PP_APPROVAL' AND (violation_details->>'entry_id') = $1 AND status <> 'Closed'
@@ -331,7 +462,10 @@ const createPpApprovalTicket = async (entry_id, notebookLabel = null) => {
     ? Number(notebookConfig.approve_within_hours)
     : (Number(approvalConfig.tat_hours) > 0 ? Number(approvalConfig.tat_hours) : PP_APPROVAL_TAT_HOURS);
   const severity = notebookConfig?.severity || 'High';
-  const l4TatDueAt = new Date(Date.now() + tatHours * 60 * 60 * 1000).toISOString();
+  const submittedAtTime = submittedAt ? new Date(submittedAt).getTime() : NaN;
+  const anchorTime = Number.isFinite(submittedAtTime) ? submittedAtTime : Date.now();
+  const ticketCreatedAt = new Date(anchorTime).toISOString();
+  const l4TatDueAt = new Date(anchorTime + tatHours * 60 * 60 * 1000).toISOString();
   const violationDetails = {
     category: 'PENDING_APPROVAL',
     ticket_type: 'PP_APPROVAL',
@@ -341,21 +475,35 @@ const createPpApprovalTicket = async (entry_id, notebookLabel = null) => {
   };
 
   const ticketId = await generateTicketId(client);
-  const ticket = await client.query(
-    `INSERT INTO ticketing_system.operator_tickets
-     (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
-      severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
-      violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
-     VALUES (
-       $1,
-       $2, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
-       $6, 'Open', NOW(), 'MISSING_VALUE', 'PP_APPROVAL', 'pp_approval',
-       $3::jsonb, $4::int[], 'L4', $5
-     )
-     RETURNING ticket_id`,
-    [ticketId, entry_id, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity]
-  );
-  const insertedTicketId = ticket.rows[0]?.ticket_id || null;
+  let insertedTicketId;
+  try {
+    const ticket = await client.query(
+      `INSERT INTO ticketing_system.operator_tickets
+       (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+        severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
+        violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
+       VALUES (
+         $1,
+         $2, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+         $6, 'Open', $7, 'MISSING_VALUE', 'PP_APPROVAL', 'pp_approval',
+         $3::jsonb, $4::int[], 'L4', $5
+       )
+       RETURNING ticket_id`,
+      [ticketId, entry_id, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity, ticketCreatedAt]
+    );
+    insertedTicketId = ticket.rows[0]?.ticket_id || null;
+  } catch (error) {
+    // 23505 = operator_tickets_pp_approval_open_uq - lost a race with another
+    // call that inserted the same entry_id's ticket first; that one wins.
+    if (error?.code !== '23505') throw error;
+    const winner = await client.query(
+      `SELECT ticket_id FROM ticketing_system.operator_tickets
+       WHERE ticket_type = 'PP_APPROVAL' AND (violation_details->>'entry_id') = $1 AND status <> 'Closed'
+       LIMIT 1`,
+      [entry_id]
+    );
+    return winner.rows[0]?.ticket_id || null;
+  }
 
   if (insertedTicketId && l4UserIds.length) {
     await createNotificationsForUsers(l4UserIds, {
@@ -396,7 +544,7 @@ const runPpApprovalOverdueCheck = async () => {
   // worker is the one guaranteed periodic entry point, so it has to do that
   // same catch-up refresh itself rather than rely on a page view.
   const inProgress = await client.query(
-    `SELECT entry_id FROM process_parameters.master WHERE status = 'in_progress'`
+    `SELECT entry_id FROM process_parameters.master WHERE status IN ('in_progress', 'rejected')`
   );
   await Promise.all(inProgress.rows.map((row) => refreshProcessParameterStatus(row.entry_id)));
 
@@ -422,7 +570,7 @@ const runPpApprovalOverdueCheck = async () => {
     if (Date.now() < dueAt) continue; // eslint-disable-line no-continue
 
     // eslint-disable-next-line no-await-in-loop
-    const ticketId = await createPpApprovalTicket(row.entry_id, notebookLabel);
+    const ticketId = await createPpApprovalTicket(row.entry_id, notebookLabel, row.updated_at);
     if (ticketId) created.push(ticketId);
   }
   return created;
@@ -480,46 +628,34 @@ const runPpApprovalTatCheck = async () => {
     const entryId = ticket.violation_details?.entry_id;
     if (!entryId) continue; // eslint-disable-line no-continue
 
+    // Was: raised a brand-new ticket row ('escalation_of' the original) once
+    // overdue, leaving TWO open tickets for the same PP id (the one thing
+    // this was supposed to avoid duplicating). Every other threshold type
+    // (Submission Frequency, Value Threshold) escalates by updating the
+    // SAME ticket in place, not by inserting a second one - this now does
+    // the same: bump the existing ticket's own severity/message and notify
+    // again, exactly once (guarded by the OVERDUE_REMINDER_RAISED log entry
+    // below so a later run doesn't re-notify every cycle), with no second
+    // ticket_id ever created.
     // eslint-disable-next-line no-await-in-loop
-    const existingReminder = await client.query(
-      `SELECT ticket_id FROM ticketing_system.operator_tickets
-       WHERE ticket_type = 'PP_APPROVAL'
-         AND (violation_details->>'entry_id') = $1
-         AND (violation_details->>'escalation_of') = $2
-         AND status <> 'Closed'
-       LIMIT 1`,
-      [entryId, ticket.ticket_id]
+    const alreadyReminded = await client.query(
+      `SELECT 1 FROM ticketing_system.ticket_logs WHERE ticket_id = $1 AND action = 'OVERDUE_REMINDER_RAISED' LIMIT 1`,
+      [ticket.ticket_id]
     );
-    if (existingReminder.rows[0]?.ticket_id) continue; // eslint-disable-line no-continue
+    if (alreadyReminded.rows.length) continue; // eslint-disable-line no-continue
 
     const l4UserIds = Array.isArray(ticket.approval_l4_user_ids) ? ticket.approval_l4_user_ids : [];
-    const notebookLabel = ticket.violation_details?.notebook_label || null;
-    const violationDetails = {
-      category: 'MISSED_FREQUENCY',
-      ticket_type: 'PP_APPROVAL',
-      entry_id: entryId,
-      notebook_label: notebookLabel,
-      escalation_of: ticket.ticket_id,
-      message: `PP id ${entryId} was not approved by L4 within the configured time and is now overdue.`
-    };
+    const overdueMessage = `PP id ${entryId} was not approved by L4 within the configured time and is now overdue.`;
 
     // eslint-disable-next-line no-await-in-loop
-    const reminder = await client.query(
-      `INSERT INTO ticketing_system.operator_tickets
-       (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
-        severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
-        violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
-       VALUES (
-         'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-         $1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
-         'High', 'Open', NOW(), 'MISSING_VALUE', 'PP_APPROVAL', 'pp_approval',
-         $2::jsonb, $3::int[], 'L4', NULL
-       )
-       RETURNING ticket_id`,
-      [ticket.machine_name, JSON.stringify(violationDetails), l4UserIds]
+    await client.query(
+      `UPDATE ticketing_system.operator_tickets
+       SET severity = 'High',
+           violation_details = violation_details || jsonb_build_object('overdue', true, 'message', $2::text)
+       WHERE ticket_id = $1`,
+      [ticket.ticket_id, overdueMessage]
     );
-    const reminderTicketId = reminder.rows[0]?.ticket_id;
-    if (reminderTicketId) created.push(reminderTicketId);
+    created.push(ticket.ticket_id);
 
     // eslint-disable-next-line no-await-in-loop
     await client.query(
@@ -529,18 +665,17 @@ const runPpApprovalTatCheck = async () => {
       [ticket.ticket_id]
     );
 
-    if (reminderTicketId && l4UserIds.length) {
+    if (l4UserIds.length) {
       // eslint-disable-next-line no-await-in-loop
       await createNotificationsForUsers(l4UserIds, {
-        ticketId: reminderTicketId,
+        ticketId: ticket.ticket_id,
         type: 'PP_APPROVAL',
         category: 'Tickets',
         priority: 'High',
         title: (user) => `Hi ${user.full_name || 'there'} (L4), a PP approval is overdue`,
-        body: (user) =>
-          `${user.full_name || 'You'} (L4) - PP entry ${entryId} was not approved in time (ticket ${ticket.ticket_id}) and is now overdue.`,
-        linkUrl: `/supervisor-tickets/${reminderTicketId}`,
-        payload: { ticket_id: reminderTicketId, entry_id: entryId }
+        body: (user) => `${user.full_name || 'You'} (L4) - ${overdueMessage}`,
+        linkUrl: `/supervisor-tickets/${ticket.ticket_id}`,
+        payload: { ticket_id: ticket.ticket_id, entry_id: entryId }
       });
     }
   }
@@ -644,10 +779,12 @@ router.get('/master', async (req, res, next) => {
       client.query('SELECT COUNT(*) FROM process_parameters.master')
     ]);
 
+    await ensureDepartmentDecisionsTable();
     const entryIds = rows.rows.map((r) => r.entry_id);
-    const [statusByEntryId] = await Promise.all([
+    const [statusByEntryId, decisionsByEntryId] = await Promise.all([
       getCompletionStatusForEntryIds(entryIds),
-      Promise.all(rows.rows.filter((r) => r.status === 'in_progress').map((r) => refreshProcessParameterStatus(r.entry_id)))
+      getDepartmentDecisionsForEntryIds(entryIds),
+      Promise.all(rows.rows.filter((r) => r.status === 'in_progress' || r.status === 'rejected').map((r) => refreshProcessParameterStatus(r.entry_id)))
     ]);
 
     const refreshedRows = await client.query(
@@ -659,7 +796,8 @@ router.get('/master', async (req, res, next) => {
     const data = rows.rows.map((row) => ({
       ...row,
       status: statusById.get(row.entry_id) || row.status,
-      completion: statusByEntryId.get(row.entry_id) || {}
+      completion: statusByEntryId.get(row.entry_id) || {},
+      department_decisions: decisionsByEntryId.get(row.entry_id) || {}
     }));
 
     const total = parseInt(totalResult.rows[0].count, 10) || 0;
@@ -743,9 +881,11 @@ router.get('/approvals', async (req, res, next) => {
     const status = String(req.query.status ?? 'pending_approval').trim();
 
     // Catch any batch that's freshly completed all departments since it was
-    // last checked, so it shows up in the pending_approval queue right away.
+    // last checked, so it shows up in the pending_approval queue right away -
+    // 'rejected' is included since a per-department reject genuinely reopens
+    // one department for resubmission (see refreshProcessParameterStatus).
     const inProgress = await client.query(
-      `SELECT entry_id FROM process_parameters.master WHERE status = 'in_progress'`
+      `SELECT entry_id FROM process_parameters.master WHERE status IN ('in_progress', 'rejected')`
     );
     await Promise.all(inProgress.rows.map((row) => refreshProcessParameterStatus(row.entry_id)));
 
@@ -754,11 +894,13 @@ router.get('/approvals', async (req, res, next) => {
       [status]
     );
 
+    await ensureDepartmentDecisionsTable();
     const entryIds = result.rows.map((row) => row.entry_id);
-    const [statusByEntryId, detailByEntryId, fullDetailsList] = await Promise.all([
+    const [statusByEntryId, detailByEntryId, fullDetailsList, decisionsByEntryId] = await Promise.all([
       getCompletionStatusForEntryIds(entryIds),
       getPpDetailFieldsForEntryIds(entryIds),
       Promise.all(entryIds.map((id) => getPpFullDetailsForEntryId(id))),
+      getDepartmentDecisionsForEntryIds(entryIds),
     ]);
     const fullDetailsByEntryId = new Map(entryIds.map((id, index) => [id, fullDetailsList[index]]));
 
@@ -771,9 +913,121 @@ router.get('/approvals', async (req, res, next) => {
       machine_no: detailByEntryId.get(row.entry_id)?.machine_no || null,
       operator: detailByEntryId.get(row.entry_id)?.operator || null,
       department_details: fullDetailsByEntryId.get(row.entry_id) || {},
+      department_decisions: decisionsByEntryId.get(row.entry_id) || {},
     }));
 
     res.status(200).json({ data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Accepts one department's already-submitted data within a PP id's review.
+// Purely an audit decision - the department's row is left exactly as
+// submitted (nothing to unlock, nothing to redo). Submitting the whole PP
+// id (POST /:entry_id/approve) still requires every department to have
+// reached this decision first (enforced client-side by ApprovalsQueueView).
+router.post('/:entry_id/departments/:department_key/approve', async (req, res, next) => {
+  try {
+    if (!canActOnPpApproval(req)) {
+      return res.status(403).json({ message: 'Only L4, L5, or Admin can approve a PP department' });
+    }
+    const entry_id = normalizeProcessParameterEntryId(req.params.entry_id);
+    const department_key = String(req.params.department_key || '').trim();
+    const dept = PP_DEPARTMENTS_BY_KEY.get(department_key);
+    if (!dept) {
+      return res.status(400).json({ message: `Unknown department "${department_key}"` });
+    }
+
+    const completion = (await getCompletionStatusForEntryIds([entry_id])).get(entry_id) || {};
+    if (!completion[department_key]) {
+      return res.status(409).json({ message: `${dept.label} has not submitted data for ${entry_id} yet.` });
+    }
+
+    await ensureDepartmentDecisionsTable();
+    const decidedBy = String(req.user?.employee_id || req.user?.full_name || '').trim() || null;
+    const result = await client.query(
+      `INSERT INTO process_parameters.department_decisions (entry_id, department_key, decision, reason, decided_by, decided_at)
+       VALUES ($1, $2, 'accepted', NULL, $3, NOW())
+       ON CONFLICT (entry_id, department_key)
+       DO UPDATE SET decision = 'accepted', reason = NULL, decided_by = EXCLUDED.decided_by, decided_at = NOW()
+       RETURNING *`,
+      [entry_id, department_key, decidedBy]
+    );
+
+    return res.status(200).json({ message: `${dept.label} approved`, decision: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Rejects one department's already-submitted data within a PP id's review.
+// Unlike whole-PP rejection, this reopens just that one department for
+// resubmission - each department table only ever allows one row per
+// entry_id (UNIQUE(entry_id), enforced as a plain INSERT with no UPDATE path
+// anywhere - see e.g. carding.js's POST /qc-header), so the only way to make
+// it editable again is to delete the submitted row outright. The PP id as a
+// whole drops out of pending_approval immediately (same 'rejected' status
+// POST /:entry_id/reject uses) since it's no longer actually complete -
+// refreshProcessParameterStatus already treats 'rejected' the same as
+// in_progress for re-checking completion, so it flows back to
+// pending_approval on its own once the department resubmits.
+router.post('/:entry_id/departments/:department_key/reject', async (req, res, next) => {
+  try {
+    if (!canActOnPpApproval(req)) {
+      return res.status(403).json({ message: 'Only L4, L5, or Admin can reject a PP department' });
+    }
+    const entry_id = normalizeProcessParameterEntryId(req.params.entry_id);
+    const department_key = String(req.params.department_key || '').trim();
+    const dept = PP_DEPARTMENTS_BY_KEY.get(department_key);
+    if (!dept) {
+      return res.status(400).json({ message: `Unknown department "${department_key}"` });
+    }
+    const reason = String(req.body?.reason ?? '').trim() || null;
+    const decidedBy = String(req.user?.employee_id || req.user?.full_name || '').trim() || null;
+
+    // Mixing's real entered values live in a separate blends child table
+    // keyed by qc_id (see getPpFullDetailsForEntryId above) - has to be
+    // cleared explicitly, there's no ON DELETE CASCADE wired up for it.
+    if (dept.key === 'mixing') {
+      await client.query(
+        `DELETE FROM mixing.mixing_qc_blends WHERE qc_id IN (
+           SELECT qc_id FROM mixing.mixing_qc_header WHERE entry_id = $1
+         )`,
+        [entry_id]
+      );
+    }
+    const deleted = await client.query(
+      `DELETE FROM ${dept.table} WHERE entry_id = $1 ${dept.extraWhere || ''} RETURNING ${dept.idColumn}`,
+      [entry_id]
+    );
+    if (!deleted.rowCount) {
+      return res.status(409).json({ message: `${dept.label} has not submitted data for ${entry_id} yet.` });
+    }
+
+    await ensureDepartmentDecisionsTable();
+    const decisionResult = await client.query(
+      `INSERT INTO process_parameters.department_decisions (entry_id, department_key, decision, reason, decided_by, decided_at)
+       VALUES ($1, $2, 'rejected', $3, $4, NOW())
+       ON CONFLICT (entry_id, department_key)
+       DO UPDATE SET decision = 'rejected', reason = EXCLUDED.reason, decided_by = EXCLUDED.decided_by, decided_at = NOW()
+       RETURNING *`,
+      [entry_id, department_key, reason, decidedBy]
+    );
+
+    const masterResult = await client.query(
+      `UPDATE process_parameters.master
+       SET status = 'rejected', reviewed_by = $1, reviewed_at = NOW(),
+           review_remarks = $2, updated_at = NOW()
+       WHERE entry_id = $3 AND status = 'pending_approval'
+       RETURNING *`,
+      [decidedBy, `${dept.label}: ${reason || 'Sent back for correction'}`, entry_id]
+    );
+    if (masterResult.rowCount) {
+      await closePpApprovalTicket(entry_id, { decision: 'rejected', performedBy: decidedBy, role: req.user?.role });
+    }
+
+    return res.status(200).json({ message: `${dept.label} rejected - reopened for resubmission`, decision: decisionResult.rows[0] });
   } catch (error) {
     next(error);
   }
@@ -818,11 +1072,16 @@ router.post('/:entry_id/reject', async (req, res, next) => {
     const reviewedBy = String(req.body?.department ?? req.body?.reviewed_by ?? req.user?.employee_id ?? '').trim() || null;
     const reason = String(req.body?.reason ?? '').trim() || null;
 
-    // Rejection isn't a stored stage of its own - it sends the batch back to
-    // in_progress so the departments can fix and resubmit their rows.
+    // Rejected is its own visible stage (distinct from in_progress) so a
+    // rejected PP id shows up as "Rejected" in the PP Approvals queue and the
+    // PP notebook, with the reviewer's reason attached, instead of silently
+    // reverting to looking like an ordinary still-in-progress batch.
+    // refreshProcessParameterStatus treats 'rejected' the same as
+    // 'in_progress' for re-checking completion - once every department
+    // resubmits, it automatically moves back to pending_approval.
     const result = await client.query(
       `UPDATE process_parameters.master
-       SET status = 'in_progress', reviewed_by = $1, reviewed_at = NOW(), review_remarks = $2, updated_at = NOW()
+       SET status = 'rejected', reviewed_by = $1, reviewed_at = NOW(), review_remarks = $2, updated_at = NOW()
        WHERE entry_id = $3 AND status = 'pending_approval'
        RETURNING *`,
       [reviewedBy, reason, entry_id]
@@ -836,7 +1095,7 @@ router.post('/:entry_id/reject', async (req, res, next) => {
       role: req.user?.role,
     });
 
-    res.status(200).json({ message: 'PP id rejected — back to In Progress', data: result.rows[0] });
+    res.status(200).json({ message: 'PP id rejected', data: result.rows[0] });
   } catch (error) {
     next(error);
   }

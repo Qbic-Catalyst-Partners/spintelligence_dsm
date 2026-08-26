@@ -44,7 +44,7 @@ import {
 } from "@/apis/autoconer";
 import { fetchPpNotebookThresholdsAPI } from "@/apis/ppNotebookThresholdApi";
 import { fetchSupervisorTicketsApi } from "@/apis/supervisorApi";
-import { fetchNextProcessParameterId } from "@/apis/processParameter";
+import { fetchNextProcessParameterId, fetchProcessParameterMasterStatuses } from "@/apis/processParameter";
 import { getColumnForNotebookKey, getColumnForNotebookThresholdLabel } from "@/utils/ppNotebookKeys";
 import styles from "@/styles/processParameterPage.module.css";
 
@@ -70,6 +70,23 @@ const createBlankStatusRow = () => ({
 
 const PROCESS_PARAMETER_UI_STATE_KEY = "process-parameter-ui-state";
 
+// Same order as updateExistingColumns.slice(1) / rowStatuses - mirrors
+// backend/routes/processParameters.js's PP_DEPARTMENTS array, so index i in
+// a row's statuses array always corresponds to PP_DEPARTMENT_KEYS[i].
+const PP_DEPARTMENT_KEYS = [
+  "mixing",
+  "blowroom",
+  "carding",
+  "drawframe_breaker",
+  "drawframe_finisher",
+  "simplex",
+  "spinning",
+  "autoconer",
+  "autoconer_q2",
+  "autoconer_q3",
+  "autoconer_q4",
+];
+
 const COLUMN_TO_DEPARTMENT = {
   "Mixing": "Mixing",
   "Blow Room": "Blow Room",
@@ -94,7 +111,19 @@ const subDepartments = [
   { label: "Autoconer", value: "Autoconer" },
 ];
 
-const normalizeRegistryId = (value) => String(value || "").trim();
+// Was a bare trim - the remote side of the merge below (remoteStatusMap,
+// keyed by normalizeProcessParameterId's output) uppercases and zero-pads
+// (e.g. "pp-19" -> "PP-0019"), so a registry entry whose displayId wasn't
+// already in that exact canonical shape (e.g. saved while editing an
+// existing PP id picked from a dropdown/search rather than freshly minted)
+// produced a DIFFERENT map key than the one the live backend completion
+// status arrives under. mergedRows below then created two separate rows for
+// the same PP id - the registry one keeping whatever stale statuses it had
+// cached locally (e.g. a department not yet done when it was first opened),
+// and a second, correct one under the canonical id - so editing an
+// already-submitted department and refreshing could show its tick missing
+// even though the real data was saved fine.
+const normalizeRegistryId = (value) => normalizeProcessParameterId(value);
 
 // Only "PP-000N" rows belong in this unified list — legacy/foreign IDs (e.g. "#MQ-0001")
 // from before the PP-prefixed scheme was adopted shouldn't surface here or count toward
@@ -660,6 +689,32 @@ export default function ProcessParameterPage() {
 
   const nextAvailableId = backendNextAvailableId || localNextAvailableId;
 
+  // process_parameters.master's lifecycle status per PP id - only 'rejected'
+  // is surfaced in the matrix (as a badge with the L4 reviewer's reason);
+  // every other status is either implicit from the department checkmarks
+  // already shown or not yet relevant to an L1 filling the notebook out.
+  const [masterStatusMap, setMasterStatusMap] = useState({});
+
+  const refreshMasterStatuses = async () => {
+    const rows = await fetchProcessParameterMasterStatuses();
+    const map = {};
+    rows.forEach((row) => {
+      const id = normalizeRegistryId(row?.entry_id);
+      if (!id) return;
+      map[id] = {
+        status: row?.status || "",
+        reviewRemarks: row?.review_remarks || "",
+        reviewedBy: row?.reviewed_by || "",
+        departmentDecisions: row?.department_decisions || {},
+      };
+    });
+    setMasterStatusMap(map);
+  };
+
+  useEffect(() => {
+    refreshMasterStatuses();
+  }, []);
+
   const getRowCountName = (rowId) => getProcessParameterCountName(rowId) || remoteCountNameMap[rowId] || "";
   const getRowConsigneeNames = (rowId) => remoteConsigneeNameMap[rowId] || [];
   const getRowDate = (rowId) => remoteDateMap[rowId] || "";
@@ -741,6 +796,19 @@ export default function ProcessParameterPage() {
     const overrides = completedCells[rowId];
     if (!overrides) return base;
     return base.map((done, index) => done || Boolean(overrides[index]));
+  };
+
+  // L4's per-department review outcome for one PP id (see PP Approvals'
+  // Accept/Reject-per-department flow) - "Partially Approved" wins over
+  // "Fully Approved" the moment any single department has been rejected,
+  // even if every other department was accepted, since the PP id as a whole
+  // isn't usable until the rejected department is fixed and re-reviewed.
+  const getRowApprovalStatus = (rowId) => {
+    const decisions = masterStatusMap[rowId]?.departmentDecisions || {};
+    const decisionValues = PP_DEPARTMENT_KEYS.map((key) => decisions[key]?.decision || null);
+    if (decisionValues.some((decision) => decision === "rejected")) return "Partially Approved";
+    if (decisionValues.every((decision) => decision === "accepted")) return "Fully Approved";
+    return "Pending";
   };
 
   const findIdentifierValue = (items) => {
@@ -922,6 +990,7 @@ export default function ProcessParameterPage() {
     setDynamicRows(loadRegistryRows());
     loadRemoteStatuses();
     refreshNextAvailableId();
+    refreshMasterStatuses();
   };
 
   const confirmSubmit = async () => {
@@ -1271,15 +1340,10 @@ export default function ProcessParameterPage() {
                     <tr>
                       <th>{updateExistingColumns[0]}</th>
                       <th>Count Name</th>
-                      {updateExistingColumns.slice(1).map((column) => {
-                        const hours = getColumnThresholdHours(column);
-                        return (
-                          <th key={column}>
-                            {column}
-                            {hours ? <div className={styles.columnThresholdHint}>{hours}h threshold</div> : null}
-                          </th>
-                        );
-                      })}
+                      {updateExistingColumns.slice(1).map((column) => (
+                        <th key={column}>{column}</th>
+                      ))}
+                      <th>Status</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -1287,6 +1351,8 @@ export default function ProcessParameterPage() {
                     {paginatedRows.map((row) => {
                       const rowStatuses = getRowStatuses(row.id);
                       const allSubDepartmentsDone = rowStatuses.every(Boolean);
+                      const masterStatus = masterStatusMap[row.id];
+                      const approvalStatus = getRowApprovalStatus(row.id);
                       return (
                       <tr key={row.id}>
                         <td className={styles.matrixIdCell}>
@@ -1304,8 +1370,10 @@ export default function ProcessParameterPage() {
                         </td>
                         {rowStatuses.map((done, index) => {
                           const columnName = updateExistingColumns[index + 1];
-                          const overdue = isCellOverdue(row.id, columnName, done);
                           const ticketId = getCellTicketId(row.id, columnName);
+                          const departmentDecision =
+                            masterStatus?.departmentDecisions?.[PP_DEPARTMENT_KEYS[index]];
+                          const isRejectedHere = !done && departmentDecision?.decision === "rejected";
                           return (
                             <td key={`${row.id}-${index}`} className={styles.matrixStatusCell}>
                               <button
@@ -1313,16 +1381,26 @@ export default function ProcessParameterPage() {
                                 className={
                                   done
                                     ? styles.statusDone
-                                    : overdue
-                                      ? styles.statusOverdue
+                                    : isRejectedHere
+                                      ? styles.statusRejected
                                       : styles.statusPending
                                 }
                                 onClick={done ? undefined : () => handleMatrixCellClick(row.id, index)}
                                 disabled={done}
-                                aria-label={`${row.id} ${columnName} ${done ? "completed" : overdue ? "overdue" : "pending"}`}
-                                title={done ? "Completed" : overdue ? "Overdue — past its completion threshold" : "Opens in a new tab"}
+                                aria-label={`${row.id} ${columnName} ${
+                                  done ? "completed" : isRejectedHere ? "rejected - reopened for correction" : "pending"
+                                }`}
+                                title={
+                                  done
+                                    ? "Completed"
+                                    : isRejectedHere
+                                      ? `Rejected by ${departmentDecision.decided_by || "L4"}${
+                                          departmentDecision.reason ? `: ${departmentDecision.reason}` : ""
+                                        } - opens in a new tab to fix and resubmit`
+                                      : "Opens in a new tab"
+                                }
                               >
-                                {done ? "✓" : overdue ? "!" : ""}
+                                {done ? "✓" : isRejectedHere ? "✕" : ""}
                               </button>
                               {!done && ticketId !== null ? (
                                 <a
@@ -1336,17 +1414,32 @@ export default function ProcessParameterPage() {
                             </td>
                           );
                         })}
+                        <td className={styles.matrixStatusColumnCell}>
+                          <span
+                            className={
+                              approvalStatus === "Fully Approved"
+                                ? styles.approvalStatusFull
+                                : approvalStatus === "Partially Approved"
+                                  ? styles.approvalStatusPartial
+                                  : styles.approvalStatusPending
+                            }
+                          >
+                            {approvalStatus}
+                          </span>
+                        </td>
                         <td className={styles.matrixActionCell}>
                           <button
                             type="button"
                             className={styles.matrixPrintButton}
                             onClick={() => handlePrintRow(row.id)}
-                            disabled={!allSubDepartmentsDone}
+                            disabled={approvalStatus !== "Fully Approved"}
                             aria-label={`Print ${row.id}`}
                             title={
-                              allSubDepartmentsDone
+                              approvalStatus === "Fully Approved"
                                 ? "Print this row's preview"
-                                : "Complete all sub-departments before printing"
+                                : !allSubDepartmentsDone
+                                  ? "Complete all sub-departments before printing"
+                                  : "This PP id must be Fully Approved before it can be printed"
                             }
                           >
                             <MdPrint />
@@ -1469,6 +1562,12 @@ export default function ProcessParameterPage() {
         ppId={previewPpId}
         columns={COMBINED_PREVIEW_COLUMNS}
         doneMap={previewPpId ? getRowStatuses(previewPpId) : []}
+        decisionMap={
+          previewPpId
+            ? PP_DEPARTMENT_KEYS.map((key) => masterStatusMap[previewPpId]?.departmentDecisions?.[key] || null)
+            : []
+        }
+        canPrint={previewPpId ? getRowApprovalStatus(previewPpId) === "Fully Approved" : false}
         dataByColumn={previewData}
         onClose={closeCombinedPreview}
         onPrint={() => {

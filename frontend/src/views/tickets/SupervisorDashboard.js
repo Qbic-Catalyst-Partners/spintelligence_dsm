@@ -278,12 +278,14 @@ const getResolutionDisplay = (ticket, resolutionSlaMap = {}) => {
   };
 };
 
-const isTicketResolved = (status) => {
-  const normalized = String(status || "").trim().toLowerCase();
-  return normalized === "closed" || normalized === "submit";
-};
+// 'Submit' is only a pending self-resolve state (see
+// runL4SelfResolveReconciliationCheck in supervisorTickets.routes.js) - it
+// can still bounce back to 'Open' if the underlying record turns out not to
+// actually be done, so showing an Actual Res Time/Resolution Gap for it would
+// be premature. Only a genuinely 'Closed' ticket has a final resolution time.
+const isTicketResolved = (status) => String(status || "").trim().toLowerCase() === "closed";
 
-const TICKET_TYPE_OPTIONS = ["Value", "Submission", "PP", "PP Approval", "Acknowledgement", "Wheel Change"];
+const TICKET_TYPE_OPTIONS = ["Value", "Submission", "PP", "Acknowledgement", "Wheel Change"];
 
 // Per the PDF's hierarchy design, a ticket's escalation walks L1->L2->L3->L4->L5
 // as each level's TAT window elapses without action - "Owned" means it is
@@ -337,27 +339,38 @@ const isUserApproverAtLevel = (ticket, level, userId) => {
 //
 // L1 is a different case entirely, not just exempt from that check: L1 has
 // no "Mapped" tab at all (nothing escalates to L1 from below), so a ticket
-// that's no longer AT L1 (e.g. a PP ticket L1 submitted, now sitting at L4)
-// has nowhere to render once currentLevel stops matching "L1" - it silently
-// vanished from the L1 dashboard the moment it escalated, even though it's
-// still the L1 user's own ticket to track. The L1 data feed is already
-// scoped server-side to "tickets this L1 user is an approver on", so for L1
-// specifically, being in that feed at all IS the ownership - it doesn't need
-// to still be sitting at L1 right now.
+// that's no longer AT L1 has nowhere to render once currentLevel stops
+// matching "L1" - it silently vanished from the L1 dashboard the moment it
+// escalated, even though it's still the L1 user's own ticket to track. The
+// L1 data feed is already scoped server-side to "tickets this L1 user is an
+// approver on", so for L1 specifically, being in that feed at all IS the
+// ownership - it doesn't need to still be sitting at L1 right now. This does
+// NOT apply to PP tickets - see below.
 //
 // L5 stays Mapped-only by design - L5 oversees every level's tickets rather
 // than personally owning tickets at its own tier.
+//
+// PP tickets are the one exception to all of the above: they don't get
+// cross-level "Mapped" oversight like every other ticket type, including no
+// L1 "always owned" carry-through. A level only ever sees a PP ticket while
+// it's actually sitting with them right now - L1 stops seeing its own ticket
+// the moment it escalates away, and L4 never sees a PP ticket still sitting
+// at L1/L2/L3 under a "Mapped" tab. L5 keeps full oversight as usual since
+// it's Mapped-only by design regardless of ticket type.
 const getOwnershipDisplay = (ticket, mode, delegateName, currentUserId) => {
   const viewLevel = String(mode || "L2").trim().toUpperCase();
   const currentLevel = getTicketCurrentLevel(ticket);
-  const isOwned =
-    viewLevel === "L1"
+  const isPpTicket = ticket?.ticketType === "PP";
+  const isOwned = isPpTicket
+    ? viewLevel !== "L5" && currentLevel === viewLevel
+    : viewLevel === "L1"
       ? true
       : viewLevel !== "L5" &&
         currentLevel === viewLevel &&
         isUserApproverAtLevel(ticket, viewLevel, currentUserId);
+  const kind = isOwned ? "owned" : isPpTicket && viewLevel !== "L5" ? "hidden" : "mapped";
   return {
-    kind: isOwned ? "owned" : "mapped",
+    kind,
     label: isOwned ? "Owned" : "Mapped",
     delegateName: isOwned ? "" : (delegateName || "-"),
   };

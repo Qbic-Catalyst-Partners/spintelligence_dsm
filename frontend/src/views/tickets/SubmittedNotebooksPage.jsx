@@ -667,6 +667,18 @@ const isNotebookForUser = (notebook, user) => {
 };
 
 const isNotebookPendingAcknowledgement = (notebook) => {
+    // The list endpoint (GET /submitted-notebooks) already computes this
+    // correctly - `requiresAcknowledgement` is only true when the screen
+    // actually has an active Acknowledgement Threshold configured, not just
+    // "hasn't been acknowledged yet" (every submission defaults to a
+    // PENDING_ACK-shaped status regardless of whether acknowledgement is
+    // even a configured requirement for it). Prefer that field when present;
+    // only fall back to the raw status-only guess for a payload that doesn't
+    // carry it (e.g. an older cached shape).
+    if (typeof notebook?.requiresAcknowledgement === "boolean" && !notebook.requiresAcknowledgement) {
+        return false;
+    }
+
     if (notebook?.acknowledged_at || notebook?.acknowledgedAt || notebook?.acknowledged_by || notebook?.acknowledgedBy) {
         return false;
     }

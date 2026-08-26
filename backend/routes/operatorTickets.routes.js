@@ -12,6 +12,30 @@ const { Readable } = require('stream');
 
 const csvUpload = multer({ storage: multer.memoryStorage() });
 
+// ticket_id has been stored two different ways across this app's history -
+// older tickets as plain "TK-0338", newer ones (generateTicketId, utils/
+// ticketId.js) with a leading "#" as "#TK-0346" - while the frontend's
+// formatTicketId always strips any leading "#" before sending an id to the
+// API. Net effect: a lookup here for a "#"-prefixed ticket (any PP Approval/
+// Wheel Change Approval/PP Batch ticket) silently 404'd as "Ticket not
+// found" even though it exists, since the bare id it received never matched
+// the stored "#..." value. Resolving to whichever form is actually stored -
+// once, right after the id is read off the request - lets every existing
+// `WHERE ticket_id = $1` query below keep working unchanged for both
+// formats. Mirrors the identical helper in supervisorTickets.routes.js.
+const resolveStoredTicketId = async (rawTicketId) => {
+  const trimmed = String(rawTicketId || '').trim();
+  if (!trimmed) return trimmed;
+  const bare = trimmed.replace(/^#/, '');
+  const result = await client.query(
+    `SELECT ticket_id FROM ticketing_system.operator_tickets
+     WHERE ticket_id = $1 OR ticket_id = $2
+     LIMIT 1`,
+    [bare, `#${bare}`]
+  );
+  return result.rows[0]?.ticket_id || trimmed;
+};
+
 // Employee-Hierarchy-and-Workflow-System_V2.pdf: escalation for every
 // threshold type should follow the L1 user's real reporting chain
 // (reports_to_user_id, see getManagerChain in user.routes.js) rather than
@@ -951,32 +975,40 @@ const checkSubmissionFrequencyValueBreach = async (config) => {
   const l1TatDueAt = l1TatHours ? new Date(Date.now() + l1TatHours * 60 * 60 * 1000).toISOString() : null;
 
   const ticketId = await generateTicketId(client);
-  const ticket = await client.query(
-    `INSERT INTO ticketing_system.operator_tickets
-     (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
-      severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind,
-      violation_details, submission_frequency_config_id, tat_current_level, l1_tat_due_at)
-     VALUES (
-       'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-       $1, $2::jsonb, $3::jsonb, $4::jsonb,
-       $5, 'Open', NOW(), $6, $7, 'THRESHOLD_BREACH', 'SUBMISSION_FREQUENCY', 'submission_frequency',
-       $8::jsonb, $9, 'L1', $10
-     )
-     RETURNING *`,
-    [
-      ticketId,
-      config.screen_name,
-      JSON.stringify([config.input_field]),
-      JSON.stringify([Number(actualValue)]),
-      JSON.stringify([{ actual_value: config.actual_value, plus_threshold: config.plus_threshold, minus_threshold: config.minus_threshold }]),
-      severity,
-      config.department,
-      config.sub_department,
-      JSON.stringify(violationDetails),
-      config.id,
-      l1TatDueAt
-    ]
-  );
+  let ticket;
+  try {
+    ticket = await client.query(
+      `INSERT INTO ticketing_system.operator_tickets
+       (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+        severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind,
+        violation_details, submission_frequency_config_id, tat_current_level, l1_tat_due_at)
+       VALUES (
+         'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+         $1, $2::jsonb, $3::jsonb, $4::jsonb,
+         $5, 'Open', NOW(), $6, $7, 'THRESHOLD_BREACH', 'SUBMISSION_FREQUENCY', 'submission_frequency',
+         $8::jsonb, $9, 'L1', $10
+       )
+       RETURNING *`,
+      [
+        ticketId,
+        config.screen_name,
+        JSON.stringify([config.input_field]),
+        JSON.stringify([Number(actualValue)]),
+        JSON.stringify([{ actual_value: config.actual_value, plus_threshold: config.plus_threshold, minus_threshold: config.minus_threshold }]),
+        severity,
+        config.department,
+        config.sub_department,
+        JSON.stringify(violationDetails),
+        config.id,
+        l1TatDueAt
+      ]
+    );
+  } catch (error) {
+    // 23505 = operator_tickets_subfreq_breach_open_uq - another run already
+    // raised this exact ticket first.
+    if (error?.code !== '23505') throw error;
+    return null;
+  }
 
   const inserted = ticket.rows[0];
 
@@ -997,7 +1029,28 @@ const checkSubmissionFrequencyValueBreach = async (config) => {
   return inserted;
 };
 
+// Backstops checkSubmissionFrequencyValueBreach's and this function's own
+// per-user check-then-insert dedup - same reasoning as the PP/Wheel Change
+// Approval unique indexes. Two separate partial indexes since the two ticket
+// shapes have different dedup keys (config alone vs. config+user) and
+// different ticket_reason values.
+const ensureSubmissionFrequencyTicketIndexes = async () => {
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_subfreq_breach_open_uq
+    ON ticketing_system.operator_tickets (submission_frequency_config_id)
+    WHERE ticket_type = 'SUBMISSION_FREQUENCY' AND ticket_reason = 'THRESHOLD_BREACH'
+      AND status NOT IN ('Closed', 'No Due')
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_subfreq_missed_open_uq
+    ON ticketing_system.operator_tickets (submission_frequency_config_id, user_id)
+    WHERE ticket_type = 'SUBMISSION_FREQUENCY' AND ticket_reason = 'MISSING_VALUE'
+      AND status NOT IN ('Closed', 'No Due')
+  `);
+};
+
 const runSubmissionFrequencyCheck = async () => {
+  await ensureSubmissionFrequencyTicketIndexes();
 
   const configs = await client.query(
     `SELECT * FROM ticketing_system.screen_submission_frequency WHERE is_active = true`
@@ -1045,7 +1098,36 @@ const runSubmissionFrequencyCheck = async () => {
         [l1UserId, config.screen_name, windowDays]
       );
       const actualCount = Number(submissionCount.rows[0]?.count) || 0;
-      if (actualCount >= requiredCount) continue;
+      if (actualCount >= requiredCount) {
+        // The L1 user has since caught up in the current rolling window -
+        // this only ever raised a ticket, it never had a companion "resolve
+        // once fixed" step, so a since-resolved ticket would otherwise sit
+        // open and keep escalating through L2-L5 regardless of whether the
+        // actual problem still exists. Close any ticket still open for this
+        // exact config+user now that the same measurement that flagged it
+        // says it's no longer true.
+        // eslint-disable-next-line no-await-in-loop
+        const closedResult = await client.query(
+          `UPDATE ticketing_system.operator_tickets
+           SET status = 'Closed'
+           WHERE submission_frequency_config_id = $1
+             AND user_id = $2
+             AND ticket_reason = 'MISSING_VALUE'
+             AND (violation_details->>'category') = 'MISSED_FREQUENCY'
+             AND status NOT IN ('Closed', 'No Due')
+           RETURNING ticket_id`,
+          [config.id, l1UserId]
+        );
+        for (const closedRow of closedResult.rows) {
+          // eslint-disable-next-line no-await-in-loop
+          await client.query(
+            `INSERT INTO ticketing_system.ticket_logs (ticket_id, action, performed_by, role, created_at)
+             VALUES ($1, 'AUTO_RESOLVED_CAUGHT_UP', 'System', 'System', NOW())`,
+            [closedRow.ticket_id]
+          );
+        }
+        continue; // eslint-disable-line no-continue
+      }
 
       // eslint-disable-next-line no-await-in-loop
       const existingTicket = await client.query(
@@ -1076,37 +1158,44 @@ const runSubmissionFrequencyCheck = async () => {
 
       // eslint-disable-next-line no-await-in-loop
       const ticketId = await generateTicketId(client);
-      // eslint-disable-next-line no-await-in-loop
-      const ticket = await client.query(
-        `INSERT INTO ticketing_system.operator_tickets
-         (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value,
-          severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind,
-          violation_details, approval_l1_user_ids, submission_frequency_config_id, tat_current_level, l1_tat_due_at)
-         VALUES (
-           'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-           $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb,
-           'Medium', 'Open', NOW(), $7, $8, 'MISSING_VALUE', 'SUBMISSION_FREQUENCY', 'submission_frequency',
-           $9::jsonb, $10::int[], $11, 'L1', $12
-         )
-         RETURNING *`,
-        [
-          ticketId,
-          l1UserId,
-          userRow.rows[0]?.full_name || null,
-          config.screen_name,
-          JSON.stringify([config.screen_name]),
-          JSON.stringify([actualCount]),
-          JSON.stringify([{ screen_name: config.screen_name, required_occurrences: requiredCount, window_days: windowDays }]),
-          config.department,
-          config.sub_department,
-          JSON.stringify(violationDetails),
-          [l1UserId],
-          config.id,
-          l1TatDueAt
-        ]
-      );
-
-      const inserted = ticket.rows[0];
+      let inserted;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const ticket = await client.query(
+          `INSERT INTO ticketing_system.operator_tickets
+           (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value,
+            severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind,
+            violation_details, approval_l1_user_ids, submission_frequency_config_id, tat_current_level, l1_tat_due_at)
+           VALUES (
+             $1,
+             $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb,
+             'Medium', 'Open', NOW(), $8, $9, 'MISSING_VALUE', 'SUBMISSION_FREQUENCY', 'submission_frequency',
+             $10::jsonb, $11::int[], $12, 'L1', $13
+           )
+           RETURNING *`,
+          [
+            ticketId,
+            l1UserId,
+            userRow.rows[0]?.full_name || null,
+            config.screen_name,
+            JSON.stringify([config.screen_name]),
+            JSON.stringify([actualCount]),
+            JSON.stringify([{ screen_name: config.screen_name, required_occurrences: requiredCount, window_days: windowDays }]),
+            config.department,
+            config.sub_department,
+            JSON.stringify(violationDetails),
+            [l1UserId],
+            config.id,
+            l1TatDueAt
+          ]
+        );
+        inserted = ticket.rows[0];
+      } catch (error) {
+        // 23505 = operator_tickets_subfreq_missed_open_uq - another run
+        // already raised this exact ticket (same config+user) first.
+        if (error?.code !== '23505') throw error;
+        continue; // eslint-disable-line no-continue
+      }
       created.push(inserted);
 
       // eslint-disable-next-line no-await-in-loop
@@ -1135,51 +1224,20 @@ const runSubmissionFrequencyCheck = async () => {
 // reach.
 const runSubmissionFrequencyTatCheck = async () => {
 
-  await client.query(
-    `UPDATE ticketing_system.operator_tickets ot
-     SET tat_current_level = 'L2',
-         status = CASE WHEN ot.status = 'Open' THEN 'In Progress' ELSE ot.status END,
-         l1_tat_due_at = NULL,
-         l2_tat_due_at = COALESCE(
-           ot.l2_tat_due_at,
-           CASE
-             WHEN sf.l2_tat_hours IS NULL THEN NULL
-             ELSE ot.created_at + (sf.l2_tat_hours || ' hours')::interval
-           END
-         )
-     FROM ticketing_system.screen_submission_frequency sf
-     WHERE sf.id = ot.submission_frequency_config_id
-       AND ot.ticket_reason = 'MISSING_VALUE'
-       AND (ot.violation_details->>'category') = 'MISSED_FREQUENCY'
-       AND COALESCE(ot.tat_current_level, 'L1') = 'L1'`
-  );
-
-  // Fill in approval_l2_user_ids from each ticket's own submitter's real
-  // manager (falling back to the screen config's single approval_l2 id) -
-  // done per-row rather than in the bulk UPDATE above since getManagerChain
-  // needs its own query per user.
-  const needingL2Approver = await client.query(
-    `SELECT ot.ticket_id, ot.user_id, sf.approval_l2
-     FROM ticketing_system.operator_tickets ot
-     JOIN ticketing_system.screen_submission_frequency sf ON sf.id = ot.submission_frequency_config_id
-     WHERE ot.tat_current_level = 'L2'
-       AND ot.ticket_reason = 'MISSING_VALUE'
-       AND (ot.violation_details->>'category') = 'MISSED_FREQUENCY'
-       AND (ot.approval_l2_user_ids IS NULL OR ot.approval_l2_user_ids = ARRAY[]::int[])`
-  );
-  for (const row of needingL2Approver.rows) {
-    const chain = row.user_id ? await getManagerChain(row.user_id) : [];
-    const l2Manager = chain.find((manager) => manager.level === 'L2');
-    const fallbackId = parseTatHours(row.approval_l2, null);
-    const approverIds = l2Manager ? [l2Manager.id] : (fallbackId ? [fallbackId] : []);
-    if (approverIds.length) {
-      // eslint-disable-next-line no-await-in-loop
-      await client.query(
-        `UPDATE ticketing_system.operator_tickets SET approval_l2_user_ids = $1 WHERE ticket_id = $2`,
-        [approverIds, row.ticket_id]
-      );
-    }
-  }
+  // L1->L2 is deliberately NOT auto-escalated by TAT here (unlike every
+  // tier below) - a Submission Frequency ticket means "L1 missed their
+  // submissions," and L1 is the one who has to actually go fix that by
+  // submitting the missing notebook entries, not just wait it out. It only
+  // moves to L2 for review once L1 genuinely does that and clicks Fix &
+  // Submit (PUT /operator-tickets/submit/:id, which already resolves the L2
+  // approver from the submitter's real reporting chain and escalates
+  // correctly) - matching PP Approval/Wheel Change Approval/Acknowledgement,
+  // which are all likewise driven by a real action rather than a clock.
+  // This used to unconditionally bump every L1 ticket to L2 on the very next
+  // check (no L1 TAT column exists on this config, so there was never a real
+  // wait involved) regardless of whether L1 had done anything at all -
+  // meaning the ticket was visible "at L1" for at most ~15 minutes before
+  // silently jumping to L2, making it look like nothing was ever raised.
 
   const tiers = [
     { level: 'L2', dueColumn: 'l2_tat_due_at', nextLevel: 'L3', nextDueColumn: 'l3_tat_due_at', tatHoursColumn: 'l3_tat_hours', fallbackColumn: 'approval_l3' },
@@ -1207,6 +1265,22 @@ const runSubmissionFrequencyTatCheck = async () => {
       const nextManager = chain.find((manager) => manager.level === tier.nextLevel);
       const fallbackId = tier.fallbackColumn ? parseTatHours(ticket.fallback_approver, null) : null;
       const nextApproverIds = nextManager ? [nextManager.id] : (fallbackId ? [fallbackId] : []);
+      // Unlike L1->L2 (always has a fallback: the submitter's own manager
+      // chain almost always reaches an L2, plus L2/L3 tiers have a config
+      // fallback column), L3->L4 and L4->L5 have NO config fallback - if
+      // getManagerChain doesn't reach that far up, advancing anyway used to
+      // leave the ticket at the next tier with an EMPTY approver array,
+      // invisible to literally everyone (canApproveOrRejectTicket/GET
+      // /tickets both gate on being named in that array, and unlike PP
+      // Approval there's no "any L4/L5 can act" carve-out here - this is
+      // meant to be reporting-chain-scoped, not company-wide). Skipping the
+      // advance keeps it visible to whoever already holds it at the current
+      // tier and lets a later run retry once/if the chain is fixed, instead
+      // of orphaning it to nobody.
+      if (!nextApproverIds.length) {
+        console.warn(`[submission-frequency] ${ticket.ticket_id} due to escalate ${tier.level}->${tier.nextLevel} but no approver resolved - leaving at ${tier.level}`);
+        continue; // eslint-disable-line no-continue
+      }
       const nextTatHours = Number(ticket.next_tat_hours) > 0 ? Number(ticket.next_tat_hours) : null;
       const nextDueAt = nextTatHours ? new Date(Date.now() + nextTatHours * 60 * 60 * 1000).toISOString() : null;
 
@@ -1222,19 +1296,17 @@ const runSubmissionFrequencyTatCheck = async () => {
       );
       if (result.rows[0]) escalated.push(result.rows[0]);
 
-      if (nextApproverIds.length) {
-        // eslint-disable-next-line no-await-in-loop
-        await createNotificationsForUsers(nextApproverIds, {
-          ticketId: ticket.ticket_id,
-          type: 'SUBMISSION_FREQUENCY',
-          category: 'Tickets',
-          priority: 'High',
-          title: `Submission frequency missed (escalated to ${tier.nextLevel}): ${ticket.machine_name || ticket.ticket_id}`,
-          body: `This ticket was not actioned at ${tier.level} in time and has escalated to ${tier.nextLevel}.`,
-          linkUrl: `/supervisor-tickets/${ticket.ticket_id}`,
-          payload: { ticket_id: ticket.ticket_id }
-        });
-      }
+      // eslint-disable-next-line no-await-in-loop
+      await createNotificationsForUsers(nextApproverIds, {
+        ticketId: ticket.ticket_id,
+        type: 'SUBMISSION_FREQUENCY',
+        category: 'Tickets',
+        priority: 'High',
+        title: `Submission frequency missed (escalated to ${tier.nextLevel}): ${ticket.machine_name || ticket.ticket_id}`,
+        body: `This ticket was not actioned at ${tier.level} in time and has escalated to ${tier.nextLevel}.`,
+        linkUrl: `/supervisor-tickets/${ticket.ticket_id}`,
+        payload: { ticket_id: ticket.ticket_id }
+      });
     }
   }
 
@@ -2379,7 +2451,7 @@ router.get('/process-parameter-ticketing', async (req, res, next) => {
  */
 router.get('/:id/timeline', async (req, res, next) => {
   try {
-    const ticketId = String(req.params.id || '').trim();
+    const ticketId = await resolveStoredTicketId(String(req.params.id || '').trim());
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
 
     const ticketRes = await client.query(
@@ -2486,7 +2558,7 @@ router.get('/:id/timeline', async (req, res, next) => {
 
 router.get('/:id', async (req, res, next) => {
   try {
-    const ticketId = req.params.id; // accept alphanumeric IDs
+    const ticketId = await resolveStoredTicketId(req.params.id); // accept alphanumeric IDs
 
     const query = `
       SELECT
@@ -2522,7 +2594,22 @@ router.get('/:id', async (req, res, next) => {
       return res.status(404).json({ message: 'Ticket not found' });
     }
 
-    res.status(200).json(result.rows[0]);
+    const ticket = result.rows[0];
+    // Live, not the frozen-at-creation snapshot - so the operator sees which
+    // departments are ACTUALLY still missing right now, including any they
+    // (or another department) already fixed and saved since this ticket was
+    // raised or last submitted.
+    if (ticket.ticket_kind === 'pp_batch' || ticket.ticket_type === 'PP_BATCH_INCOMPLETE') {
+      const { getPpBatchCompletionForEntryId } = require('./submittedNotebooks.routes');
+      const { completedScreens, missingScreens } = await getPpBatchCompletionForEntryId(ticket.entry_id);
+      ticket.violation_details = {
+        ...(ticket.violation_details || {}),
+        completed_screens: completedScreens,
+        missing_screens: missingScreens,
+      };
+    }
+
+    res.status(200).json(ticket);
   } catch (err) {
     next(err);
   }
@@ -2585,8 +2672,24 @@ router.get('/:id', async (req, res, next) => {
  *       500:
  *         description: Internal server error
  */
+// Backstops this route's own check-then-insert dedup (the "same entry
+// re-triggering the same breach" guard below, a few hundred lines down) -
+// same reasoning as the PP/Wheel Change Approval unique indexes. Scoped to
+// rows that actually supplied entry_id, matching that guard's own
+// `if (normalizedEntryId)` condition - callers without one intentionally get
+// no dedup at all today, so this shouldn't start enforcing one for them.
+const ensureValueThresholdTicketIndex = async () => {
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_value_threshold_open_uq
+    ON ticketing_system.operator_tickets (machine_name, (violation_details->>'entry_id'))
+    WHERE ticket_type = 'VALUE_THRESHOLD' AND status <> 'Closed'
+      AND NULLIF(violation_details->>'entry_id', '') IS NOT NULL
+  `);
+};
+
 router.post('/', async (req, res, next) => {
   try {
+    await ensureValueThresholdTicketIndex();
     const {
       user_id,
       user_name,
@@ -2716,25 +2819,42 @@ router.post('/', async (req, res, next) => {
       RETURNING *;
     `;
 
-    const result = await client.query(insertQuery, [
-      ticketId,
-      assignedUserId,
-      assignedUserName,
-      machine_name,
-      JSON.stringify(normalizedParameterNames),
-      JSON.stringify(normalizedActualValue),
-      JSON.stringify(effectiveThresholds),
-      severity,
-      management_field || null,
-      erp_product_code || null,
-      ticketReason,
-      JSON.stringify({ ...violationDetails, entry_id: normalizedEntryId }),
-      approvalL1UserIds,
-      approvalL2UserIds,
-      approvalL3UserIds,
-      approvalL4UserIds,
-      approvalL5UserIds
-    ]);
+    let result;
+    try {
+      result = await client.query(insertQuery, [
+        ticketId,
+        assignedUserId,
+        assignedUserName,
+        machine_name,
+        JSON.stringify(normalizedParameterNames),
+        JSON.stringify(normalizedActualValue),
+        JSON.stringify(effectiveThresholds),
+        severity,
+        management_field || null,
+        erp_product_code || null,
+        ticketReason,
+        JSON.stringify({ ...violationDetails, entry_id: normalizedEntryId }),
+        approvalL1UserIds,
+        approvalL2UserIds,
+        approvalL3UserIds,
+        approvalL4UserIds,
+        approvalL5UserIds
+      ]);
+    } catch (error) {
+      // 23505 = operator_tickets_value_threshold_open_uq - lost a race with
+      // another request that inserted this exact entry_id's ticket first.
+      if (error?.code !== '23505') throw error;
+      const winner = await client.query(
+        `SELECT ticket_id FROM ticketing_system.operator_tickets
+         WHERE ticket_type = 'VALUE_THRESHOLD' AND machine_name = $1 AND (violation_details->>'entry_id') = $2 AND status <> 'Closed'
+         LIMIT 1`,
+        [machine_name, normalizedEntryId]
+      );
+      return res.status(200).json({
+        message: 'Ticket already open for this entry',
+        ticket: { ticket_id: winner.rows[0]?.ticket_id }
+      });
+    }
 
     const ticket = result.rows[0];
     const approverLevels = [
@@ -3296,6 +3416,18 @@ router.delete('/submission-frequency/:id', async (req, res, next) => {
       return res.status(404).json({ message: 'Submission threshold not found' });
     }
 
+    // Deleting the config that raised a ticket shouldn't leave that ticket
+    // open forever with nothing behind it anymore - the requirement it was
+    // tracking no longer exists, so it's no longer actionable. Tickets carry
+    // this config's id directly (submission_frequency_config_id), so this is
+    // an exact match, not a name-based guess.
+    await client.query(
+      `UPDATE ticketing_system.operator_tickets
+       SET status = 'Closed'
+       WHERE submission_frequency_config_id = $1 AND status <> 'Closed'`,
+      [id]
+    );
+
     res.status(200).json({
       message: 'Submission threshold deleted successfully'
     });
@@ -3779,7 +3911,7 @@ router.post('/thresholds/upload-csv', csvUpload.single('file'), async (req, res,
 
 router.put('/:id/assign', async (req, res, next) => {
   try {
-    const ticketId = req.params.id;
+    const ticketId = await resolveStoredTicketId(req.params.id);
     const { user_id } = req.body;
 
     if (!user_id) {
@@ -3814,7 +3946,7 @@ router.put('/:id/assign', async (req, res, next) => {
 
 const updateOperatorTicketStatusHandler = async (req, res, next) => {
   try {
-    const ticketId = String(req.params.id || req.body?.ticket_id || req.body?.ticketId || '').trim();
+    const ticketId = await resolveStoredTicketId(String(req.params.id || req.body?.ticket_id || req.body?.ticketId || '').trim());
     const status = normalizeTicketStatusInput(req.body?.status || req.body?.ticket_status || req.body?.ticketStatus);
 
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
@@ -3951,7 +4083,7 @@ router.get('/workflow/guide', async (req, res) => {
 router.put('/submit/:id', async (req, res, next) => {
   try {
 
-    const ticketId = req.params.id;
+    const ticketId = await resolveStoredTicketId(req.params.id);
     // Accept multiple payload aliases and persist as operator_comment.
     const operatorCommentRaw =
       req.body?.operator_comment ??
@@ -3998,9 +4130,20 @@ router.put('/submit/:id', async (req, res, next) => {
 
     let nextLevel;
     let nextApproverIds;
+    // Refreshed completed/missing screens for a PP batch ticket, merged into
+    // violation_details below - null for every other ticket kind (nothing to
+    // refresh).
+    let refreshedPpScreens = null;
     if (isPpBatchTicket) {
-      const { getPpNotebookThresholds } = require('./submittedNotebooks.routes');
+      const { getPpNotebookThresholds, getPpBatchCompletionForEntryId } = require('./submittedNotebooks.routes');
       const notebookThresholds = await getPpNotebookThresholds();
+      const entryId = ticket.violation_details?.entry_id;
+      const { completedScreens, missingScreens } = await getPpBatchCompletionForEntryId(entryId);
+      refreshedPpScreens = { completed_screens: completedScreens, missing_screens: missingScreens };
+      // Only the screens the operator was actually asked to fix (the ticket's
+      // original overdue set) decide who reviews next - a screen that was
+      // already missing but hadn't hit its own threshold yet when this
+      // ticket was raised shouldn't newly pull in its L4 approver here.
       const overdueScreens = Array.isArray(ticket.violation_details?.overdue_screens) && ticket.violation_details.overdue_screens.length
         ? ticket.violation_details.overdue_screens
         : Array.isArray(ticket.parameter_name) ? ticket.parameter_name : [];
@@ -4026,13 +4169,13 @@ router.put('/submit/:id', async (req, res, next) => {
            tat_current_level = $3,
            approval_l2_user_ids = CASE WHEN $3 = 'L2' THEN $4::int[] ELSE approval_l2_user_ids END,
            approval_l4_user_ids = CASE WHEN $3 = 'L4' THEN $4::int[] ELSE approval_l4_user_ids END,
-           violation_details = CASE
-             WHEN $2::text IS NULL OR btrim($2::text) = '' THEN violation_details
-             ELSE COALESCE(violation_details, '{}'::jsonb) || jsonb_build_object('operator_comment', $2::text)
-           END
+           violation_details =
+             COALESCE(violation_details, '{}'::jsonb)
+             || CASE WHEN $2::text IS NULL OR btrim($2::text) = '' THEN '{}'::jsonb ELSE jsonb_build_object('operator_comment', $2::text) END
+             || $5::jsonb
        WHERE ticket_id = $1
        RETURNING *`,
-      [ticketId, operatorComment, nextLevel, nextApproverIds]
+      [ticketId, operatorComment, nextLevel, nextApproverIds, JSON.stringify(refreshedPpScreens || {})]
     );
 
     const updatedTicket = updateResult.rows[0];
@@ -4096,7 +4239,7 @@ router.put('/submit/:id', async (req, res, next) => {
 
 router.get('/:id/approvals', async (req, res, next) => {
   try {
-    const ticketId = req.params.id;
+    const ticketId = await resolveStoredTicketId(req.params.id);
 
     const result = await client.query(
       `SELECT ticket_id, level, action_status, performed_by, role, created_at

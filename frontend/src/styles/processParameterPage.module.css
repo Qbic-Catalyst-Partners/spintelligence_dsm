@@ -537,7 +537,8 @@
 
 .statusDone,
 .statusPending,
-.statusOverdue {
+.statusOverdue,
+.statusRejected {
   width: 24px;
   height: 24px;
   border-radius: 999px;
@@ -560,11 +561,49 @@
   color: transparent;
 }
 
+.statusRejected {
+  background: #ffffff;
+  color: #dc2626;
+  border: 2px solid #dc2626;
+  font-size: 13px;
+  cursor: pointer;
+}
+
 .statusOverdue {
   background: #e35555;
   color: #ffffff;
   font-size: 14px;
   cursor: pointer;
+}
+
+.matrixStatusColumnCell {
+  width: 130px;
+}
+
+.approvalStatusFull,
+.approvalStatusPartial,
+.approvalStatusPending {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.approvalStatusFull {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.approvalStatusPartial {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.approvalStatusPending {
+  background: #e2e8f0;
+  color: #475569;
 }
 
 .columnThresholdHint {
@@ -797,7 +836,11 @@
 
   .printMatrixMode .statusDone,
   .printMatrixMode .statusPending,
-  .printMatrixMode .statusOverdue {
+  .printMatrixMode .statusOverdue,
+  .printMatrixMode .statusRejected,
+  .printMatrixMode .approvalStatusFull,
+  .printMatrixMode .approvalStatusPartial,
+  .printMatrixMode .approvalStatusPending {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
     color-adjust: exact;

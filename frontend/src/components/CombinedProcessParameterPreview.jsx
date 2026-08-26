@@ -8,7 +8,17 @@ const formatValue = (value) => {
   return normalized && normalized !== "-" ? normalized : "0";
 };
 
-function CombinedProcessParameterPreview({ open, ppId, columns, doneMap, dataByColumn, onClose, onPrint }) {
+function CombinedProcessParameterPreview({
+  open,
+  ppId,
+  columns,
+  doneMap,
+  decisionMap,
+  canPrint = true,
+  dataByColumn,
+  onClose,
+  onPrint,
+}) {
   if (!open) return null;
 
   return (
@@ -17,7 +27,14 @@ function CombinedProcessParameterPreview({ open, ppId, columns, doneMap, dataByC
         <div className={styles.headerRow}>
           <h2 className={styles.title}>Process Parameter</h2>
           <div className={styles.headerActions}>
-            <button type="button" className={styles.printButton} onClick={onPrint} aria-label="Print preview">
+            <button
+              type="button"
+              className={styles.printButton}
+              onClick={canPrint ? onPrint : undefined}
+              disabled={!canPrint}
+              aria-label="Print preview"
+              title={canPrint ? "Print" : "This PP id must be Fully Approved before it can be printed"}
+            >
               <MdPrint />
             </button>
             <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close preview">
@@ -34,14 +51,21 @@ function CombinedProcessParameterPreview({ open, ppId, columns, doneMap, dataByC
         <div className={styles.sections}>
           {columns.map((column, index) => {
             const done = Boolean(doneMap?.[index]);
+            const decision = decisionMap?.[index]?.decision || null;
             const section = dataByColumn?.[column.key];
             const items = section?.items || [];
+            const statusLabel = decision === "rejected" ? "Rejected" : decision === "accepted" ? "Approved" : done ? "Submitted" : "Pending";
 
             return (
               <div key={column.key} className={styles.section}>
                 <div className={styles.sectionHeader}>
                   <span className={styles.sectionTitle}>{column.label}</span>
-                  {done ? (
+                  <span className={styles.sectionStatusLabel}>{statusLabel}</span>
+                  {decision === "rejected" ? (
+                    <span className={styles.rejectedIcon} title="Rejected - reopened for correction">
+                      ✕
+                    </span>
+                  ) : done ? (
                     <FaCheckCircle className={styles.doneIcon} />
                   ) : (
                     <span className={styles.pendingIcon} />

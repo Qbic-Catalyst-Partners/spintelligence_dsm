@@ -2763,7 +2763,7 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
            doffer = $21,
            flats = $22,
            operator = COALESCE($23, operator)
-       WHERE id = $24
+       WHERE qc_id = $24
        RETURNING *`,
       [
         type,
