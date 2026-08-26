@@ -39,6 +39,23 @@
   line-height: 1.4;
 }
 
+.modalWarning {
+  width: min(420px, 90vw);
+  padding: 46px 40px 42px;
+  gap: 20px;
+}
+
+.modalWarning .icon {
+  width: 84px;
+  height: 84px;
+  font-size: 42px;
+}
+
+.modalWarning .message {
+  font-size: 23px;
+  line-height: 1.5;
+}
+
 .icon {
   width: 64px;
   height: 64px;
