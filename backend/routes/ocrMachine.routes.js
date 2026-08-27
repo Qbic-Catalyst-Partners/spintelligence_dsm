@@ -196,7 +196,7 @@ function sendSse(res, payload) {
 async function ensureMachineOcrTable() {
   if (machineTableReady) return;
   await db.query(`
-    CREATE TABLE IF NOT EXISTS ocr_machine_records (
+    CREATE TABLE IF NOT EXISTS ticketing_system.ocr_machine_records (
       id SERIAL PRIMARY KEY,
       machine_type TEXT NOT NULL,
       filename TEXT,
@@ -207,7 +207,7 @@ async function ensureMachineOcrTable() {
     );
   `);
   await db.query(`
-    ALTER TABLE ocr_machine_records
+    ALTER TABLE ticketing_system.ocr_machine_records
       ADD COLUMN IF NOT EXISTS machine_type TEXT NOT NULL DEFAULT 'drawing',
       ADD COLUMN IF NOT EXISTS filename TEXT,
       ADD COLUMN IF NOT EXISTS machine_name TEXT,
@@ -643,7 +643,7 @@ router.post('/api/save', express.json({ limit: '10mb' }), async (req, res) => {
       await ensureMachineOcrTable();
       const inserted = await db.query(
         `
-          INSERT INTO ocr_machine_records (machine_type, filename, machine_name, ocr_json, manual_json)
+          INSERT INTO ticketing_system.ocr_machine_records (machine_type, filename, machine_name, ocr_json, manual_json)
           VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
           RETURNING id
         `,
@@ -690,7 +690,7 @@ router.post('/api/save', express.json({ limit: '10mb' }), async (req, res) => {
       await ensureMachineOcrTable();
       const inserted = await db.query(
         `
-          INSERT INTO ocr_machine_records (machine_type, filename, machine_name, ocr_json, manual_json)
+          INSERT INTO ticketing_system.ocr_machine_records (machine_type, filename, machine_name, ocr_json, manual_json)
           VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
           RETURNING id
         `,

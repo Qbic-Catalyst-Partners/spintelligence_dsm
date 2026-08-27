@@ -200,24 +200,6 @@ const getMappedScreenCatalog = () => Object.entries(SCREEN_SOURCE_MAP).map(([key
   date_column: src.dateColumn
 }));
 
-const getAllMappedNumericFields = async () => {
-  const catalog = getMappedScreenCatalog();
-  const byTable = new Map();
-
-  await Promise.all(
-    catalog.map(async (item) => {
-      const cols = await getNumericColumns(item.table);
-      byTable.set(item.table, cols);
-    })
-  );
-
-  const all = new Set();
-  for (const cols of byTable.values()) {
-    for (const col of cols) all.add(col);
-  }
-  return Array.from(all).sort((a, b) => a.localeCompare(b));
-};
-
 const getSchemaFieldCatalog = async () => {
   const catalog = getMappedScreenCatalog();
   const rows = await Promise.all(catalog.map(async (item) => {

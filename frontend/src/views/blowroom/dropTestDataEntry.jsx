@@ -57,9 +57,6 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                 await dispatch(saveBlowroomDropTest({
                     entry_id: tuftEntryId,
                     drop_id: entryId,
-                    dropId: entryId,
-                    drop_test_id: entryId,
-                    display_entry_id: tuftEntryId,
                     date,
                     variety: formData.variety,
                     blend: formData.blend,

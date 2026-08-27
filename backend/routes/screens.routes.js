@@ -74,6 +74,12 @@ router.post("/", async (req, res) => {
     });
   }
 
+  if (!department_id) {
+    return res.status(400).json({
+      error: "Department is required"
+    });
+  }
+
   try {
 
     const existing = await client.query(

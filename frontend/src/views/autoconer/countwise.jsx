@@ -113,8 +113,8 @@ const mapApiEntryToMetrics = (entry = {}) => ({
   G: entry.g ?? "",
   H1: entry.h1 ?? "",
   H2: entry.h2 ?? "",
-  I1: entry.l1 ?? "",
-  I2: entry.l2 ?? "",
+  I1: entry.i1 ?? "",
+  I2: entry.i2 ?? "",
 });
 
 function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterActions, entryId = "" }) {
@@ -212,6 +212,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
         entry_date: date,
         machine_no: machineNo,
         count_name: count,
+        cntcode: countCode || undefined,
         cone_tip: craneTip,
         lot_no: lotNo,
         frame_no: frameNo,
@@ -251,8 +252,8 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
         g: metrics.G || null,
         h1: metrics.H1 || null,
         h2: metrics.H2 || null,
-        l1: metrics.I1 || null,
-        l2: metrics.I2 || null,
+        i1: metrics.I1 || null,
+        i2: metrics.I2 || null,
       };
 
       await dispatch(saveAutoconerCountWiseCuts(payload)).unwrap();
