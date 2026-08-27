@@ -7,7 +7,7 @@ const { fetchPrepVarieties, sendPrepVarietyDropdown } = require('../utils/prepVa
 const { sendUqcMasterData } = require('./uqcMasterData');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
-const { createWheelChangeApprovalTicket, closeWheelChangeApprovalTicket } = require('./spinning');
+const { closeWheelChangeApprovalTicket } = require('./spinning');
 const MSSQL_THRESHOLD_TABLE = String(process.env.MSSQL_THRESHOLD_TABLE || 'dbo.threshold_master').trim();
 const SCREEN_ID_PREFIXES = {
   card_thick_place: 'CT',
@@ -200,7 +200,6 @@ const ensureCardThickPlaceTables = async () => {
       entry_date DATE NOT NULL,
       entry_time TIME,
       operator TEXT,
-      remarks TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
@@ -1220,7 +1219,7 @@ router.get('/carding-notebook/wrapping', getWrappingCardingNotebook);
 router.post('/card-thick-place', async (req, res) => {
     try {
         await ensureCardThickPlaceTables();
-        const { entry_id, entry_date, date, entry_time, remarks, entries, machine, cv_value, cv_5m, five_m_cv, unit } = req.body;
+        const { entry_id, entry_date, date, entry_time, entries, machine, cv_value, cv_5m, five_m_cv } = req.body;
         const resolvedEntryDate = entry_date || date || new Date().toISOString().slice(0, 10);
 
         if (!entry_id) {
@@ -1229,7 +1228,7 @@ router.post('/card-thick-place', async (req, res) => {
 
         const normalizedEntries = Array.isArray(entries)
           ? entries
-          : (machine ? [{ machine, cv_value, cv_5m, five_m_cv, unit }] : []);
+          : (machine ? [{ machine, cv_value, cv_5m, five_m_cv }] : []);
 
         if (!normalizedEntries.length) {
           return res.status(400).json({ message: 'entries are required' });
@@ -1239,16 +1238,15 @@ router.post('/card-thick-place', async (req, res) => {
 
         const headerResult = await client.query(
           `INSERT INTO carding.card_thick_place_header
-           (entry_id, entry_code, entry_date, entry_time, operator, remarks)
-           VALUES ($1, $2, $3, $4, $5, $6)
+           (entry_id, entry_code, entry_date, entry_time, operator)
+           VALUES ($1, $2, $3, $4, $5)
            RETURNING *`,
           [
             entry_id || null,
             entry_id || null,
             resolvedEntryDate,
             entry_time || null,
-            String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null,
-            remarks || null
+            String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null
           ]
         );
 

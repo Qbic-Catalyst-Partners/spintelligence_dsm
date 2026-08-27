@@ -135,7 +135,6 @@ const buildBrWastePayload = ({ date, entryId, formData, type1Rows, type2Rows, ty
     return {
         type: entryTypeLabel,
         entry_id: entryId || null,
-        waste_study_id: entryId || null,
         date,
         variety: formData.variety || null,
         study_type: formData.studyType,

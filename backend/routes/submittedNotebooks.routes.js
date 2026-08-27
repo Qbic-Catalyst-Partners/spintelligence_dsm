@@ -1648,7 +1648,7 @@ router.post('/', async (req, res, next) => {
       `INSERT INTO ticketing_system.submitted_notebooks
        (notebook_submission_id, department, sub_department, notebook, input_screen, entry_id,
         source_schema, source_table, source_record_id, submitted_by_user_id, submitted_by_name,
-        submitted_payload, l2_approver_user_ids, l3_approver_user_ids, submitted_at, ack_due_at)
+        submitted_payload, l4_approver_user_ids, l3_approver_user_ids, submitted_at, ack_due_at)
        VALUES (
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::int[],$14::int[],
          COALESCE($15::timestamptz, NOW()),
@@ -1657,7 +1657,7 @@ router.post('/', async (req, res, next) => {
        ON CONFLICT (notebook_submission_id)
        DO UPDATE SET
          submitted_payload = EXCLUDED.submitted_payload,
-         l2_approver_user_ids = EXCLUDED.l2_approver_user_ids,
+         l4_approver_user_ids = EXCLUDED.l4_approver_user_ids,
          l3_approver_user_ids = EXCLUDED.l3_approver_user_ids,
          updated_at = NOW()
        RETURNING *`,

@@ -146,61 +146,10 @@ const toNumberOrNull = (value) => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
-const toBooleanOrNull = (value) => {
-  if (value === true || value === false) return value;
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (['true', '1', 'yes', 'y'].includes(normalized)) return true;
-    if (['false', '0', 'no', 'n'].includes(normalized)) return false;
-  }
-  if (typeof value === 'number') {
-    if (value === 1) return true;
-    if (value === 0) return false;
-  }
-  return null;
-};
-
 const trimOrNull = (value) => {
   if (value === undefined || value === null) return null;
   const text = String(value).trim();
   return text === '' ? null : text;
-};
-
-const toDateOnlyOrNull = (value) => {
-  const text = trimOrNull(value);
-  if (!text) return null;
-  const date = new Date(text);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
-};
-
-const calculateBreakPerLakh = ({ noOfCuts, totalLengthMeter, readings = [] }) => {
-  const cuts = toNumberOrNull(noOfCuts);
-  let meters = toNumberOrNull(totalLengthMeter);
-
-  if ((!meters || meters <= 0) && Array.isArray(readings)) {
-    meters = readings.reduce((sum, row) => {
-      const lengthMeter = toNumberOrNull(
-        row.length_meter ?? row.length_mtr ?? row.length_per_meter ?? row.meter
-      );
-      if (lengthMeter && lengthMeter > 0) return sum + lengthMeter;
-
-      const lengthMm = toNumberOrNull(row.length_mm);
-      if (lengthMm && lengthMm > 0) return sum + (lengthMm / 1000);
-
-      return sum;
-    }, 0);
-  }
-
-  if (!cuts || cuts <= 0 || !meters || meters <= 0) return null;
-  return Number(((cuts * 100000) / meters).toFixed(4));
-};
-
-const calculateBreakPerMillionMeter = ({ totalCones, totalLength }) => {
-  const cones = toNumberOrNull(totalCones);
-  const length = toNumberOrNull(totalLength);
-  if (!cones || cones <= 0 || !length || length <= 0) return null;
-  return Number(((cones * 1000000) / length).toFixed(4));
 };
 
 const fetchAutoconerConsigneeOptions = async () => {
@@ -369,10 +318,10 @@ router.post('/lycra-checking', async (req, res) => {
     const {
       entry_id,
       inspection_type,
-      test_no,
       entry_date,
       lycra_draft,
       count_name,
+      cntcode,
       no_of_readings,
       lycra_weight,
       fabric_weight,
@@ -392,18 +341,18 @@ router.post('/lycra-checking', async (req, res) => {
     // ✅ 1. Insert Header
     const header = await client.query(`
             INSERT INTO autoconer.lycra_checking_inspections
-            (entry_id, inspection_type, test_no, entry_date, lycra_draft,
-             count_name, no_of_readings, operator,
+            (entry_id, inspection_type, entry_date, lycra_draft,
+             count_name, cntcode, no_of_readings, operator,
              lycra_weight, fabric_weight, total_weight, lycra_percent)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             RETURNING id
         `, [
       entry_id || null,
       inspection_type,
-      test_no,
       entry_date,
       lycra_draft,
       count_name,
+      cntcode || null,
       no_of_readings,
       operatorName,
       lycra_weight,
@@ -563,9 +512,20 @@ router.get('/lycra-checking', async (req, res) => {
  *         description: Server error
  */
 
+const COUNT_WISE_CUTS_COLUMNS = [
+  'entry_id', 'inspection_type', 'entry_date', 'machine_no', 'count_name', 'cntcode',
+  'cone_tip', 'lot_no', 'frame_no',
+  'yf', 'yj', 'n', 's', 'l', 't', 'cp', 'cm', 'ccp', 'ccm', 'pc', 'fd', 'jp', 'jm', 'cvp',
+  'a1', 'a2', 'a3', 'a4', 'b1', 'b2', 'b3', 'b4', 'c1', 'c2', 'c3', 'c4',
+  'd1', 'd2', 'd3', 'd4', 'e', 'f', 'g', 'h1', 'h2', 'i1', 'i2'
+];
+
 router.post('/count-wise-cuts', async (req, res) => {
   try {
-    const data = { ...req.body };
+    const data = {};
+    for (const key of COUNT_WISE_CUTS_COLUMNS) {
+      if (req.body[key] !== undefined) data[key] = req.body[key];
+    }
     data.operator = getAuthenticatedOperatorName(req);
 
     const columns = Object.keys(data);
@@ -710,6 +670,7 @@ router.post('/drum-wise', async (req, res) => {
       type,
       machine_code,
       count_name,
+      cntcode,
       drum_from,
       drum_to,
       remarks,
@@ -730,10 +691,10 @@ router.post('/drum-wise', async (req, res) => {
     // that drum_wise already has for exactly this purpose.
     const drumWiseResult = await client.query(
       `INSERT INTO autoconer.drum_wise
-            (entry_id, test_no, entry_date, type, machine_code, count_name, drum_from, drum_to, operator, remarks)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            (entry_id, test_no, entry_date, type, machine_code, count_name, cntcode, drum_from, drum_to, operator, remarks)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING id`,
-      [entry_id || null, test_no, entry_date, type, machine_code || null, count_name || null, drum_from, drum_to, getAuthenticatedOperatorName(req), remarks]
+      [entry_id || null, test_no, entry_date, type, machine_code || null, count_name || null, cntcode || null, drum_from, drum_to, getAuthenticatedOperatorName(req), remarks]
     );
 
     const drum_wise_id = drumWiseResult.rows[0].id;
@@ -1009,6 +970,7 @@ router.post('/splice-strength', async (req, res) => {
       test_no,
       inspection_date,
       count_name,
+      cntcode,
       auto_coner_no,
       drum_from,
       drum_to,
@@ -1031,10 +993,10 @@ router.post('/splice-strength', async (req, res) => {
 
     const inspectionResult = await client.query(
       `INSERT INTO autoconer.inspections
-            (entry_id, type, test_no, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average, operator)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            (entry_id, type, test_no, inspection_date, count_name, cntcode, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average, operator)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             RETURNING id`,
-      [entry_id || null, type, parsedTestNo, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average, getAuthenticatedOperatorName(req)]
+      [entry_id || null, type, parsedTestNo, inspection_date, count_name, cntcode || null, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average, getAuthenticatedOperatorName(req)]
     );
 
     const inspection_id = inspectionResult.rows[0].id;
@@ -2019,6 +1981,7 @@ router.post('/cone-packing-audit', async (req, res) => {
       inspection_date,
       packed_date,
       count_name,
+      cntcode,
       gross_weight_std,
       gross_weight_actual,
       box_colour,
@@ -2047,18 +2010,19 @@ router.post('/cone-packing-audit', async (req, res) => {
 
     const auditResult = await client.query(
       `INSERT INTO autoconer.cone_packing_audit
-            (entry_id, inspection_date, packed_date, count_name, gross_weight_std, gross_weight_actual,
+            (entry_id, inspection_date, packed_date, count_name, cntcode, gross_weight_std, gross_weight_actual,
              box_colour, cone_colour, gum_tape_colour, count_label, cone_damage,
              cover_missing, cone_hardness, stap_cone, disk, barcode, center_pad,
              operator,
              net_weight, tare_weight, strap_colour)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
             RETURNING id`,
       [
         entry_id || null,
         inspection_date,
         packed_date,
         count_name,
+        cntcode || null,
         gross_weight_std,
         gross_weight_actual,
         box_colour,
