@@ -107,13 +107,6 @@ const addFilter = (where, params, column, value, exact = true) => {
   where.push(exact ? `LOWER(${column}) = LOWER($${params.length})` : `${column} ILIKE $${params.length}`);
 };
 
-const ensureGlossaryCategoryColumn = async () => {
-  await client.query(`
-    ALTER TABLE ticketing_system.glossary_entries
-      ADD COLUMN IF NOT EXISTS category varchar(100) NULL
-  `);
-};
-
 const getFaqCategory = (faq) => cleanText(faq.category) || 'Getting Started';
 
 const mapFaqEntry = (faq) => ({
@@ -194,7 +187,6 @@ router.use(auth);
 
 router.get('/glossary', async (req, res, next) => {
   try {
-    await ensureGlossaryCategoryColumn();
     const params = [];
     const where = [];
     const category = cleanText(req.query.category);
@@ -256,7 +248,6 @@ router.get('/glossary', async (req, res, next) => {
 
 router.get('/glossary/categories', async (req, res, next) => {
   try {
-    await ensureGlossaryCategoryColumn();
     return res.status(200).json({
       categories: await getAllGlossaryCategoryOptions(req.query.include_inactive === 'true')
     });
@@ -267,7 +258,6 @@ router.get('/glossary/categories', async (req, res, next) => {
 
 router.post('/glossary', requireEditor, async (req, res, next) => {
   try {
-    await ensureGlossaryCategoryColumn();
     const inputField = cleanText(req.body?.input_field);
     const description = cleanText(req.body?.description);
     if (!inputField || !description) {
@@ -304,7 +294,6 @@ router.post('/glossary', requireEditor, async (req, res, next) => {
 
 router.patch('/glossary/:id', requireEditor, async (req, res, next) => {
   try {
-    await ensureGlossaryCategoryColumn();
     const id = parsePositiveInt(req.params.id);
     if (!id) return res.status(400).json({ message: 'Valid glossary id is required' });
 

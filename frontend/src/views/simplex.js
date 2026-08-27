@@ -20,8 +20,17 @@ import {
 } from "@/store/slices/simplex";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
+
+// "SMXCots Checking Data Entry" and "SMX Breaks Study Report" already raise their
+// own threshold tickets inside their own submit() handlers - the generic call in
+// confirmSubmit below skips these to avoid filing a second, duplicate ticket.
+const SIMPLEX_TYPES_WITH_OWN_TICKETING = new Set([
+  "SMXCots Checking Data Entry",
+  "SMX Breaks Study Report",
+]);
 const simplexTypes = [
   { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameterDataEntry },
   { id: 1, name: "SMXCots Checking Data Entry", aliases: ["SMXCots Checking Data Entry", "SMXCots Change Data Entry", "SMX Cots Change Data Entry", "SMX Cots Checking Data Entry"], component: SMXCotsChangeDataEntry },
@@ -37,7 +46,7 @@ const SIMPLEX_ENTRY_ID_CONFIG = {
   "SMXCots Checking Data Entry": { prefix: "SCC", width: 4, routePath: "/simplex/SMXCotsChange" },
   "SMX Breaks Study Report": { prefix: "SBS", width: 4, routePath: "/simplex/list" },
   "U% Data Entry": { prefix: "SUP", width: 4, routePath: "/simplex/uqc" },
-  "Wheel Change": { prefix: "SWC", width: 4, routePath: "/simplex/wheel-change", fetchPath: "/simplex/notebook" },
+  "Wheel Change": { prefix: "SWC", width: 4, routePath: "/simplex/wheel-change" },
   "Stretch %": { prefix: "STP", width: 4, routePath: "/simplex/stretch-percent" },
   "Wrapping Simplex Notebook": { prefix: "WSX" },
 };
@@ -205,6 +214,20 @@ function Simplex() {
           previewItems,
           user,
         });
+        if (!SIMPLEX_TYPES_WITH_OWN_TICKETING.has(selectedTypeName)) {
+          try {
+            await createThresholdViolationTickets({
+              department: "Quality Control",
+              subDepartment: "Simplex",
+              screenName: selectedTypeName,
+              machineName: selectedTypeName,
+              entryId,
+              values: previewItems,
+            });
+          } catch (ticketError) {
+            console.error("Threshold ticket generation failed:", ticketError);
+          }
+        }
         await reserveEntryId();
         setShowSuccess(true);
       }
@@ -306,18 +329,6 @@ function Simplex() {
             </div>
           ) : null}
 
-          <div className="mt-5 px-7">
-            <Footer
-              variant="tall"
-              onBack={() => router.push("/departments/quality-control")}
-              onClear={() => {
-                setValidationMessage("");
-                childRef.current?.clear();
-              }}
-              onSave={openPreview}
-              saveLabel="Save Record"
-            />
-          </div>
         </div>
 
         <div id="simplex-report-table-slot" className="mt-8" />
@@ -545,6 +556,19 @@ function Simplex() {
             </table>
           </div>
         )}
+
+        <div className="mt-5 px-7">
+          <Footer
+            variant="tall"
+            onBack={() => router.push("/departments/quality-control")}
+            onClear={() => {
+              setValidationMessage("");
+              childRef.current?.clear();
+            }}
+            onSave={openPreview}
+            saveLabel="Save Record"
+          />
+        </div>
       </div>
 
       <PreviewModal

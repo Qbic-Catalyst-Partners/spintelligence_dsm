@@ -374,19 +374,33 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    cursor: pointer;
 }
 
-.multiSelectButton:focus {
+.multiSelectButton:focus-within {
     border-color: #5b74c7;
     box-shadow: 0 0 0 3px rgba(91, 116, 199, 0.12);
 }
 
-.multiSelectValue {
+.multiSelectButton .multiSelectValue {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: left;
+    border: none;
+    border-radius: 0;
+    outline: none;
+    box-shadow: none;
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    padding: 0;
+    margin: 0;
 }
 
 .multiSelectChevron {
@@ -394,6 +408,7 @@
     font-size: 12px;
     line-height: 1;
     flex-shrink: 0;
+    cursor: pointer;
 }
 
 .multiSelectMenu {
@@ -402,7 +417,7 @@
     left: 0;
     right: 0;
     z-index: 20;
-    max-height: 180px;
+    max-height: 220px;
     overflow-y: auto;
     border: 1px solid #dbe2ec;
     border-radius: 10px;
@@ -412,6 +427,7 @@
     display: grid;
     gap: 4px;
 }
+
 
 .multiSelectOption {
     display: flex;
@@ -626,7 +642,7 @@
 }
 
 .existingThresholdCard .tableWrap {
-    overflow: hidden;
+    overflow: visible;
 }
 
 .existingThresholdTable {
@@ -864,7 +880,7 @@
     padding: 6px;
     display: grid;
     gap: 4px;
-    z-index: 3;
+    z-index: 50;
 }
 
 .actionMenuItem {

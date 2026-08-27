@@ -1,10 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
+const { generateTicketId } = require('../utils/ticketId');
 const sqlServer = require('../config/sqlserver');
 const { dedupeVarieties } = require('../utils/variety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
+const { getManagerChain } = require('./user.routes');
 
 const COTTON_HVI_PARAMETERS = [
   'sci',
@@ -575,191 +577,6 @@ const getMixingQcMasterDropdown = async (req, res, next) => {
 
 const getEmployeeMasterDropdown = createEmployeeMasterDropdown(sqlServer, 'mixing');
 
-// openness_inspection stores its submission timestamp as `timestamp WITHOUT time zone` with a bare
-// default — on this DB, that silently writes a different offset than what gets displayed back,
-// shifting "Created At" by several hours. Same root cause and same fix as every other
-// department's equivalent tables: convert to timestamptz so new rows store an unambiguous instant.
-const ensureMixingTimestampColumnsHaveTimezone = async () => {
-  await client.query(`
-    DO $$
-    BEGIN
-      IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'mixing' AND table_name = 'openness_inspection' AND column_name = 'created_at'
-          AND data_type = 'timestamp without time zone'
-      ) THEN
-        ALTER TABLE mixing.openness_inspection
-          ALTER COLUMN created_at TYPE timestamptz USING created_at AT TIME ZONE 'UTC';
-        ALTER TABLE mixing.openness_inspection
-          ALTER COLUMN created_at SET DEFAULT now();
-      END IF;
-    END $$;
-  `);
-};
-
-// This is one-time idempotent schema setup (add-column-if-not-exists, drop+recreate a view),
-// not per-request work — it used to run on every single POST to a Mixing route, which under
-// concurrent requests raced on the view's DROP/CREATE and intermittently failed with
-// "duplicate key value violates unique constraint pg_type_typname_nsp_index". Memoizing to a
-// single shared promise means every caller awaits the same one-time run instead of each
-// kicking off its own.
-let ensureMixingEntryIdColumnsPromise = null;
-const ensureMixingEntryIdColumns = () => {
-  if (!ensureMixingEntryIdColumnsPromise) {
-    ensureMixingEntryIdColumnsPromise = ensureMixingEntryIdColumnsImpl().catch((err) => {
-      ensureMixingEntryIdColumnsPromise = null;
-      throw err;
-    });
-  }
-  return ensureMixingEntryIdColumnsPromise;
-};
-
-const runMixingSchemaStep = async (label, fn) => {
-  try {
-    await fn();
-  } catch (err) {
-    console.error(`Mixing schema step "${label}" failed:`, err);
-    throw err;
-  }
-};
-
-const ensureMixingEntryIdColumnsImpl = async () => {
-  await runMixingSchemaStep('timestamp columns', () => ensureMixingTimestampColumnsHaveTimezone());
-
-  await runMixingSchemaStep('cotton_hvi_data_entry columns', async () => {
-    await client.query(`
-      ALTER TABLE mixing.cotton_hvi_data_entry
-        ADD COLUMN IF NOT EXISTS entry_id TEXT,
-        ADD COLUMN IF NOT EXISTS operator TEXT,
-        ADD COLUMN IF NOT EXISTS moisture NUMERIC,
-        ADD COLUMN IF NOT EXISTS strength NUMERIC,
-        ADD COLUMN IF NOT EXISTS amt NUMERIC;
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS cotton_hvi_data_entry_entry_id_uq
-      ON mixing.cotton_hvi_data_entry (entry_id)
-      WHERE entry_id IS NOT NULL;
-    `);
-    await client.query(`
-      WITH numbered AS (
-        SELECT
-          ctid,
-          ROW_NUMBER() OVER (ORDER BY inspection_date, invoice_date, lot_no, invoice_no, ctid) AS rn
-        FROM mixing.cotton_hvi_data_entry
-        WHERE entry_id IS NULL OR BTRIM(entry_id) = ''
-      )
-      UPDATE mixing.cotton_hvi_data_entry t
-      SET entry_id = LPAD(numbered.rn::text, 4, '0')
-      FROM numbered
-      WHERE t.ctid = numbered.ctid;
-    `);
-  });
-
-  await runMixingSchemaStep('fibre_data_entry columns', async () => {
-    await client.query(`
-      ALTER TABLE mixing.fibre_data_entry
-        ADD COLUMN IF NOT EXISTS entry_id TEXT;
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS fibre_data_entry_entry_id_uq
-      ON mixing.fibre_data_entry (entry_id)
-      WHERE entry_id IS NOT NULL;
-    `);
-  });
-
-  await runMixingSchemaStep('afis_data_entry columns', async () => {
-    await client.query(`
-      ALTER TABLE mixing.afis_data_entry
-        ADD COLUMN IF NOT EXISTS entry_id TEXT,
-        ADD COLUMN IF NOT EXISTS lw NUMERIC,
-        ADD COLUMN IF NOT EXISTS ln NUMERIC,
-        ADD COLUMN IF NOT EXISTS total_nep_count NUMERIC;
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS afis_data_entry_entry_id_uq
-      ON mixing.afis_data_entry (entry_id)
-      WHERE entry_id IS NOT NULL;
-    `);
-  });
-
-  await runMixingSchemaStep('moisture_data_entry columns', async () => {
-    await client.query(`
-      ALTER TABLE mixing.moisture_data_entry
-        ADD COLUMN IF NOT EXISTS entry_id TEXT,
-        ADD COLUMN IF NOT EXISTS lot_no VARCHAR(50);
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS moisture_data_entry_entry_id_uq
-      ON mixing.moisture_data_entry (entry_id)
-      WHERE entry_id IS NOT NULL;
-    `);
-  });
-
-  await runMixingSchemaStep('openness_inspection columns', async () => {
-    await client.query(`
-      ALTER TABLE mixing.openness_inspection
-        ADD COLUMN IF NOT EXISTS entry_id TEXT,
-        ADD COLUMN IF NOT EXISTS br_line TEXT;
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS openness_inspection_entry_id_uq
-      ON mixing.openness_inspection (entry_id)
-      WHERE entry_id IS NOT NULL;
-    `);
-    // The form sends beater_type/beater_speed_rpm per entry, but these columns never existed on
-    // openness_entries — the values were silently dropped on every submission (never inserted,
-    // never selectable), leaving "Entry N - Beater Type"/"Entry N - Beater Speed (RPM)" blank in
-    // Custom Report even though every other per-entry field worked.
-    await client.query(`
-      ALTER TABLE mixing.openness_entries
-        ADD COLUMN IF NOT EXISTS beater_type TEXT,
-        ADD COLUMN IF NOT EXISTS beater_speed_rpm NUMERIC;
-    `);
-    // The notebook computes a per-stage "Openness %" (stage AOV vs. previous stage AOV) and an
-    // "Overall Openness Efficiency %" (last stage AOV vs. first stage AOV) in the browser, but
-    // neither was ever sent to the backend or had a column to land in — Custom Report showed them
-    // as blank forever. Persist both so the calculated numbers survive past the browser preview.
-    // Standardized on "openness_percentage" as the column name — drop the older "openness_percent"
-    // column this same migration briefly introduced.
-    await client.query(`
-      ALTER TABLE mixing.openness_entries
-        ADD COLUMN IF NOT EXISTS openness_percentage NUMERIC(10,2);
-    `);
-    await client.query(`
-      ALTER TABLE mixing.openness_entries
-        DROP COLUMN IF EXISTS openness_percent;
-    `);
-    await client.query(`
-      ALTER TABLE mixing.openness_inspection
-        ADD COLUMN IF NOT EXISTS overall_openness_percent NUMERIC;
-    `);
-  });
-
-  await runMixingSchemaStep('mixing_qc_header columns', async () => {
-    await client.query(`
-      ALTER TABLE mixing.mixing_qc_header
-        ADD COLUMN IF NOT EXISTS entry_id TEXT,
-        ADD COLUMN IF NOT EXISTS operator TEXT;
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS mixing_qc_header_entry_id_uq
-      ON mixing.mixing_qc_header (entry_id)
-      WHERE entry_id IS NOT NULL;
-    `);
-  });
-
-  await runMixingSchemaStep('afis6_cotton_data_entry index', () => client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS afis6_cotton_data_entry_entry_id_uq
-    ON mixing.afis6_cotton_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `));
-  await runMixingSchemaStep('afis6_mmf_data_entry index', () => client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS afis6_mmf_data_entry_entry_id_uq
-    ON mixing.afis6_mmf_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `));
-};
-
 const normalizeKey = (value) => String(value || '').toLowerCase().replace(/\s+/g, '_');
 const resolveFieldValue = (obj, fieldName) => {
   if (!obj || typeof obj !== 'object') return undefined;
@@ -768,27 +585,21 @@ const resolveFieldValue = (obj, fieldName) => {
   return key ? obj[key] : undefined;
 };
 
+// Offsets (plus_value/minus_value) are relative to typical_value, the
+// configured baseline - not to the submitted value itself.
 const evaluateBreach = (actualRaw, rule) => {
   const actual = Number(actualRaw);
-  const condition = String(rule?.condition_level || 'More Than').toLowerCase();
-  const plus = Number(rule?.plus_threshold);
-  const minus = Number(rule?.minus_threshold);
-  const baseline = Number(rule?.actual_value);
+  const typical = Number(rule?.typical_value);
+  const plus = Number(rule?.plus_value);
+  const minus = Number(rule?.minus_value);
+  if (!Number.isFinite(actual) || !Number.isFinite(typical)) return null;
 
-  if (!Number.isFinite(actual)) return null;
-  if (condition === 'more than') {
-    if (!Number.isFinite(plus)) return null;
-    return actual > plus;
-  }
-  if (condition === 'less than') {
-    if (!Number.isFinite(minus)) return null;
-    return actual < minus;
-  }
-  if (condition === 'more and less than') {
-    if (!Number.isFinite(baseline) || !Number.isFinite(plus) || !Number.isFinite(minus)) return null;
-    const min = baseline - minus;
-    const max = baseline + plus;
-    return actual <= min || actual >= max;
+  const mode = String(rule?.comparison_mode || 'more_and_less_than').toLowerCase();
+  if (mode === 'more_than') return Number.isFinite(plus) ? actual > typical + plus : null;
+  if (mode === 'less_than') return Number.isFinite(minus) ? actual < typical - minus : null;
+  if (mode === 'more_and_less_than') {
+    if (!Number.isFinite(plus) || !Number.isFinite(minus)) return null;
+    return actual > typical + plus || actual < typical - minus;
   }
   return null;
 };
@@ -806,30 +617,34 @@ const autoCreateTicket = async ({
   department,
   sub_department,
   user_name,
-  values
+  values,
+  entry_id
 }) => {
   if (!machine_name || !department || !sub_department) return null;
 
   const paramNames = Object.keys(values || {});
   if (!paramNames.length) return null;
 
+  // ticketing_system.value_threshold_rules is what the Value Threshold settings
+  // screen actually writes to - this used to query threshold_master, a table
+  // nothing ever configured through the current UI, so no threshold set there
+  // could ever fire a ticket.
   const thresholdsRes = await client.query(
-    `SELECT input_field, condition_level, plus_threshold, minus_threshold, actual_value,
-            approval_l1_user_id, approval_l2_user_id, approval_l3_user_id
-     FROM ticketing_system.threshold_master
+    `SELECT field, comparison_mode, typical_value, value_mode, plus_value, minus_value,
+            criticality, l1_user_id, approval_l1_user_ids
+     FROM ticketing_system.value_threshold_rules
      WHERE department = $1
        AND sub_department = $2
-       AND input_screen = $3
-       AND machine_name = $4
+       AND notebook = $3
        AND is_active = true`,
-    [department, sub_department, SCREEN_NAMES[screenKey], machine_name]
+    [department, sub_department, SCREEN_NAMES[screenKey]]
   );
 
   if (!thresholdsRes.rows.length) return null;
 
   const rules = {};
   for (const row of thresholdsRes.rows) {
-    rules[row.input_field] = row;
+    rules[row.field] = row;
   }
 
   const missingFields = [];
@@ -850,10 +665,10 @@ const autoCreateTicket = async ({
       breaches.push({
         field,
         actual_value: Number(actual),
-        condition_level: rule.condition_level,
-        plus_threshold: rule.plus_threshold,
-        minus_threshold: rule.minus_threshold,
-        baseline_actual_value: rule.actual_value
+        comparison_mode: rule.comparison_mode,
+        typical_value: rule.typical_value,
+        plus_value: rule.plus_value,
+        minus_value: rule.minus_value
       });
     }
   }
@@ -864,60 +679,68 @@ const autoCreateTicket = async ({
   else if (breaches.length) ticketReason = 'THRESHOLD_BREACH';
   if (!ticketReason) return null;
 
+  // The ticket's own parameter_name is what the detail page renders as one
+  // row per entry - it used to be every field submitted on the form
+  // (paramNames, all of AFIS/Cotton HVI/etc.), so a ticket raised because
+  // Maturity alone breached still listed all 8 other unrelated fields
+  // (each showing a bare "-" for standard/threshold, since only Maturity
+  // has a configured rule) as if they were all part of the alert. Only the
+  // field(s) that actually caused this ticket - missing or breached -
+  // belong here.
+  const relevantParamNames = Array.from(new Set([...missingFields, ...breaches.map((b) => b.field)]));
+
   const thresholdPayload = {};
   for (const [k, v] of Object.entries(rules)) {
     thresholdPayload[k] = {
-      condition_level: v.condition_level,
-      plus_threshold: v.plus_threshold,
-      minus_threshold: v.minus_threshold,
-      actual_value: v.actual_value
+      comparison_mode: v.comparison_mode,
+      typical_value: v.typical_value,
+      plus_value: v.plus_value,
+      minus_value: v.minus_value
     };
   }
 
-  const severity = deriveSeverity(missingFields.length, breaches.length);
+  const severityRank = { High: 3, Medium: 2, Low: 1 };
+  const severity = thresholdsRes.rows.reduce(
+    (worst, row) => (severityRank[row.criticality] || 0) > (severityRank[worst] || 0) ? row.criticality : worst,
+    deriveSeverity(missingFields.length, breaches.length)
+  );
   const approvalL1UserIds = Array.from(
     new Set(
       thresholdsRes.rows
-        .map((row) => Number(row.approval_l1_user_id))
+        .flatMap((row) => (Array.isArray(row.approval_l1_user_ids) && row.approval_l1_user_ids.length ? row.approval_l1_user_ids : [row.l1_user_id]))
+        .map((id) => Number(id))
         .filter((id) => Number.isInteger(id) && id > 0)
     )
   );
-  const approvalL2UserIds = Array.from(
-    new Set(
-      thresholdsRes.rows
-        .map((row) => Number(row.approval_l2_user_id))
-        .filter((id) => Number.isInteger(id) && id > 0)
-    )
-  );
-  const approvalL3UserIds = Array.from(
-    new Set(
-      thresholdsRes.rows
-        .map((row) => Number(row.approval_l3_user_id))
-        .filter((id) => Number.isInteger(id) && id > 0)
-    )
-  );
+
+  // L2 is assigned via hierarchy (the L1 approvers' real reporting chain),
+  // same as every other threshold type - not a manually configured column,
+  // since value_threshold_rules deliberately rejects manual L2 fields.
+  const l2Chains = await Promise.all(approvalL1UserIds.map((id) => getManagerChain(id)));
+  const approvalL2UserIds = Array.from(new Set(
+    l2Chains.flatMap((chain) => chain.filter((m) => m.level === 'L2').map((m) => m.id))
+  ));
+
+  const ticketId = await generateTicketId(client);
   const result = await client.query(
     `INSERT INTO ticketing_system.operator_tickets
-     (ticket_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, violation_details, approval_l1_user_id, approval_l2_user_id, approval_l3_user_id, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids)
-     VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, 'Open', CURRENT_TIMESTAMP, $7, $8, $9, $10::jsonb, $11, $12, $13, $14::int[], $15::int[], $16::int[])
+     (ticket_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind, violation_details, approval_l1_user_ids, approval_l2_user_ids)
+     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, 'VALUE_THRESHOLD', 'value_threshold', $11::jsonb, $12::int[], $13::int[])
      RETURNING *`,
     [
+      ticketId,
       user_name || 'ERP System',
       machine_name,
-      JSON.stringify(paramNames),
+      JSON.stringify(relevantParamNames),
       JSON.stringify(values),
       JSON.stringify(thresholdPayload),
       severity,
       department,
       sub_department,
       ticketReason,
-      JSON.stringify({ missing_fields: missingFields, threshold_breaches: breaches }),
-      approvalL1UserIds[0] || null,
-      approvalL2UserIds[0] || null,
-      approvalL3UserIds[0] || null,
+      JSON.stringify({ missing_fields: missingFields, threshold_breaches: breaches, entry_id: entry_id || null }),
       approvalL1UserIds,
-      approvalL2UserIds,
-      approvalL3UserIds
+      approvalL2UserIds
     ]
   );
 
@@ -1144,7 +967,6 @@ router.get('/qc/master/user-names', getEmployeeMasterDropdown);
  */
 router.post('/cotton-hvi', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id,
       inspection_date,
@@ -1251,36 +1073,13 @@ router.post('/cotton-hvi', async (req, res, next) => {
       ]
     );
 
-    const ticket = await autoCreateTicket({
-      screenKey: 'cotton_hvi',
-      machine_name: req.body.machine_name || SCREEN_NAMES.cotton_hvi,
-      department: req.body.department || req.body.management_field,
-      sub_department: req.body.sub_department || req.body.erp_product_code,
-      user_name: req.body.user_name,
-      values: {
-        sci: numericValues.sci,
-        span_length: numericValues.span_length,
-        mic: numericValues.mic,
-        gtex: numericValues.gtex,
-        maturity: numericValues.maturity,
-        ur: numericValues.ur,
-        sfi: numericValues.sfi,
-        elongation: numericValues.elongation,
-        yellow_b: numericValues.yellow_b,
-        trcnt: numericValues.trcnt,
-        trar: numericValues.trar,
-        trid: numericValues.trid,
-        trash_content_percentage: numericValues.trash_content_percentage,
-        invisible_loss_percentage: numericValues.invisible_loss_percentage,
-        rd: numericValues.rd,
-        colour_grade: numericValues.colour_grade
-      }
-    });
-
+    // Value Threshold ticket generation for this screen now happens client-side
+    // (frontend/src/views/mixing/cottonHVIDataEntry.jsx calls
+    // createThresholdViolationTickets) - calling autoCreateTicket here too used
+    // to fire a second, duplicate ticket for the same breach.
     res.status(201).json({
       message: 'Cotton HVI data created successfully',
-      data: withScreenEntryId('cotton_hvi', result.rows[0]),
-      ticket
+      data: withScreenEntryId('cotton_hvi', result.rows[0])
     });
 
   } catch (error) {
@@ -1316,7 +1115,6 @@ router.post('/cotton-hvi', async (req, res, next) => {
  */
 router.get('/cotton-hvi', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = parseInt(page);
@@ -1408,7 +1206,6 @@ router.get('/cotton-hvi', async (req, res, next) => {
  */
 router.post('/fibre', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id,
       inspection_date,
@@ -1475,19 +1272,13 @@ router.post('/fibre', async (req, res, next) => {
       ]
     );
 
-    const ticket = await autoCreateTicket({
-      screenKey: 'fibre',
-      machine_name: req.body.machine_name || SCREEN_NAMES.fibre,
-      department: req.body.department || req.body.management_field,
-      sub_department: req.body.sub_department || req.body.erp_product_code,
-      user_name: req.body.user_name,
-      values: { cut_length, length_cv, mean_denier, cv_per_denier, tenacity, cv_per_tenacity, elongation, cv_per_elongation, crimp, whiteness_index, spin_finish }
-    });
-
+    // Value Threshold ticket generation for this screen now happens client-side
+    // (frontend/src/views/mixing/fibreDataEntry.jsx calls
+    // createThresholdViolationTickets) - calling autoCreateTicket here too used
+    // to fire a second, duplicate ticket for the same breach.
     res.status(201).json({
       message: 'Fibre data created successfully',
-      data: withScreenEntryId('fibre', result.rows[0]),
-      ticket
+      data: withScreenEntryId('fibre', result.rows[0])
     });
 
   } catch (error) {
@@ -1524,7 +1315,6 @@ router.post('/fibre', async (req, res, next) => {
  */
 router.get('/fibre', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -1613,7 +1403,6 @@ router.get('/fibre', async (req, res, next) => {
  */
 router.post('/afis', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id,
       inspection_date,
@@ -1679,19 +1468,20 @@ router.post('/afis', async (req, res, next) => {
       ]
     );
 
-    const ticket = await autoCreateTicket({
-      screenKey: 'afis',
-      machine_name: req.body.machine_name || SCREEN_NAMES.afis,
-      department: req.body.department || req.body.management_field,
-      sub_department: req.body.sub_department || req.body.erp_product_code,
-      user_name: req.body.user_name,
-      values: { uql, l5, sfc_n, ifc, fibre_neps_gms, sfc_w, maturity, fineness, scn_gms }
-    });
+    // Value Threshold ticket generation for this screen now happens client-side
+    // (frontend/src/views/mixing/afisDataEntry.jsx calls
+    // createThresholdViolationTickets) - calling autoCreateTicket here too used
+    // to fire a second, duplicate ticket for the same breach.
+
+    // AFIS submission tracking for the Acknowledgement Threshold system happens
+    // client-side (frontend/src/views/mixing/afisDataEntry.jsx calls
+    // recordSubmittedNotebook) - recording it here too created a second
+    // submitted_notebooks row per entry and, once overdue, a duplicate
+    // acknowledgement-overdue ticket for the same entry.
 
     res.status(201).json({
       message: 'AFIS data created successfully',
-      data: withScreenEntryId('afis', result.rows[0]),
-      ticket
+      data: withScreenEntryId('afis', result.rows[0])
     });
 
   } catch (error) {
@@ -1728,7 +1518,6 @@ router.post('/afis', async (req, res, next) => {
  */
 router.get('/afis', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -1772,7 +1561,6 @@ const AFIS6_COTTON_NUMERIC_FIELDS = [
 
 router.post('/afis6-cotton', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id, inspection_date, lot_no, variety, invoice_date, mc_name,
       blow_room, carding, breaker_drawing, finisher_drawing, comber,
@@ -1840,7 +1628,6 @@ router.post('/afis6-cotton', async (req, res, next) => {
 
 router.get('/afis6-cotton', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.max(1, parseInt(limit) || 10);
@@ -1868,16 +1655,15 @@ const AFIS6_MMF_NUMERIC_FIELDS = [
   'sc_nep_count_g', 'sc_nep_mean_size_um', 'l_w_mm', 'l_w_cv', 'sfc_w_percent', 'uql_w_mm',
   'l_n_mm', 'l_n_cv_percent', 'sfc_n_percent', 'five_pct_l_n_mm', 'fitness_index',
   'maturity_ratio_mat1', 'ifc_percent', 'fifty_pct_l_n_mm', 'cut_length_n_mm',
-  'cut_length_l_n_cv_percent', 'cut_length_sfc_w_percent', 'fineness_den', 'fineness_cv_percent',
+  'fineness_den', 'fineness_cv_percent',
   'long_fiber_gt_46_80_percent', 'long_fiber_count_gt_46_80',
   'long_fiber_gt_45_60_percent', 'long_fiber_count_gt_45_60'
 ];
 
 router.post('/afis6-mmf', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
-      entry_id, inspection_date, machine_name, material_class, comment,
+      entry_id, inspection_date, machine_name, comment, material_class,
       lot_no, variety, invoice_date, mc_name, blow_room, carding,
       breaker_drawing, finisher_drawing, comber,
       user_name
@@ -1903,7 +1689,7 @@ router.post('/afis6-mmf', async (req, res, next) => {
     }
 
     const afis6MmfValues = [
-      entry_id, toDateOnly(inspection_date), machine_name, material_class || null, comment || null,
+      entry_id, toDateOnly(inspection_date), machine_name, comment || null, material_class || null,
       lot_no || null, variety || null, toDateOnly(invoice_date), mc_name || null, blow_room || null, carding || null,
       breaker_drawing || null, finisher_drawing || null, comber || null,
       n.total_nep_count_g, n.total_nep_mean_size_um,
@@ -1912,7 +1698,7 @@ router.post('/afis6-mmf', async (req, res, next) => {
       n.l_w_mm, n.l_w_cv, n.sfc_w_percent, n.uql_w_mm, n.l_n_mm,
       n.l_n_cv_percent, n.sfc_n_percent, n.five_pct_l_n_mm,
       n.fitness_index, n.maturity_ratio_mat1, n.ifc_percent, n.fifty_pct_l_n_mm,
-      n.cut_length_n_mm, n.cut_length_l_n_cv_percent, n.cut_length_sfc_w_percent,
+      n.cut_length_n_mm,
       n.fineness_den, n.fineness_cv_percent,
       // Live form still labels/keys these as "45.60mm" while the DB column (and the newer
       // AFIS-6 MMF screen component) use "46.80mm" — same field, historical naming mismatch.
@@ -1923,7 +1709,7 @@ router.post('/afis6-mmf', async (req, res, next) => {
 
     const result = await client.query(
       `INSERT INTO mixing.afis6_mmf_data_entry (
-        entry_id, inspection_date, machine_name, material_class, comment,
+        entry_id, inspection_date, machine_name, comment, material_class,
         lot_no, variety, invoice_date, mc_name, blow_room, carding,
         breaker_drawing, finisher_drawing, comber,
         total_nep_count_g, total_nep_mean_size_um,
@@ -1932,13 +1718,13 @@ router.post('/afis6-mmf', async (req, res, next) => {
         l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm, l_n_mm,
         l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
         fitness_index, maturity_ratio_mat1, ifc_percent, fifty_pct_l_n_mm,
-        cut_length_n_mm, cut_length_l_n_cv_percent, cut_length_sfc_w_percent,
+        cut_length_n_mm,
         fineness_den, fineness_cv_percent,
         long_fiber_gt_46_80_percent, long_fiber_count_gt_46_80, operator
       )
       VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40
+        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38
       )
       RETURNING *`,
       afis6MmfValues
@@ -1958,7 +1744,6 @@ router.post('/afis6-mmf', async (req, res, next) => {
 
 router.get('/afis6-mmf', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.max(1, parseInt(limit) || 10);
@@ -2041,7 +1826,6 @@ router.get('/afis6-mmf', async (req, res, next) => {
  */
 router.post('/moisture', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id,
       inspection_date,
@@ -2106,19 +1890,13 @@ router.post('/moisture', async (req, res, next) => {
       ]
     );
 
-    const ticket = await autoCreateTicket({
-      screenKey: 'moisture',
-      machine_name: req.body.machine_name || SCREEN_NAMES.moisture,
-      department: req.body.department || req.body.management_field,
-      sub_department: req.body.sub_department || req.body.erp_product_code,
-      user_name: req.body.user_name,
-      values: { value1, value2, value3, value4, value5, value6, value7, value8, value9, value10, average }
-    });
-
+    // Value Threshold ticket generation for this screen now happens client-side
+    // (frontend/src/views/mixing/moistureDataEntry.jsx calls
+    // createThresholdViolationTickets) - calling autoCreateTicket here too used
+    // to fire a second, duplicate ticket for the same breach.
     res.status(201).json({
       message: 'Moisture data created successfully',
-      data: withScreenEntryId('moisture', result.rows[0]),
-      ticket
+      data: withScreenEntryId('moisture', result.rows[0])
     });
 
   } catch (error) {
@@ -2155,7 +1933,6 @@ router.post('/moisture', async (req, res, next) => {
  */
 router.get('/moisture', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -2258,7 +2035,6 @@ router.get('/moisture', async (req, res, next) => {
 
 router.post('/openness', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id,
       inspection_date,
@@ -2323,14 +2099,23 @@ router.post('/openness', async (req, res, next) => {
       const opennessPercentage = e.openness_percentage === '' || e.openness_percentage == null
         ? null
         : Number(e.openness_percentage);
+      const avgWeight = e.avg_weight === '' || e.avg_weight == null ? null : Number(e.avg_weight);
+      const avgVolume = e.avg_volume === '' || e.avg_volume == null ? null : Number(e.avg_volume);
+      const avgApparentSpecificVolume = e.avg_apparent_specific_volume === '' || e.avg_apparent_specific_volume == null
+        ? null
+        : Number(e.avg_apparent_specific_volume);
+      const avgActualOpValue = e.avg_actual_op_value === '' || e.avg_actual_op_value == null
+        ? null
+        : Number(e.avg_actual_op_value);
 
       await client.query(
         `INSERT INTO mixing.openness_entries
         (inspection_id, entry_no, stage_no, machine_name,
          beater_type, beater_speed_rpm,
          weight, volume_1, volume_2, average_volume,
-         apparent_specific_volume, actual_op_value, openness_percentage)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+         apparent_specific_volume, actual_op_value, openness_percentage,
+         avg_weight, avg_volume, avg_apparent_specific_volume, avg_actual_op_value)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
         [
           inspectionId,
           entryNo,
@@ -2344,7 +2129,11 @@ router.post('/openness', async (req, res, next) => {
           averageVolume,
           e.apparent_specific_volume,
           e.actual_op_value,
-          opennessPercentage
+          opennessPercentage,
+          avgWeight,
+          avgVolume,
+          avgApparentSpecificVolume,
+          avgActualOpValue
         ]
       );
     }
@@ -2363,7 +2152,8 @@ router.post('/openness', async (req, res, next) => {
         department: req.body.department || req.body.management_field,
         sub_department: req.body.sub_department || req.body.erp_product_code,
         user_name: req.body.user_name,
-        values
+        values,
+        entry_id: savedEntryId
       });
     }
 
@@ -2399,7 +2189,6 @@ router.post('/openness', async (req, res, next) => {
 
 router.get('/openness', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
 
     const inspections = await client.query(
       `SELECT *
@@ -2415,7 +2204,8 @@ router.get('/openness', async (req, res, next) => {
         `SELECT entry_no, stage_no, machine_name,
                 beater_type, beater_speed_rpm,
                 weight, volume_1, volume_2, average_volume,
-                apparent_specific_volume, actual_op_value, openness_percentage
+                apparent_specific_volume, actual_op_value, openness_percentage,
+                avg_weight, avg_volume, avg_apparent_specific_volume, avg_actual_op_value
          FROM mixing.openness_entries
          WHERE inspection_id = $1
          ORDER BY entry_no`,
@@ -2514,7 +2304,6 @@ router.get('/openness', async (req, res, next) => {
 
 router.post('/qc', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id,
       consignee_name,
@@ -2617,11 +2406,6 @@ router.post('/qc', async (req, res, next) => {
  */
 router.get('/qc', async (req, res, next) => {
   try {
-    // This route SELECTs h.operator, which only exists after ensureMixingEntryIdColumns() has run.
-    // Every other mixing route calls it first; this one didn't, so a fresh deploy (or any process
-    // that hits GET /qc before a POST /qc/cotton-hvi/etc. has run) would 500 with
-    // "column h.operator does not exist".
-    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = parseInt(page);
@@ -2741,11 +2525,6 @@ router.get('/qc', async (req, res, next) => {
  */
 router.put('/qc/:qc_id', async (req, res, next) => {
   try {
-    // This route's UPDATE writes to mixing_qc_header.operator, which only exists after
-    // ensureMixingEntryIdColumns() has run. Every other mixing route calls it first; this one
-    // didn't, so it would 500 with "column operator does not exist" until some other mixing route
-    // happened to run first in the process lifetime.
-    await ensureMixingEntryIdColumns();
     const { qc_id } = req.params;
 
     const {

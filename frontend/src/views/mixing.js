@@ -20,6 +20,7 @@ import SuccessModal from "@/components/SuccessModal";
 import { clearMixingState } from "@/store/slices/mixing";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import useMixingLotOptions from "@/hooks/useMixingLotOptions";
 import { fetchMixingLotDetails, fetchOpennessMachineOptions } from "@/apis/mixing";
@@ -218,8 +219,6 @@ function Mixing() {
         ifc_percent: "",
         fifty_pct_l_n_mm: "",
         cut_length_n_mm: "",
-        cut_length_l_n_cv_percent: "",
-        cut_length_sfc_w_percent: "",
         fineness_den: "",
         fineness_cv_percent: "",
         long_fiber_gt_45_60_percent: "",
@@ -672,6 +671,21 @@ function Mixing() {
         } catch (error) {
             console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
         }
+        try {
+            await createThresholdViolationTickets({
+                department: "Quality Control",
+                subDepartment: "Mixing",
+                screenName: "AFIS-6 Cotton",
+                machineName: "AFIS-6 Cotton",
+                entryId,
+                values: [
+                    ...afis6TextFieldDefs.map((field) => ({ label: field.label, value: afis6Form[field.key] })),
+                    ...afis6FieldDefs.map((field) => ({ label: field.label, value: afis6Form[field.key] })),
+                ],
+            });
+        } catch (ticketError) {
+            console.error("Threshold ticket generation failed:", ticketError);
+        }
         handleAfis6Clear();
     };
 
@@ -785,8 +799,6 @@ function Mixing() {
             ifc_percent: normalizeNumeric(afis6MmfForm.ifc_percent),
             fifty_pct_l_n_mm: normalizeNumeric(afis6MmfForm.fifty_pct_l_n_mm),
             cut_length_n_mm: normalizeNumeric(afis6MmfForm.cut_length_n_mm),
-            cut_length_l_n_cv_percent: normalizeNumeric(afis6MmfForm.cut_length_l_n_cv_percent),
-            cut_length_sfc_w_percent: normalizeNumeric(afis6MmfForm.cut_length_sfc_w_percent),
             fineness_den: normalizeNumeric(afis6MmfForm.fineness_den),
             fineness_cv_percent: normalizeNumeric(afis6MmfForm.fineness_cv_percent),
             long_fiber_gt_45_60_percent: normalizeNumeric(afis6MmfForm.long_fiber_gt_45_60_percent),
@@ -832,8 +844,6 @@ function Mixing() {
             ifc_percent: "",
             fifty_pct_l_n_mm: "",
             cut_length_n_mm: "",
-            cut_length_l_n_cv_percent: "",
-            cut_length_sfc_w_percent: "",
             fineness_den: "",
             fineness_cv_percent: "",
             long_fiber_gt_45_60_percent: "",
@@ -898,6 +908,21 @@ function Mixing() {
             });
         } catch (error) {
             console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
+        }
+        try {
+            await createThresholdViolationTickets({
+                department: "Quality Control",
+                subDepartment: "Mixing",
+                screenName: "AFIS-6 MMF",
+                machineName: "AFIS-6 MMF",
+                entryId,
+                values: [
+                    ...afis6MmfTextFieldDefs.map((field) => ({ label: field.label, value: afis6MmfForm[field.key] })),
+                    ...afis6MmfFieldDefs.map((field) => ({ label: field.label, value: afis6MmfForm[field.key] })),
+                ],
+            });
+        } catch (ticketError) {
+            console.error("Threshold ticket generation failed:", ticketError);
         }
         handleAfis6MmfClear();
     };

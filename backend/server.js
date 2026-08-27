@@ -168,6 +168,25 @@ const ENTRY_ID_ROUTE_TABLES = {
   '/drawframe/wheel-change/type1': 'drawframe.wheel_change',
   '/drawframe/wheel-change/type2': 'drawframe.wheel_change',
   '/drawframe/wheel-change/type3': 'drawframe.wheel_change',
+  // Without this mapping, "next entry id" for Simplex Wheel Change had no real table to check
+  // against - it only trusted ticketing_system.frontend_entry_registry (reservations), which can
+  // drift behind what's actually committed to simplex.wheel_change. The frontend's own fallback
+  // (fetchPath: "/simplex/notebook") makes this worse, not better - it points at a completely
+  // different table (simplex.simplex_notebook) that Wheel Change never writes to, so it can never
+  // see prior submissions either. Net effect: every save kept reserving "SWC-0001", so any save
+  // after the very first collided on the unique entry_id index and failed with 409 Duplicate.
+  '/simplex/wheel-change': 'simplex.wheel_change',
+  // Same missing-mapping bug, same fix, across the equivalent Spinning screens - none of these
+  // five route_paths were registered, so each one's "next entry id" only trusted the reservation
+  // registry instead of checking the real table, risking the same duplicate-entry_id collision
+  // once frontend_entry_registry drifts behind what's actually committed.
+  '/spinning/qc': 'spinning.spinning_qc_header',
+  '/spinning/count-change': 'spinning.count_change_inspections',
+  '/spinning/ring-frame': 'spinning.ring_frame_inspections',
+  '/spinning/lycra-missing': 'spinning.lycra_missing',
+  '/spinning/wheel-change/type1': 'spinning.wheel_change_inspection',
+  '/spinning/wheel-change/type2': 'spinning.wheel_change_v2',
+  '/spinning/wheel-change/type3': 'spinning.wheel_change',
   '/drawframe/a-percent': 'wrapping.a_percent',
   '/drawframe/stretch-percent': 'wrapping.stretch_percent',
   '/drawframe/stretch-percentage': 'wrapping.stretch_percent',
@@ -205,7 +224,13 @@ const ENTRY_ID_ROUTE_PREFIXES = {
   '/autoconer/splice-strength': { prefix: 'ASS', width: 4, separator: '-' },
   '/autoconer/drum-wise': { prefix: 'ADA', width: 4, separator: '-' },
   '/autoconer/parameter-entries/pending-csp': { prefix: 'ACS', width: 4, separator: '-' },
-  '/autoconer/parameter-entries/pending-quality': { prefix: 'AUP', width: 4, separator: '-' }
+  '/autoconer/parameter-entries/pending-quality': { prefix: 'AUP', width: 4, separator: '-' },
+  // Without this mapping, the generic fallback in getNextEntryIdForRoute has no prefix to
+  // apply and hands out a bare number (e.g. "0013") instead of "BDT-0013" whenever it's
+  // invoked directly (bypassing the frontend's own per-study reservation + per-tuft "-01"
+  // suffixing) — that's how blowroom.drop_test ended up with unprefixed entry_id rows like
+  // "0004", "0005", "0006".
+  '/blowroom/drop-test': { prefix: 'BDT', width: 4, separator: '-' }
 };
 
 // Extract only the TRAILING run of digits (the actual sequence number), not
@@ -412,7 +437,7 @@ const helpContentRouter = require('./routes/helpContent.routes');
 const inAppNotificationsRouter = require('./routes/inAppNotifications.routes');
 const supervisorAssignmentsRouter = require('./routes/supervisorAssignments.routes');
 const delegationsRouter = require('./routes/delegations.routes');
-const { router: submittedNotebooksRouter, generateOverdueNotebookTickets, runPpBatchCompletionCheck } = require('./routes/submittedNotebooks.routes');
+const { router: submittedNotebooksRouter, generateOverdueNotebookTickets, runPpBatchCompletionCheck, runPpBatchTatCheck } = require('./routes/submittedNotebooks.routes');
 const processParametersRoutes = require('./routes/processParameters');
 const spinningRoutes = require('./routes/spinning');
 const { router: reportSchedulesRouter, startReportScheduleWorker } = require('./routes/reportSchedules.routes');
@@ -576,8 +601,27 @@ app.use((err, req, res, next) => {
 
 const PORT = Number(process.env.PORT) || 4000;
 
-app.listen(PORT, '0.0.0.0', () => {
+// A second `node server.js` started alongside an already-running one (e.g.
+// forgotten from a previous session, or started manually while another copy
+// is already up) doesn't reliably fail loudly on every platform - both can
+// end up bound and both polling/writing the same DB, silently racing each
+// other (this is exactly how the PP Approval and Wheel Change Approval
+// "duplicate ticket" bugs kept reappearing - two background workers on two
+// live instances both passing the same "does a ticket already exist?" check
+// before either had committed its insert). Failing fast and loud here beats
+// a second instance quietly coexisting.
+const httpServer = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+});
+httpServer.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      `Port ${PORT} is already in use - another instance of this backend is already running. ` +
+      'Stop that instance before starting a new one (two copies running at once will race each other against the same database).'
+    );
+    process.exit(1);
+  }
+  throw err;
 });
 
 startReportScheduleWorker();
@@ -627,6 +671,15 @@ const startThresholdTicketWorker = () => {
     }
 
     try {
+      const escalated = await runPpBatchTatCheck();
+      if (escalated.length) {
+        console.log(`[pp-batch] escalated ${escalated.length} ticket(s) to the next tier`);
+      }
+    } catch (error) {
+      console.warn('[pp-batch] TAT worker skipped:', error.message);
+    }
+
+    try {
       const created = await operatorTicketRoutes.runSubmissionFrequencyCheck();
       if (created.length) {
         console.log(`[submission-frequency] generated ${created.length} missed-frequency ticket(s)`);
@@ -642,12 +695,30 @@ const startThresholdTicketWorker = () => {
     }
 
     try {
+      const created = await processParametersRoutes.runPpApprovalOverdueCheck();
+      if (created.length) {
+        console.log(`[pp-approval] raised ${created.length} ticket(s) - TAT window elapsed: ${created.join(', ')}`);
+      }
+    } catch (error) {
+      console.warn('[pp-approval] overdue worker skipped:', error.message);
+    }
+
+    try {
       const escalated = await processParametersRoutes.runPpApprovalTatCheck();
       if (escalated.length) {
         console.log(`[pp-approval] escalated ${escalated.length} ticket(s) to L5`);
       }
     } catch (error) {
       console.warn('[pp-approval] TAT worker skipped:', error.message);
+    }
+
+    try {
+      const created = await spinningRoutes.runWheelChangeApprovalOverdueCheck();
+      if (created.length) {
+        console.log(`[wheel-change-approval] raised ${created.length} ticket(s) - TAT window elapsed: ${created.join(', ')}`);
+      }
+    } catch (error) {
+      console.warn('[wheel-change-approval] overdue worker skipped:', error.message);
     }
 
     try {
@@ -658,6 +729,18 @@ const startThresholdTicketWorker = () => {
     } catch (error) {
       console.warn('[wheel-change-approval] TAT worker skipped:', error.message);
     }
+
+    try {
+      const { closed, reopened } = await supervisorTicketRoutes.runL4SelfResolveReconciliationCheck();
+      if (closed.length) {
+        console.log(`[l4-self-resolve] confirmed and closed ${closed.length} ticket(s): ${closed.join(', ')}`);
+      }
+      if (reopened.length) {
+        console.log(`[l4-self-resolve] not actually completed, reopened ${reopened.length} ticket(s): ${reopened.join(', ')}`);
+      }
+    } catch (error) {
+      console.warn('[l4-self-resolve] reconciliation worker skipped:', error.message);
+    }
   };
 
   setTimeout(run, 8000);
@@ -665,5 +748,4 @@ const startThresholdTicketWorker = () => {
 };
 
 startThresholdTicketWorker();
-
 

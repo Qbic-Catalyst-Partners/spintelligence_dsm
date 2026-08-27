@@ -1,14 +1,16 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import styles from "../../styles/supervisordashboard.module.css";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchSupervisorTickets } from "../../store/slices/supervisorSlice";
 import Pagination from "@/components/Pagination";
+import SearchableSelect from "@/components/SearchableSelect";
 import { FiCalendar, FiX } from "react-icons/fi";
 import { MdFilterList } from "react-icons/md";
-import { getProcessParameterTickets, fetchL2ApprovalQueueApi } from "../../apis/operatorApi";
+import { getProcessParameterTickets, fetchApprovalQueueApi } from "../../apis/operatorApi";
 import {
   applyStoredTicketStatuses,
+  applyTicketOverdueStatus,
   getStatusClassKey,
   getSupervisorStatusLabel,
   isSupervisorVisibleTicket,
@@ -17,14 +19,17 @@ import {
 import {
   isFullAccessUser,
 } from "../../utils/accessControl";
+import { fetchTicketResolutionSlaAPI } from "@/apis/ticketResolutionSlaApi";
 import {
   isNotebookAcknowledgementTicketRecord as isAcknowledgementReviewTicket,
   isPpBatchCompletionTicketRecord,
+  isPpApprovalTicketRecord,
   isSubmissionTicketRecord,
   isWheelChangeApprovalTicketRecord,
   transformTicket,
   getTicketKind,
   TICKET_KIND,
+  formatAssignedNames,
 } from "../../utils/ticketTransformer";
 import { formatDateTime } from "../../utils/formatDateTime";
 
@@ -163,9 +168,47 @@ const getCurrentReviewer = (ticket) => {
 const getTicketTypeLabel = (ticket) => {
   if (isWheelChangeApprovalTicketRecord(ticket)) return "Wheel Change";
   if (isAcknowledgementReviewTicket(ticket)) return "Acknowledgement";
+  if (isPpApprovalTicketRecord(ticket)) return "PP Approval";
   if (isPpBatchCompletionTicketRecord(ticket)) return "PP";
   if (isSubmissionTicketRecord(ticket)) return "Submission";
   return "Value";
+};
+
+const getDisplayLevelType = (ticket, fallbackLevel = "L1") =>
+  String(
+    ticket?.tat_current_level ||
+    ticket?.tatCurrentLevel ||
+    ticket?.levelType ||
+    fallbackLevel ||
+    "L1"
+  ).trim().toUpperCase();
+
+// Acknowledgement lands on L4 as the final authority with nobody else's work
+// to approve/reject - L4 is the one actually resolving it (clearing an
+// Acknowledgement is acting on the overdue item directly), so that action
+// reads the same "Fix and Submit" as L1's own resolve action rather than
+// "Approve or Reject". Wheel Change Approval and PP Approval are both
+// excluded from this group - approving/rejecting either is a genuine
+// accept/reject decision (rejecting sends it back to L1), so they keep
+// "Approve or Reject" like a normal reviewer tier once they're back at L4,
+// same as SupervisorDetails.js's isL4SelfResolveOwnedTicket. If Acknowledgement
+// is missed and escalates on to L5 (the final PDF-defined escalation
+// authority), L5 is now genuinely stepping in to review L4's inaction, so L5
+// keeps "Approve or Reject" as normal regardless.
+const isL4SelfResolveTicket = (ticket) =>
+  isAcknowledgementReviewTicket(ticket);
+
+// What the level actually sitting on a ticket right now needs to DO with it:
+// L1 is always the one fixing/resubmitting the underlying data; every level
+// above that is reviewing what L1 (or the prior level) already did and either
+// approving it or kicking it back - except the L4 self-resolve types above.
+const getLevelActionLabel = (levelType, ticket) => {
+  const level = String(levelType || "").trim().toUpperCase();
+  const stripped = level.startsWith("EXPIRED_") ? level.slice("EXPIRED_".length) : level;
+  if (stripped === "L1") return "Fix and Submit";
+  if (stripped === "L4" && isL4SelfResolveTicket(ticket)) return "Fix and Submit";
+  if (["L2", "L3", "L4", "L5"].includes(stripped)) return "Approve or Reject";
+  return "";
 };
 
 // Deterministic per-ticket seed so placeholder ownership figures stay
@@ -193,29 +236,35 @@ const diffMinutes = (fromValue, toValue) => {
   return (to.getTime() - from.getTime()) / 60000;
 };
 
-// TAT due-at for the ticket's current escalation level - the "Defined Res Time"
-// window it was given, measured from creation.
-const getCurrentLevelDueAt = (ticket) => {
-  const level = String(ticket?.tat_current_level || ticket?.tatCurrentLevel || "L1").toUpperCase();
-  return (
-    {
-      L1: ticket?.l1_tat_due_at,
-      L2: ticket?.l2_tat_due_at,
-      L3: ticket?.l3_tat_due_at,
-      L4: ticket?.l4_tat_due_at,
-      L5: ticket?.l5_tat_due_at,
-    }[level] || null
-  );
-};
+const buildResolutionSlaMap = (rows) =>
+  (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
+    const level = String(row?.level || "").trim().toUpperCase();
+    const hours = Number(row?.resolution_hours ?? row?.ticket_resolution_time ?? row?.hours);
+    if (level && Number.isFinite(hours) && hours > 0) {
+      acc[level] = hours;
+    }
+    return acc;
+  }, {});
 
-// Defined = TAT window (created_at -> current level's due_at). Actual = time it
-// really took to resolve (created_at -> ticket_logs Approved/ACKNOWLEDGED
-// timestamp, returned by the API as resolved_at). Gap = defined - actual.
-const getResolutionDisplay = (ticket) => {
-  const definedMinutes = diffMinutes(ticket?.created_at, getCurrentLevelDueAt(ticket));
-  const resolved = isTicketResolved(ticket?.status);
-  const resolvedAt = ticket?.resolved_at;
-  const actualMinutes = resolved ? diffMinutes(ticket?.created_at, resolvedAt) : null;
+const getTicketResolvedAt = (ticket) =>
+  ticket?.resolved_at ||
+  ticket?.submitted_at ||
+  ticket?.reviewed_at ||
+  ticket?.ticket_status_updated_at ||
+  ticket?.updated_at ||
+  null;
+
+const getResolutionDisplay = (ticket, resolutionSlaMap = {}) => {
+  const level = String(ticket?.tat_current_level || ticket?.tatCurrentLevel || ticket?.levelType || "L1").toUpperCase();
+  const resolutionHours = Number(resolutionSlaMap[level]);
+  const definedMinutes = Number.isFinite(resolutionHours) && resolutionHours > 0 ? resolutionHours * 60 : null;
+  // Actual Res Time / Resolution Gap only mean anything once the ticket has
+  // actually been resolved (Closed/Submit) - a still-open ticket's updated_at
+  // (getTicketResolvedAt's own fallback) changes on every edit, not just on
+  // resolution, so without this gate an open ticket could show a stale/wrong
+  // "actual" time and gap color from its last unrelated update.
+  const resolvedAt = isTicketResolved(ticket?.status) ? getTicketResolvedAt(ticket) : null;
+  const actualMinutes = resolvedAt ? diffMinutes(ticket?.created_at, resolvedAt) : null;
 
   return {
     defined: definedMinutes !== null ? minutesToClock(definedMinutes) : "--:--",
@@ -229,10 +278,12 @@ const getResolutionDisplay = (ticket) => {
   };
 };
 
-const isTicketResolved = (status) => {
-  const normalized = String(status || "").trim().toLowerCase();
-  return normalized === "closed" || normalized === "submit";
-};
+// 'Submit' is only a pending self-resolve state (see
+// runL4SelfResolveReconciliationCheck in supervisorTickets.routes.js) - it
+// can still bounce back to 'Open' if the underlying record turns out not to
+// actually be done, so showing an Actual Res Time/Resolution Gap for it would
+// be premature. Only a genuinely 'Closed' ticket has a final resolution time.
+const isTicketResolved = (status) => String(status || "").trim().toLowerCase() === "closed";
 
 const TICKET_TYPE_OPTIONS = ["Value", "Submission", "PP", "Acknowledgement", "Wheel Change"];
 
@@ -261,15 +312,65 @@ const getTicketCurrentLevel = (ticket) => {
   return getPrimaryActorLevel(ticket);
 };
 
+// Whether `userId` is actually one of the named approvers a ticket has on
+// file for `level` right now - the real "is this person the assigned owner"
+// check, straight from approval_l{level}_user_ids, rather than inferring it
+// from a role flag.
+const isUserApproverAtLevel = (ticket, level, userId) => {
+  if (userId === null || userId === undefined || userId === "") return false;
+  const key = `approval_${String(level || "").toLowerCase()}_user_ids`;
+  const ids = ticket?.[key];
+  if (!Array.isArray(ids)) return false;
+  return ids.some((id) => String(id) === String(userId));
+};
+
 // Previously this was a random hashTicketId(...) % 3 placeholder completely
 // disconnected from real ticket data - replaced with the actual current
 // escalation-tier check above.
-const getOwnershipDisplay = (ticket, mode, delegateName) => {
+// "Owned" means the viewer personally holds this ticket at their own real
+// level right now. That used to be inferred from an admin/full-access role
+// flag (treat any privileged account as Mapped-only past L1), but that broke
+// the moment a genuinely-assigned L4 approver's account also happened to
+// carry a full-access role tag - a real owner was shown as "Mapped" simply
+// because of an unrelated role flag. Ownership is determined directly from
+// the ticket's own approval_l{level}_user_ids instead: the viewer owns it
+// only if they are actually named as an approver at the level the ticket is
+// currently sitting at, regardless of what other roles they hold.
+//
+// L1 is a different case entirely, not just exempt from that check: L1 has
+// no "Mapped" tab at all (nothing escalates to L1 from below), so a ticket
+// that's no longer AT L1 has nowhere to render once currentLevel stops
+// matching "L1" - it silently vanished from the L1 dashboard the moment it
+// escalated, even though it's still the L1 user's own ticket to track. The
+// L1 data feed is already scoped server-side to "tickets this L1 user is an
+// approver on", so for L1 specifically, being in that feed at all IS the
+// ownership - it doesn't need to still be sitting at L1 right now. This does
+// NOT apply to PP tickets - see below.
+//
+// L5 stays Mapped-only by design - L5 oversees every level's tickets rather
+// than personally owning tickets at its own tier.
+//
+// PP tickets are the one exception to all of the above: they don't get
+// cross-level "Mapped" oversight like every other ticket type, including no
+// L1 "always owned" carry-through. A level only ever sees a PP ticket while
+// it's actually sitting with them right now - L1 stops seeing its own ticket
+// the moment it escalates away, and L4 never sees a PP ticket still sitting
+// at L1/L2/L3 under a "Mapped" tab. L5 keeps full oversight as usual since
+// it's Mapped-only by design regardless of ticket type.
+const getOwnershipDisplay = (ticket, mode, delegateName, currentUserId) => {
   const viewLevel = String(mode || "L2").trim().toUpperCase();
   const currentLevel = getTicketCurrentLevel(ticket);
-  const isOwned = viewLevel !== "L5" && currentLevel === viewLevel;
+  const isPpTicket = ticket?.ticketType === "PP";
+  const isOwned = isPpTicket
+    ? viewLevel !== "L5" && currentLevel === viewLevel
+    : viewLevel === "L1"
+      ? true
+      : viewLevel !== "L5" &&
+        currentLevel === viewLevel &&
+        isUserApproverAtLevel(ticket, viewLevel, currentUserId);
+  const kind = isOwned ? "owned" : isPpTicket && viewLevel !== "L5" ? "hidden" : "mapped";
   return {
-    kind: isOwned ? "owned" : "mapped",
+    kind,
     label: isOwned ? "Owned" : "Mapped",
     delegateName: isOwned ? "" : (delegateName || "-"),
   };
@@ -306,6 +407,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   const authToken = useSelector((state) => state.auth?.token);
   const isAuthHydrated = useSelector((state) => state.auth?.isHydrated);
   const isAdminUser = isFullAccessUser(authUser);
+  const authUserId = authUser?.id ?? authUser?.user_id ?? authUser?.userId ?? null;
   const authFullName = firstText(
     authUser?.full_name,
     authUser?.fullName,
@@ -325,12 +427,16 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   const safeTickets = applyStoredTicketStatuses(sourceTickets)
     .filter((ticket) => isAdminUser || isSupervisorVisibleTicket(ticket))
     .map(transformTicket);
+  // The backend's /tickets endpoint doesn't recognize include_all/all_users/
+  // all_tickets/scope - those were silent no-ops, so with no page/limit sent
+  // it fell back to its default limit=25, and this page's own client-side
+  // merge/filter/pagination (across Value/Acknowledgement/PP/Wheel Change
+  // ticket types) then paginated over just those 25 rows instead of the real
+  // total. An explicit high limit actually works, same fix already used for
+  // fetchApprovalQueueApi below.
   const supervisorTicketQuery = isAdminUser
     ? {
-        include_all: true,
-        all_users: true,
-        all_tickets: true,
-        scope: "all",
+        limit: 1000,
       }
     : {};
 
@@ -347,12 +453,28 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [search, setSearch] = useState("");
+  const [entrySearch, setEntrySearch] = useState("");
   const [page, setPage] = useState(1);
   const [showFilter, setShowFilter] = useState(false);
+  // Changing any filter shrinks/reshuffles the result set, but page never
+  // reset on its own (only selectTicketingView's tab switch did) - so
+  // picking e.g. a User Name while sitting on page 2+ left `page` pointing
+  // past the end of the new, smaller filtered set, showing "no tickets
+  // found" even though the selected person's tickets exist on page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [status, severity, userName, ticketType, level, startDate, endDate, search]);
   // L1-L4 each get an "Owned" tab (tickets currently escalated to their own
   // level right now); L5 is the final escalation authority with nothing
   // assigned directly to it, so it's Mapped-only. L1 has nothing escalating
-  // to it from below, so it has no "Mapped" tab.
+  // to it from below, so it has no "Mapped" tab. The Owned tab itself is
+  // shown for every level but L5 regardless of role - whether it actually
+  // has any rows is decided per-ticket by getOwnershipDisplay's real
+  // approval_l{level}_user_ids membership check. Hiding the tab outright for
+  // any admin-flagged account used to also hide it for accounts that are
+  // both admin AND a genuinely-assigned approver at that level (e.g. an
+  // Admin-role user who is also named in a ticket's approval_l4_user_ids),
+  // leaving them with no way to see tickets they actually own.
   const showOwnedTab = mode !== "L5";
   const showMappedTab = mode !== "L1";
   const defaultTicketingView = showOwnedTab ? "owned" : "mapped";
@@ -360,7 +482,9 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   const [statusUpdatingId, setStatusUpdatingId] = useState("");
   const [processParameterTicketData, setProcessParameterTicketData] = useState([]);
   const [processParameterError, setProcessParameterError] = useState("");
-  const [l2ApprovalQueueData, setL2ApprovalQueueData] = useState([]);
+  const [approvalQueueData, setApprovalQueueData] = useState([]);
+  const [resolutionSlaData, setResolutionSlaData] = useState([]);
+  const resolutionSlaMap = useMemo(() => buildResolutionSlaMap(resolutionSlaData), [resolutionSlaData]);
   const startDateInputRef = useRef(null);
   const endDateInputRef = useRef(null);
 
@@ -389,17 +513,31 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
     }
   };
 
-  // Value Threshold L1->L2 tickets: fetch one row per ticket_approvals L2 entry so a
-  // ticket that was rejected and resubmitted shows every submit/approve/reject cycle
-  // as its own separate row, instead of a single row that just overwrites its status.
-  const fetchL2ApprovalQueue = async () => {
+  // Approval queue tickets: one row per ticket_approvals entry so a ticket that was
+  // rejected and resubmitted shows every submit/approve/reject cycle as its own row
+  // instead of a single row that just overwrites its status.
+  const fetchApprovalQueue = async () => {
     try {
-      const response = await fetchL2ApprovalQueueApi({ page: 1, limit: 500, _ts: Date.now() });
-      const rows = Array.isArray(response?.approvals) ? response.approvals : [];
-      setL2ApprovalQueueData(rows);
-    } catch (queueError) {
-      console.error("Error fetching L2 approval queue:", queueError);
-      setL2ApprovalQueueData([]);
+      const response = await fetchApprovalQueueApi({
+        page: 1,
+        limit: 500,
+        level: mode,
+        _ts: Date.now(),
+    });
+    const rows = Array.isArray(response?.approvals) ? response.approvals : [];
+    setApprovalQueueData(rows);
+  } catch (queueError) {
+      console.error("Error fetching approval queue:", queueError);
+      setApprovalQueueData([]);
+    }
+  };
+
+  const fetchResolutionSla = async () => {
+    try {
+      const response = await fetchTicketResolutionSlaAPI();
+      setResolutionSlaData(Array.isArray(response) ? response : []);
+    } catch {
+      setResolutionSlaData([]);
     }
   };
 
@@ -411,8 +549,10 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
     if (!isAuthHydrated || !authToken) return;
     dispatch(fetchSupervisorTickets(supervisorTicketQuery));
     fetchProcessParameterTickets();
+    if (["L2", "L3", "L4", "L5"].includes(mode)) fetchApprovalQueue();
+    fetchResolutionSla();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, isAdminUser, isAuthHydrated, authToken]);
+  }, [dispatch, isAdminUser, isAuthHydrated, authToken, mode]);
 
   // Operators can change a ticket's status from their own dashboard while an admin/supervisor
   // already has this page open — refetch on refocus so those changes show up without a manual reload.
@@ -423,7 +563,8 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
       if (!isAuthHydrated || !authToken) return;
       dispatch(fetchSupervisorTickets(supervisorTicketQuery));
       fetchProcessParameterTickets();
-      fetchL2ApprovalQueue();
+      if (["L2", "L3", "L4", "L5"].includes(mode)) fetchApprovalQueue();
+      fetchResolutionSla();
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -439,7 +580,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, isAdminUser, isAuthHydrated, authToken]);
+  }, [dispatch, isAdminUser, isAuthHydrated, authToken, mode]);
 
   const openCalendarPicker = (inputRef) => {
     const input = inputRef.current;
@@ -455,24 +596,76 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   // Every ticket type (Value/Submission/Acknowledgement/PP) is merged into one row shape
   // here so they can share a single table, filter bar, and Owned/Mapped toggle instead of
   // separate tabbed views per ticket type. Value Threshold tickets still with L1 (Open/In
-  // Progress/Reopened) keep coming from safeTickets like before, but once submitted they're
-  // excluded here - from that point on they come exclusively from l2ApprovalQueueData below,
-  // which shows one row per ticket_approvals L2 entry (so a rejected+resubmitted ticket shows
-  // every submit/approve/reject cycle as its own row) instead of one row with just current status.
+  // Progress/Reopened) keep coming from safeTickets like before; once submitted, L2-L5 pick
+  // them up from queueTickets instead (one row per ticket_approvals entry, so a
+  // rejected+resubmitted ticket shows every submit/approve/reject cycle as its own row) - but
+  // L1 has no equivalent queue fetch, so excluding Submit-status tickets from safeTickets
+  // there too made an L1 user's own just-submitted ticket vanish from their own dashboard
+  // entirely the moment they submitted it.
+  const queueTickets = ["L2", "L3", "L4", "L5"].includes(mode) ? approvalQueueData : [];
   const mergedTickets = [
     ...safeTickets
       .filter((ticket) => {
+        // PP tickets come exclusively from processParameterTicketData below (the
+        // purpose-built /process-parameter-ticketing endpoint with entry_id,
+        // assigned_user_names, etc.) - now that this feed's ticket_type/ticket_kind
+        // columns are populated, PP tickets are correctly identified here too and
+        // would otherwise show up as a second, worse-labeled duplicate row per ticket.
+        if (getTicketTypeLabel(ticket) === "PP") return false;
         if (getTicketTypeLabel(ticket) !== "Value") return true;
+        // L1 needs to see its own ticket regardless of status (no Mapped tab
+        // to fall back to once it escalates away), and L5 is meant to see
+        // every ticket at every level/status as the final oversight view -
+        // both bypass the "still with L1" status restriction below, which
+        // exists only to avoid Value tickets appearing twice once the
+        // approval-queue feed also has a row for them at L2+.
+        if (mode === "L1" || mode === "L5") return true;
         const normalizedStatus = String(ticket?.status || "").trim().toLowerCase();
-        return ["open", "in progress", "reopened"].includes(normalizedStatus);
+        // L5 (Executive Leadership) and admin see every activity at every
+        // status under Mapped - nothing is hidden from the top of the chain.
+        if (mode === "L5" || isAdminUser) return true;
+        // L1 keeps its own submitted ticket visible (status shows "Submit")
+        // after Fix & Resubmit instead of it vanishing - the operator can see
+        // it's now awaiting L2 review. For L2-L4 the submitted ticket comes
+        // from the approval queue (queueTickets below) instead, so exclude the
+        // "Submit" record here to avoid showing it twice at those levels.
+        // "Closed" is included for every level though - a closed ticket has
+        // no live row in the approval queue anymore (see getApprovalQueue's
+        // Pending-only default), so there's no duplication risk, and every
+        // other ticket type (Wheel Change, PP, Acknowledgement) already shows
+        // its closed tickets here without this extra filter - Value was the
+        // only kind that made them disappear entirely for L2-L4.
+        const visibleStatuses = mode === "L1"
+          ? ["open", "in progress", "reopened", "submit", "closed"]
+          : ["open", "in progress", "reopened", "closed"];
+        return visibleStatuses.includes(normalizedStatus);
       })
-      .map((ticket) => ({
-        ...ticket,
-        ticketType: getTicketTypeLabel(ticket),
-        userName: isAcknowledgementReviewTicket(ticket) ? getCurrentReviewer(ticket) : (ticket.user_name || "-"),
-        levelType: String(ticket?.tat_current_level || ticket?.tatCurrentLevel || mode).toUpperCase(),
-      })),
-    ...l2ApprovalQueueData.map((row) => {
+      .map((ticket) => {
+        // Wheel Change Approval and PP Approval tickets carry no user_name -
+        // there's genuinely no single "submitter", just whoever the ticket is
+        // currently sitting with, resolved from approval_lX_user_ids the same
+        // way the L2-L5 REVIEWER column does. Acknowledgement tickets are
+        // different: they always have a real submitter (the person whose
+        // notebook wasn't acknowledged in time) already populated in
+        // ticket.user_name - resolving to the current reviewer here instead
+        // collapsed every Acknowledgement ticket's User Name to whichever
+        // single approver they're all currently sitting with (e.g. one L4
+        // approver), hiding every real submitter from the column/filter.
+        const resolvedUserName = (
+          isWheelChangeApprovalTicketRecord(ticket) ||
+          isPpApprovalTicketRecord(ticket)
+        )
+          ? getCurrentReviewer(ticket)
+          : (ticket.user_name || "-");
+        return applyTicketOverdueStatus({
+          ...ticket,
+          ticketType: getTicketTypeLabel(ticket),
+          userName: resolvedUserName,
+          userNameList: resolvedUserName && resolvedUserName !== "-" ? [resolvedUserName] : [],
+          levelType: getDisplayLevelType(ticket, mode),
+        }, resolutionSlaData);
+      }),
+    ...queueTickets.map((row) => {
       const transformed = transformTicket({
         ticket_id: row.ticket_id,
         user_id: row.user_id,
@@ -483,27 +676,69 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
         threshold_value: row.threshold_value,
         severity: row.severity,
         status: row.ticket_status,
-        created_at: row.approval_created_at,
+        // Use the ticket's real creation time, not the approval-row insert
+        // time (approval_created_at) - the latter is (nearly) identical across
+        // tickets submitted in the same batch, which made every row show the
+        // same Created At. ticket_created_at is the actual ot.created_at.
+        created_at: row.ticket_created_at || row.approval_created_at,
+        tat_current_level: "L2",
+        // The approval-queue endpoint didn't used to select a resolution
+        // timestamp at all, so Actual Res Time/Resolution Gap always showed
+        // "--:--" for every Value/Submission Frequency ticket in this feed
+        // even once Closed - resolved_at now comes from the same
+        // ticket_logs-based resolution_log join the main ticket list uses.
+        resolved_at: row.resolved_at,
+        entry_id: row.entry_id,
       });
-      return {
+      return applyTicketOverdueStatus({
         ...transformed,
         id: `${row.ticket_id}-approval-${row.approval_row_id}`,
         approvalRowId: row.approval_row_id,
         approvalActionStatus: row.action_status,
         ticketType: "Value",
         userName: row.user_name || "-",
-        levelType: "L2",
+        userNameList: row.user_name ? [row.user_name] : [],
+        levelType: getDisplayLevelType(row, mode),
+        tat_current_level: getDisplayLevelType(row, mode),
+        // The approval-queue endpoint didn't used to select the approver-id
+        // columns at all, so the ownership check (real approval_l{level}_user_ids
+        // membership) had nothing to check against here and every row from
+        // this feed fell back to "Mapped" - carrying these through fixes that.
+        approval_l1_user_ids: row.approval_l1_user_ids,
+        approval_l2_user_ids: row.approval_l2_user_ids,
+        approval_l3_user_ids: row.approval_l3_user_ids,
+        approval_l4_user_ids: row.approval_l4_user_ids,
+        approval_l5_user_ids: row.approval_l5_user_ids,
+        queueSource: "approval-queue",
+      }, resolutionSlaData);
+    }),
+    ...processParameterTicketData.map((ticket) => {
+      const rawAssignedNames = ticket.assigned_user_names || ticket.assignedUserNames || "";
+      const assignedNameList = String(rawAssignedNames).split(",").map((name) => name.trim()).filter(Boolean);
+      return {
+        ...ticket,
+        ticketType: "PP",
+        // USER NAME is who's actually assigned to resolve the ticket, not the
+        // PP entry id it used to fall back to (ticket.notebook holds the entry
+        // id for PP tickets, e.g. "PP-0012") - resolved from approval_l1_user_ids.
+        // userNameList keeps every individual name (not the truncated "+N more"
+        // display string) so the User Name filter/dropdown can match and list
+        // each person even when several are assigned to the same ticket.
+        userName: formatAssignedNames(rawAssignedNames),
+        userNameList: assignedNameList,
+        levelType: getDisplayLevelType(ticket, mode),
       };
     }),
-    ...processParameterTicketData.map((ticket) => ({
-      ...ticket,
-      ticketType: "PP",
-      userName: ticket.notebook || "-",
-      levelType: mode,
-    })),
   ];
 
-  const filteredTickets = mergedTickets.filter((t) => {
+  // Overdue has to be resolved before filtering, not after - it used to be
+  // computed only once building taggedTickets (post-filter), so selecting
+  // "Overdue" in the Status filter compared against each ticket's real
+  // underlying status (e.g. "In Progress") and never matched anything, even
+  // though the STATUS column visibly showed "Overdue" for the same rows.
+  const overdueAwareTickets = mergedTickets.map((t) => applyTicketOverdueStatus(t, resolutionSlaData));
+
+  const filteredTickets = overdueAwareTickets.filter((t) => {
     const ticketDate = t.created_at ? new Date(t.created_at) : null;
     const start = startDate ? new Date(startDate) : null;
     const end = endDate ? new Date(endDate) : null;
@@ -515,37 +750,71 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
           (!start || ticketDate >= start) &&
           (!end || ticketDate <= end);
 
+    // Closed and Submit are two distinct, real stages in the ticket lifecycle
+    // now (Open -> In Progress -> Submit -> Closed, or -> Reopened) - they
+    // used to be treated as interchangeable here, so filtering by "Closed"
+    // also silently pulled in every still-open Submit ticket and vice versa.
     const normalizedTicketStatus = String(t.status || "").trim().toLowerCase();
     const normalizedFilterStatus = String(status || "").trim().toLowerCase();
-    const statusMatch =
-      !status ||
-      normalizedTicketStatus === normalizedFilterStatus ||
-      (normalizedFilterStatus === "closed" && normalizedTicketStatus === "submit") ||
-      (normalizedFilterStatus === "submit" && normalizedTicketStatus === "closed");
+    const statusMatch = !status || normalizedTicketStatus === normalizedFilterStatus;
+
+    // "PP" in the filter is the umbrella option for every process-parameter
+    // ticket - PP batch tickets are literally typed "PP", but PP Approval
+    // tickets carry the more specific "PP Approval" label (its own separate
+    // filter option too), so an exact match on "PP" alone always hid the
+    // Approval ones out of the list even though they're still PP tickets.
+    const ticketTypeMatch =
+      !ticketType ||
+      t.ticketType === ticketType ||
+      (ticketType === "PP" && t.ticketType === "PP Approval");
 
     return (
       dateMatch &&
       statusMatch &&
       (!severity || t.severity === severity) &&
-      (!userName || t.userName === userName) &&
-      (!ticketType || t.ticketType === ticketType) &&
+      (!userName || (t.userNameList || [t.userName]).includes(userName)) &&
+      ticketTypeMatch &&
       (!level || t.levelType === level) &&
       (!search ||
         t.ticket_id?.toLowerCase().includes(search.toLowerCase()) ||
-        t.userName?.toLowerCase().includes(search.toLowerCase()))
+        t.userName?.toLowerCase().includes(search.toLowerCase())) &&
+      (!entrySearch ||
+        (t.entry_id || t.entryId || "").toLowerCase().includes(entrySearch.toLowerCase()))
     );
   });
 
+  // Built from each ticket's individual assignee names (userNameList), not the
+  // truncated display string (userName) - otherwise a multi-assignee PP ticket's
+  // "A, B, C +3 more" string became a single unfilterable dropdown entry, and a
+  // person buried past the "+N more" cutoff couldn't be filtered to at all.
   const uniqueUserNames = [
-    ...new Set(mergedTickets.map((t) => t.userName).filter((value) => value && value !== "-")),
-  ];
+    ...new Set(
+      mergedTickets
+        .flatMap((t) => (Array.isArray(t.userNameList) && t.userNameList.length ? t.userNameList : [t.userName]))
+        .filter((value) => value && value !== "-")
+    ),
+  ].sort();
+  const uniqueTicketIds = [
+    ...new Set(mergedTickets.map((t) => t.ticket_id).filter(Boolean)),
+  ].sort();
+  const uniqueEntryIds = [
+    ...new Set(
+      mergedTickets
+        .map((t) => t.entry_id || t.entryId)
+        .filter((value) => value && value !== "-")
+    ),
+  ].sort();
   const statusFilterOptions = SUPERVISOR_VISIBLE_STATUS_OPTIONS;
 
-  const taggedTickets = filteredTickets.map((t) => ({
-    ...t,
-    ownership: getOwnershipDisplay(t, mode, authFullName),
-    resolution: getResolutionDisplay(t),
-  }));
+  const taggedTickets = filteredTickets.map((t) => {
+    const overdueTicket = applyTicketOverdueStatus(t, resolutionSlaData);
+    return {
+      ...overdueTicket,
+      ownership: getOwnershipDisplay(overdueTicket, mode, authFullName, authUserId),
+      resolution: getResolutionDisplay(overdueTicket, resolutionSlaMap),
+      isOverdue: String(overdueTicket?.status || "").trim().toLowerCase() === "overdue",
+    };
+  });
   const displayTickets = taggedTickets.filter((t) => t.ownership.kind === activeTicketingView);
 
   const totalPages = Math.max(
@@ -630,6 +899,34 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
 
         <div className={styles["sup-filters"]}>
           <div className={styles["sup-filter"]}>
+            <label>Ticket ID</label>
+            <SearchableSelect
+              className={styles["sup-select"]}
+              value={search}
+              onChange={setSearch}
+              options={uniqueTicketIds}
+              placeholder="Search Ticket ID"
+              includeEmptyOption
+              emptyOptionLabel="All"
+              ariaLabel="Ticket ID"
+            />
+          </div>
+
+          <div className={styles["sup-filter"]}>
+            <label>Entry ID</label>
+            <SearchableSelect
+              className={styles["sup-select"]}
+              value={entrySearch}
+              onChange={setEntrySearch}
+              options={uniqueEntryIds}
+              placeholder="Search Entry ID"
+              includeEmptyOption
+              emptyOptionLabel="All"
+              ariaLabel="Entry ID"
+            />
+          </div>
+
+          <div className={styles["sup-filter"]}>
             <label>Ticket Type</label>
             <select
               className={styles["sup-select"]}
@@ -660,7 +957,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
           )}
 
           <div className={styles["sup-filter"]}>
-            <label>Severity</label>
+            <label>Criticality</label>
             <select
               className={styles["sup-select"]}
               value={severity}
@@ -702,6 +999,12 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
               ))}
             </select>
           </div>
+
+          {/* Forces the date pair onto its own fresh row every time, regardless
+              of how many filters precede it - L1's row has one fewer filter
+              (no Level dropdown) than L2-L5, so without this the From/To
+              Date pair wrapped to a different position per login level. */}
+          <div aria-hidden="true" style={{ flexBasis: "100%", width: 0, height: 0, margin: 0, padding: 0 }} />
 
           <div className={styles["sup-date-group"]}>
             <div className={styles["sup-filter"]}>
@@ -757,6 +1060,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
               setStartDate("");
               setEndDate("");
               setSearch("");
+              setEntrySearch("");
             }}
             style={{
               display: "flex",
@@ -773,6 +1077,9 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
               borderRadius: 6,
               cursor: "pointer",
               whiteSpace: "nowrap",
+              flex: "0 0 auto",
+              alignSelf: "flex-end",
+              marginLeft: "auto",
             }}
           >
             <FiX aria-hidden="true" /> Clear
@@ -784,12 +1091,13 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
             <thead>
               <tr>
                 <th>TICKET ID</th>
+                <th>ENTRY ID</th>
                 <th>TICKET TYPE</th>
                 <th>OWNED/DELEGATE</th>
                 <th>LEVEL TYPE</th>
                 <th>USER NAME</th>
                 <th>STATUS</th>
-                <th>SEVERITY</th>
+                <th>CRITICALITY</th>
                 <th>DEFINED RES TIME</th>
                 <th>ACTUAL RES TIME</th>
                 <th>RESOLUTION GAP</th>
@@ -813,6 +1121,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                     >
                       {t.ticket_id}
                     </td>
+                    <td>{t.entry_id || t.entryId || "-"}</td>
                     <td>{t.ticketType}</td>
                     <td>
                       {t.ownership.label}
@@ -820,7 +1129,20 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                         <div className={styles["sup-small-label"]}>({t.ownership.delegateName})</div>
                       ) : null}
                     </td>
-                    <td>{t.levelType}</td>
+                    <td>
+                      {t.levelType}
+                      {getSupervisorStatusLabel(t.status) !== "Closed" && getLevelActionLabel(t.levelType, t) ? (
+                        <div
+                          className={`${styles["sup-small-label"]} ${styles["sup-ticket-link"]}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleTicketClick(t.ticket_id, t.ticketType, t.status);
+                          }}
+                        >
+                          {getLevelActionLabel(t.levelType, t)}
+                        </div>
+                      ) : null}
+                    </td>
                     <td>{t.userName}</td>
                     <td>
                       <span
@@ -841,7 +1163,19 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                       </span>
                     </td>
                     <td>{t.resolution.defined}</td>
-                    <td>{t.resolution.actual}</td>
+                    <td
+                      style={{
+                        color:
+                          t.resolution.isGapPositive === null
+                            ? "#98a2b3"
+                            : t.resolution.isGapPositive
+                              ? "#12b76a"
+                              : "#f04438",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {t.resolution.actual}
+                    </td>
                     <td
                       style={{
                         color:
@@ -860,7 +1194,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                 ))
               ) : (
                 <tr>
-                  <td colSpan="11" style={{ textAlign: "center", padding: "24px" }}>
+                  <td colSpan="12" style={{ textAlign: "center", padding: "24px" }}>
                     No tickets found
                   </td>
                 </tr>
@@ -892,13 +1226,16 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                   <div className={styles["sup-card-title"]}>
                     {t.ticket_id} | {t.ticketType}
                   </div>
+                  {(t.entry_id || t.entryId) && (
+                    <div className={styles["sup-small-label"]}>Entry ID: {t.entry_id || t.entryId}</div>
+                  )}
                   <div className={styles["sup-card-date"]}>
                     {formatDateTime(t.created_at)}
                   </div>
                 </div>
 
                 <span className={`${styles["sup-badge"]} ${styles[t.severity?.toLowerCase()]}`}>
-                  Severity: {t.severity}
+                  Criticality: {t.severity}
                 </span>
               </div>
 
@@ -912,7 +1249,14 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                   <div className={styles["sup-small-label"]}>Resolution Gap</div>
                   <div
                     className={styles["sup-actual-value"]}
-                    style={{ color: t.resolution.isGapPositive ? "#12b76a" : "#f04438" }}
+                    style={{
+                      color:
+                        t.resolution.isGapPositive === null
+                          ? "#98a2b3"
+                          : t.resolution.isGapPositive
+                            ? "#12b76a"
+                            : "#f04438",
+                    }}
                   >
                     {t.resolution.gapLabel}
                   </div>
@@ -951,6 +1295,32 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
               </div>
 
               <div className={styles["sup-filter-body"]}>
+                <div className={styles["sup-filter-group"]}>
+                  <label>Ticket ID</label>
+                  <SearchableSelect
+                    value={search}
+                    onChange={setSearch}
+                    options={uniqueTicketIds}
+                    placeholder="Search Ticket ID"
+                    includeEmptyOption
+                    emptyOptionLabel="All"
+                    ariaLabel="Ticket ID"
+                  />
+                </div>
+
+                <div className={styles["sup-filter-group"]}>
+                  <label>Entry ID</label>
+                  <SearchableSelect
+                    value={entrySearch}
+                    onChange={setEntrySearch}
+                    options={uniqueEntryIds}
+                    placeholder="Search Entry ID"
+                    includeEmptyOption
+                    emptyOptionLabel="All"
+                    ariaLabel="Entry ID"
+                  />
+                </div>
+
                 <div className={styles["sup-filter-group"]}>
                   <label>Ticket Type</label>
                   <select
@@ -993,7 +1363,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                 </div>
 
                 <div className={styles["sup-filter-group"]}>
-                  <label>Severity</label>
+                  <label>Criticality</label>
                   <select
                     value={severity}
                     onChange={(e) => setSeverity(e.target.value)}
@@ -1046,6 +1416,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                       setStartDate("");
                       setEndDate("");
                       setSearch("");
+                      setEntrySearch("");
                     }}
                   >
                     Reset

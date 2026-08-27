@@ -578,7 +578,8 @@
 
 .approveButton,
 .rejectButton,
-.confirmRejectButton {
+.confirmRejectButton,
+.cancelButton {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -607,6 +608,16 @@
     background: #fef2f2;
 }
 
+.cancelButton {
+    border: 1px solid #4056a8;
+    background: #ffffff;
+    color: #4056a8;
+}
+
+.cancelButton:hover {
+    background: #eef1fa;
+}
+
 .confirmRejectButton {
     border: none;
     background: #dc2626;
@@ -615,7 +626,8 @@
 
 .approveButton:disabled,
 .rejectButton:disabled,
-.confirmRejectButton:disabled {
+.confirmRejectButton:disabled,
+.cancelButton:disabled {
     cursor: wait;
     opacity: 0.72;
 }

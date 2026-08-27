@@ -1,164 +1,155 @@
 const client = require('../connection');
-
-const META_KEYS = new Set([
-  'department', 'sub_department', 'management_field', 'erp_product_code', 'input_screen',
-  'machine_name', 'machine', 'machineno', 'machine_no', 'user_name', 'user_id',
-  'inspection_date', 'entry_date', 'date', 'created_at', 'updated_at', 'status',
-  'entries', 'readings', 'summary', 'blends', 'items', 'results'
-]);
+const { generateTicketId } = require('../utils/ticketId');
 
 const normalize = (v) => String(v || '').toLowerCase().replace(/\s+/g, '_');
 
-const extractNumericMap = (body = {}) => {
-  const out = {};
-  for (const [k, v] of Object.entries(body)) {
-    if (META_KEYS.has(k)) continue;
-    if (typeof v === 'number' || v === null) out[k] = v;
-  }
-  return out;
+const findByNormalizedKey = (obj, key) => {
+  const target = normalize(key);
+  const real = Object.keys(obj || {}).find((k) => normalize(k) === target);
+  return real ? obj[real] : undefined;
 };
 
+// All three modes are offsets from typical_value (the configured baseline),
+// not from the submitted value itself - plus_value/minus_value are how far
+// above/below typical_value is still acceptable.
 const evaluateBreach = (actualRaw, rule) => {
   const actual = Number(actualRaw);
-  const mode = String(rule?.condition_level || 'More Than').toLowerCase();
-  const plus = Number(rule?.plus_threshold);
-  const minus = Number(rule?.minus_threshold);
-  const base = Number(rule?.actual_value);
+  const typical = Number(rule?.typical_value);
+  const plus = Number(rule?.plus_value);
+  const minus = Number(rule?.minus_value);
+  if (!Number.isFinite(actual) || !Number.isFinite(typical)) return null;
 
-  if (!Number.isFinite(actual)) return null;
-  if (mode === 'more than') return Number.isFinite(plus) ? actual > plus : null;
-  if (mode === 'less than') return Number.isFinite(minus) ? actual < minus : null;
-  if (mode === 'more and less than') {
-    if (!Number.isFinite(base) || !Number.isFinite(plus) || !Number.isFinite(minus)) return null;
-    const min = base - minus;
-    const max = base + plus;
-    return actual <= min || actual >= max;
+  const mode = String(rule?.comparison_mode || 'more_and_less_than').toLowerCase();
+  if (mode === 'more_than') return Number.isFinite(plus) ? actual > typical + plus : null;
+  if (mode === 'less_than') return Number.isFinite(minus) ? actual < typical - minus : null;
+  if (mode === 'more_and_less_than') {
+    if (!Number.isFinite(plus) || !Number.isFinite(minus)) return null;
+    return actual > typical + plus || actual < typical - minus;
   }
   return null;
 };
 
-const findByNormalizedKey = (obj, key) => {
-  const target = normalize(key);
-  const real = Object.keys(obj).find((k) => normalize(k) === target);
-  return real ? obj[real] : undefined;
-};
-
-async function tryAutoGenerateTicket({ screenName, reqBody }) {
-  const department = reqBody.department || reqBody.management_field;
-  const subDepartment = reqBody.sub_department || reqBody.erp_product_code;
-  const machineName = reqBody.machine_name || reqBody.machine || reqBody.machineno || reqBody.machine_no || screenName;
-  const userName = reqBody.user_name || 'ERP System';
-  if (!screenName || !department || !subDepartment || !machineName) return null;
-
-  const actualMap = extractNumericMap(reqBody);
-  const parameterNames = Object.keys(actualMap);
-  if (!parameterNames.length) return null;
+// Evaluates a just-submitted notebook entry against
+// ticketing_system.value_threshold_rules (the table the Value Threshold
+// settings screen actually writes to - this used to query the unrelated,
+// never-configured `threshold_master` table and was never called from any
+// route, so no Value Threshold ticket was ever auto-generated for any
+// notebook submission) and files one ticket per entry if any configured
+// field is missing or out of range.
+//
+// department/subDepartment/notebook must match the threshold rule's own
+// (department, sub_department, notebook) exactly - these come from the
+// calling route's own constants, not guessed from the request body, since
+// most notebook submit payloads don't carry those labels at all.
+async function tryAutoGenerateTicket({
+  department,
+  subDepartment,
+  notebook,
+  machineName,
+  entryId,
+  userId,
+  userName,
+  values,
+}) {
+  if (!department || !subDepartment || !notebook) return null;
+  if (!values || typeof values !== 'object') return null;
 
   const rulesResult = await client.query(
-    `SELECT input_field, condition_level, plus_threshold, minus_threshold, actual_value,
-            approval_l1_user_id, approval_l2_user_id, approval_l3_user_id
-     FROM ticketing_system.threshold_master
-     WHERE department = $1
-       AND sub_department = $2
-       AND input_screen = $3
-       AND machine_name = $4
-       AND is_active = true`,
-    [department, subDepartment, screenName, machineName]
+    `SELECT field, comparison_mode, typical_value, value_mode, plus_value, minus_value,
+            criticality, l1_user_id, approval_l1_user_ids
+     FROM ticketing_system.value_threshold_rules
+     WHERE department = $1 AND sub_department = $2 AND notebook = $3 AND is_active = true`,
+    [department, subDepartment, notebook]
   );
   if (!rulesResult.rows.length) return null;
 
-  const ruleMap = {};
-  for (const row of rulesResult.rows) {
-    ruleMap[row.input_field] = row;
-  }
-
   const missing = [];
   const breaches = [];
+  const severityRank = { High: 3, Medium: 2, Low: 1 };
+  let ticketSeverity = 'Medium';
+  const approverIdsSet = new Set();
 
-  for (const field of parameterNames) {
-    const actual = findByNormalizedKey(actualMap, field);
-    const rule = findByNormalizedKey(ruleMap, field);
-    if (!rule) continue;
-    if (actual === null || actual === undefined || (typeof actual === 'string' && actual.trim() === '')) {
-      missing.push(field);
+  for (const rule of rulesResult.rows) {
+    const actual = findByNormalizedKey(values, rule.field);
+    if (actual === null || actual === undefined || String(actual).trim() === '') {
+      missing.push(rule.field);
       continue;
     }
-    if (evaluateBreach(actual, rule)) {
+
+    const breached = evaluateBreach(actual, rule);
+    if (breached) {
       breaches.push({
-        field,
+        field: rule.field,
         actual_value: Number(actual),
-        condition_level: rule.condition_level,
-        plus_threshold: rule.plus_threshold,
-        minus_threshold: rule.minus_threshold,
-        baseline_actual_value: rule.actual_value
+        comparison_mode: rule.comparison_mode,
+        typical_value: Number(rule.typical_value),
+        plus_value: rule.plus_value === null ? null : Number(rule.plus_value),
+        minus_value: rule.minus_value === null ? null : Number(rule.minus_value),
       });
+    }
+
+    if (breached !== null) {
+      const ids = Array.isArray(rule.approval_l1_user_ids) && rule.approval_l1_user_ids.length
+        ? rule.approval_l1_user_ids
+        : rule.l1_user_id
+          ? [rule.l1_user_id]
+          : [];
+      ids.forEach((id) => approverIdsSet.add(id));
+      if ((severityRank[rule.criticality] || 0) > (severityRank[ticketSeverity] || 0)) {
+        ticketSeverity = rule.criticality;
+      }
     }
   }
 
-  let reason = null;
-  if (missing.length && breaches.length) reason = 'BOTH';
-  else if (missing.length) reason = 'MISSING_VALUE';
-  else if (breaches.length) reason = 'THRESHOLD_BREACH';
-  if (!reason) return null;
+  if (!missing.length && !breaches.length) return null;
 
-  const severity = missing.length ? 'High' : (breaches.length >= 3 ? 'High' : 'Medium');
-  const thresholdPayload = {};
-  for (const row of rulesResult.rows) {
-    thresholdPayload[row.input_field] = {
-      condition_level: row.condition_level,
-      plus_threshold: row.plus_threshold,
-      minus_threshold: row.minus_threshold,
-      actual_value: row.actual_value
-    };
-  }
+  const reason = missing.length && breaches.length ? 'BOTH' : missing.length ? 'MISSING_VALUE' : 'THRESHOLD_BREACH';
+  const approverIds = Array.from(approverIdsSet);
 
-  const approvalL1UserIds = Array.from(
-    new Set(
-      rulesResult.rows
-        .map((row) => Number(row.approval_l1_user_id))
-        .filter((id) => Number.isInteger(id) && id > 0)
-    )
-  );
-  const approvalL2UserIds = Array.from(
-    new Set(
-      rulesResult.rows
-        .map((row) => Number(row.approval_l2_user_id))
-        .filter((id) => Number.isInteger(id) && id > 0)
-    )
-  );
-  const approvalL3UserIds = Array.from(
-    new Set(
-      rulesResult.rows
-        .map((row) => Number(row.approval_l3_user_id))
-        .filter((id) => Number.isInteger(id) && id > 0)
-    )
-  );
+  // parameter_name is what the ticket detail page renders as the alert's
+  // subject - it must only list the field(s) that actually caused this
+  // ticket (missing or breached), not every key on the submitted form.
+  const relevantParamNames = Array.from(new Set([...missing, ...breaches.map((b) => b.field)]));
 
+  const violationDetails = {
+    category: 'VALUE_THRESHOLD',
+    ticket_type: 'VALUE_THRESHOLD',
+    entry_id: entryId || null,
+    missing_fields: missing,
+    threshold_breaches: breaches,
+    message: breaches.length
+      ? `${notebook} entry ${entryId || ''} breached threshold on: ${breaches.map((b) => b.field).join(', ')}.`
+      : `${notebook} entry ${entryId || ''} is missing: ${missing.join(', ')}.`,
+  };
+
+  const ticketId = await generateTicketId(client);
   const insert = await client.query(
     `INSERT INTO ticketing_system.operator_tickets
-     (ticket_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, violation_details, approval_l1_user_id, approval_l2_user_id, approval_l3_user_id, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids)
-     VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, 'Open', CURRENT_TIMESTAMP, $7, $8, $9, $10::jsonb, $11, $12, $13, $14::int[], $15::int[], $16::int[])
+     (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value,
+      severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type,
+      ticket_kind, violation_details, approval_l1_user_ids)
+     VALUES ($1,
+       $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, 'Open', NOW(), $9, $10, $11, 'VALUE_THRESHOLD',
+       'value_threshold', $12::jsonb, $13::int[])
      RETURNING ticket_id, severity, status`,
     [
-      userName,
-      machineName,
-      JSON.stringify(parameterNames),
-      JSON.stringify(actualMap),
-      JSON.stringify(thresholdPayload),
-      severity,
+      ticketId,
+      userId || null,
+      userName || 'System',
+      machineName || notebook,
+      JSON.stringify(relevantParamNames),
+      JSON.stringify(values),
+      JSON.stringify(Object.fromEntries(rulesResult.rows.map((r) => [r.field, { typical_value: r.typical_value, plus_value: r.plus_value, minus_value: r.minus_value, comparison_mode: r.comparison_mode }]))),
+      ticketSeverity,
       department,
       subDepartment,
       reason,
-      JSON.stringify({ missing_fields: missing, threshold_breaches: breaches }),
-      approvalL1UserIds[0] || null,
-      approvalL2UserIds[0] || null,
-      approvalL3UserIds[0] || null,
-      approvalL1UserIds,
-      approvalL2UserIds,
-      approvalL3UserIds
+      JSON.stringify(violationDetails),
+      approverIds,
     ]
   );
+
   return insert.rows[0];
 }
 
-module.exports = { tryAutoGenerateTicket };
+module.exports = { tryAutoGenerateTicket, evaluateBreach, findByNormalizedKey };

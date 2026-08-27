@@ -15,6 +15,7 @@ import { fetchUsers } from "@/store/slices/userSlice";
 import { isSubmittedNotebookManagerUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
+import useRoleDepartmentAccess from "@/hooks/useRoleDepartmentAccess";
 import styles from "@/styles/SubmissionThreshold.module.css";
 
 const CRITICALITY_OPTIONS = ["High", "Medium", "Low"];
@@ -181,6 +182,7 @@ function MultiUserSelect({
 }) {
   const containerRef = useRef(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -195,31 +197,51 @@ function MultiUserSelect({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isOpen) setSearchText("");
+  }, [isOpen]);
+
   const selectedIds = new Set(normalizeIdList(value));
   const selectedNames = options
     .filter((option) => selectedIds.has(String(option.id)))
     .map((option) => option.name);
   const selectedLabel =
-    selectedNames.length > 1 ? `${selectedNames.length} selected` : selectedNames[0] || placeholder;
+    selectedNames.length > 0
+      ? `${selectedNames.length} user${selectedNames.length > 1 ? "s" : ""} selected`
+      : placeholder;
+  const filteredOptions = searchText.trim()
+    ? options.filter((option) => option.name?.toLowerCase().includes(searchText.trim().toLowerCase()))
+    : options;
 
   return (
     <div ref={containerRef} className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}>
-      <button
-        type="button"
-        className={styles.multiSelectButton}
-        onClick={() => {
-          if (!disabled) setIsOpen((current) => !current);
-        }}
-        disabled={disabled}
-      >
-        <span className={styles.multiSelectValue}>{selectedLabel}</span>
-        <span className={styles.multiSelectChevron}>{isOpen ? "^" : "v"}</span>
-      </button>
+      <div className={styles.multiSelectButton}>
+        <input
+          type="text"
+          className={styles.multiSelectValue}
+          value={isOpen ? searchText : ""}
+          placeholder={selectedLabel}
+          onFocus={() => !disabled && setIsOpen(true)}
+          onChange={(event) => {
+            setSearchText(event.target.value);
+            if (!disabled) setIsOpen(true);
+          }}
+          disabled={disabled}
+        />
+        <span
+          className={styles.multiSelectChevron}
+          onClick={() => {
+            if (!disabled) setIsOpen((current) => !current);
+          }}
+        >
+          {isOpen ? "^" : "v"}
+        </span>
+      </div>
 
       {isOpen ? (
         <div className={styles.multiSelectMenu}>
-          {options.length ? (
-            options.map((option) => {
+          {filteredOptions.length ? (
+            filteredOptions.map((option) => {
               const optionId = String(option.id);
               const isChecked = selectedIds.has(optionId);
               return (
@@ -257,6 +279,7 @@ export default function SubmittedNotebookThresholdPage({ standalone = true, edit
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
   const users = useSelector((state) => state.users?.users || []);
   const canAccessPage = isSubmittedNotebookManagerUser(user);
+  const { hasDepartmentAccess } = useRoleDepartmentAccess(users);
 
   const [activeTab, setActiveTab] = useState("new");
   const [thresholds, setThresholds] = useState([]);
@@ -274,7 +297,7 @@ export default function SubmittedNotebookThresholdPage({ standalone = true, edit
 
   const l4Options = useMemo(() => buildUserOptions(users, "L4"), [users]);
 
-  const availableDepartments = departmentDirectory.filter((item) => item.enabled);
+  const availableDepartments = departmentDirectory;
   const selectedDepartment =
     availableDepartments.find((item) => item.slug === selectedDepartmentSlug) || null;
   const availableSubDepartments = (selectedDepartment?.subDepartments || []).filter(
@@ -711,7 +734,11 @@ export default function SubmittedNotebookThresholdPage({ standalone = true, edit
                   <select value={selectedDepartmentSlug} onChange={handleDepartmentChange}>
                     <option value="">Select Department</option>
                     {availableDepartments.map((department) => (
-                      <option key={department.slug} value={department.slug}>
+                      <option
+                        key={department.slug}
+                        value={department.slug}
+                        disabled={department.slug === "electrical" || department.slug === "mechanical"}
+                      >
                         {department.name}
                       </option>
                     ))}
@@ -720,7 +747,15 @@ export default function SubmittedNotebookThresholdPage({ standalone = true, edit
               </div>
 
               <div className={styles.rulesTable}>
-                {rules.map((rule, index) => (
+                {rules.map((rule, index) => {
+                  const rowSubDepartmentName =
+                    availableSubDepartments.find((item) => item.slug === rule.subDepartmentSlug)?.name || "";
+                  const rowL4Options = buildUserOptions(
+                    users.filter((candidate) => hasDepartmentAccess(candidate, rowSubDepartmentName)),
+                    "L4"
+                  );
+
+                  return (
                   <div className={styles.ruleCard} key={rule.id}>
                     <div className={styles.ruleGrid} style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr)) auto" }}>
                       <label className={styles.field} style={{ gridColumn: "1 / 2", gridRow: "1" }}>
@@ -773,10 +808,10 @@ export default function SubmittedNotebookThresholdPage({ standalone = true, edit
                       </label>
 
                       <label className={styles.field} style={{ gridColumn: "4 / 5", gridRow: "1" }}>
-                        <span>L4</span>
+                        <span>L4 Approver</span>
                         <MultiUserSelect
                           value={rule.approvalL4Ids}
-                          options={l4Options}
+                          options={rowL4Options}
                           onChange={(nextIds) => updateRule(rule.id, "approvalL4Ids", nextIds)}
                           placeholder="Select L4 user"
                           emptyLabel="No L4 users available"
@@ -818,7 +853,8 @@ export default function SubmittedNotebookThresholdPage({ standalone = true, edit
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className={styles.formFooter}>
@@ -930,10 +966,10 @@ export default function SubmittedNotebookThresholdPage({ standalone = true, edit
                       <th>Sub-Deprt.</th>
                       <th>Notebook</th>
                       <th>Criticality</th>
-                      <th>L4</th>
+                      <th>L4 Approver</th>
                       <th>Approved Within</th>
                       <th>Status</th>
-                      <th>Created At</th>
+                      <th>Updated At</th>
                       <th>Action</th>
                     </tr>
                   </thead>
@@ -971,7 +1007,16 @@ export default function SubmittedNotebookThresholdPage({ standalone = true, edit
                                 {getActiveValue(item) ? "Active" : "Inactive"}
                               </span>
                             </td>
-                            <td>{formatTimestamp(item.created_at || item.createdAt || item.created_on || item.createdOn)}</td>
+                            <td>
+                              {formatTimestamp(
+                                item.updated_at ||
+                                  item.updatedAt ||
+                                  item.created_at ||
+                                  item.createdAt ||
+                                  item.created_on ||
+                                  item.createdOn
+                              )}
+                            </td>
                             <td>
                               <div className={styles.actionMenuWrap} data-ack-threshold-menu="true">
                                 <button

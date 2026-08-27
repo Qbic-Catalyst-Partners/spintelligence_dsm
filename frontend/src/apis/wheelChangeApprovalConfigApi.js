@@ -50,3 +50,10 @@ export const updateWheelChangeApprovalConfigStatusAPI = async (department, isAct
   );
   return response?.data;
 };
+
+export const deleteWheelChangeApprovalConfigAPI = async (department) => {
+  const response = await apiConfig.delete(
+    `/spinning/wheel-change/approval-config/${encodeURIComponent(department)}`
+  );
+  return response?.data;
+};

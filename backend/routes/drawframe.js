@@ -6,7 +6,6 @@ const sqlServerPrep = require('../config/sqlserverPrep');
 const { fetchPrepVarieties, isDatabaseAccessDenied } = require('../utils/prepVariety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
-const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const { createWheelChangeApprovalTicket, closeWheelChangeApprovalTicket } = require('./spinning');
 const SCREEN_ID_PREFIXES = {
   yarn_cv: 'DY',
@@ -34,6 +33,13 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
   const entry_id = formatScreenEntryId(screenKey, record[idField]);
   return entry_id ? { ...record, entry_id } : { ...record };
 };
+const getAuthenticatedOperatorName = (req) =>
+  String(
+    req.user?.full_name ||
+    req.user?.name ||
+    req.user?.employee_id ||
+    ''
+  ).trim() || null;
 const isUniqueViolation = (err) => err && err.code === '23505';
 const DRAWFRAME_FR_ALLOWED_LIKE = [
   'FR%HSR%',
@@ -74,66 +80,11 @@ const toNullableNumber = (value) => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
-const ensureWrappingDrawframeNotebookTable = async () => {
-  await client.query(`CREATE SCHEMA IF NOT EXISTS wrapping`);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS wrapping.drawframe_notebook (
-      id BIGSERIAL PRIMARY KEY,
-      entry_id TEXT,
-      serial_no INTEGER,
-      date_text TEXT,
-      entry_date DATE,
-      source_id TEXT,
-      mac_name TEXT,
-      shift TEXT,
-      std_hank TEXT,
-      avg_hank NUMERIC(12,3),
-      sd NUMERIC(12,3),
-      cv TEXT,
-      user_name TEXT,
-      remark TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    ALTER TABLE wrapping.drawframe_notebook
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS serial_no INTEGER,
-      ADD COLUMN IF NOT EXISTS date_text TEXT,
-      ADD COLUMN IF NOT EXISTS entry_date DATE,
-      ADD COLUMN IF NOT EXISTS source_id TEXT,
-      ADD COLUMN IF NOT EXISTS mac_name TEXT,
-      ADD COLUMN IF NOT EXISTS shift TEXT,
-      ADD COLUMN IF NOT EXISTS std_hank TEXT,
-      ADD COLUMN IF NOT EXISTS avg_hank NUMERIC(12,3),
-      ADD COLUMN IF NOT EXISTS sd NUMERIC(12,3),
-      ADD COLUMN IF NOT EXISTS cv TEXT,
-      ADD COLUMN IF NOT EXISTS user_name TEXT,
-      ADD COLUMN IF NOT EXISTS remark TEXT;
-  `);
-
-  await client.query(`
-    ALTER TABLE wrapping.drawframe_notebook
-      DROP COLUMN IF EXISTS serial_no;
-  `);
-  await client.query(`
-    ALTER TABLE wrapping.drawframe_notebook
-      ALTER COLUMN avg_hank TYPE NUMERIC(12,3),
-      ALTER COLUMN sd TYPE NUMERIC(12,3);
-  `);
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS wrapping_drawframe_notebook_entry_id_uq
-    ON wrapping.drawframe_notebook (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS wrapping_drawframe_notebook_entry_date_idx
-    ON wrapping.drawframe_notebook (entry_date DESC, id DESC);
-  `);
+const nextWrappingDrawframeSubmissionId = async () => {
+  const result = await client.query(
+    `SELECT nextval('wrapping.drawframe_notebook_submission_seq') AS n`
+  );
+  return `DWR-${String(result.rows[0].n).padStart(4, '0')}`;
 };
 
 const ensureWrappingAPercentTable = async () => {
@@ -182,52 +133,6 @@ const ensureWrappingAPercentTable = async () => {
   `);
 };
 
-const ensureWrappingStretchPercentTable = async () => {
-  await client.query(`CREATE SCHEMA IF NOT EXISTS wrapping`);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS wrapping.stretch_percent (
-      id BIGSERIAL PRIMARY KEY,
-      entry_id TEXT,
-      entry_type TEXT,
-      schema_name TEXT,
-      table_name TEXT,
-      pdf_file TEXT,
-      meta JSONB NOT NULL DEFAULT '{}'::jsonb,
-      sample_rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      summary_rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      raw_ocr_rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    ALTER TABLE wrapping.stretch_percent
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS entry_type TEXT,
-      ADD COLUMN IF NOT EXISTS schema_name TEXT,
-      ADD COLUMN IF NOT EXISTS table_name TEXT,
-      ADD COLUMN IF NOT EXISTS pdf_file TEXT,
-      ADD COLUMN IF NOT EXISTS meta JSONB NOT NULL DEFAULT '{}'::jsonb,
-      ADD COLUMN IF NOT EXISTS sample_rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      ADD COLUMN IF NOT EXISTS summary_rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      ADD COLUMN IF NOT EXISTS raw_ocr_rows JSONB NOT NULL DEFAULT '[]'::jsonb;
-  `);
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS wrapping_stretch_percent_entry_id_uq
-    ON wrapping.stretch_percent (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS wrapping_stretch_percent_created_at_idx
-    ON wrapping.stretch_percent (created_at DESC, id DESC);
-  `);
-};
-
 const ensureWrappingComberNoilPercentTable = async () => {
   await client.query(`CREATE SCHEMA IF NOT EXISTS wrapping`);
 
@@ -236,6 +141,7 @@ const ensureWrappingComberNoilPercentTable = async () => {
       id BIGSERIAL PRIMARY KEY,
       entry_id TEXT,
       entry_type TEXT,
+      operator TEXT,
       schema_name TEXT,
       table_name TEXT,
       pdf_file TEXT,
@@ -252,6 +158,7 @@ const ensureWrappingComberNoilPercentTable = async () => {
     ALTER TABLE wrapping.comber_noil_percent
       ADD COLUMN IF NOT EXISTS entry_id TEXT,
       ADD COLUMN IF NOT EXISTS entry_type TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT,
       ADD COLUMN IF NOT EXISTS schema_name TEXT,
       ADD COLUMN IF NOT EXISTS table_name TEXT,
       ADD COLUMN IF NOT EXISTS pdf_file TEXT,
@@ -271,185 +178,6 @@ const ensureWrappingComberNoilPercentTable = async () => {
   await client.query(`
     CREATE INDEX IF NOT EXISTS wrapping_comber_noil_percent_created_at_idx
     ON wrapping.comber_noil_percent (created_at DESC, id DESC);
-  `);
-};
-
-// These Draw Frame tables store created_at/updated_at as `timestamp WITHOUT time zone` with a
-// bare CURRENT_TIMESTAMP default — on this DB, that silently writes a different offset than what
-// gets displayed back, shifting "Created At" by several hours (sometimes onto the wrong calendar
-// day) in Custom Report. Same root cause and same fix as Comber's equivalent tables: convert to
-// timestamptz so new rows store an unambiguous absolute instant.
-const ensureDrawframeTimestampColumnsHaveTimezone = async () => {
-  const columnsByTable = {
-    yarn_cv_percent: ['created_at'],
-    yarn_cv_yard_results: ['created_at'],
-    drawframe_qc_header: ['created_at'],
-    cots_data_entry: ['created_at'],
-    cots_breaker_data: ['created_at'],
-    cots_finisher_data: ['created_at'],
-    u_data_entry: ['created_at']
-  };
-  for (const [table, columns] of Object.entries(columnsByTable)) {
-    for (const column of columns) {
-      await client.query(`
-        DO $$
-        BEGIN
-          IF EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'drawframe' AND table_name = '${table}' AND column_name = '${column}'
-              AND data_type = 'timestamp without time zone'
-          ) THEN
-            ALTER TABLE drawframe.${table}
-              ALTER COLUMN ${column} TYPE timestamptz USING ${column} AT TIME ZONE 'UTC';
-            ALTER TABLE drawframe.${table}
-              ALTER COLUMN ${column} SET DEFAULT now();
-          END IF;
-        END $$;
-      `);
-    }
-  }
-};
-
-const ensureDrawframeEntryIdColumns = async () => {
-  await client.query(`CREATE SCHEMA IF NOT EXISTS drawframe`);
-  await ensureDrawframeTimestampColumnsHaveTimezone();
-
-  await client.query(`
-    ALTER TABLE drawframe.yarn_cv_percent
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    ALTER TABLE drawframe.yarn_cv_percent
-      ALTER COLUMN s_no DROP NOT NULL;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS yarn_cv_percent_entry_id_uq
-    ON drawframe.yarn_cv_percent (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-  // The form collects however many individual 1 Yard/1/2 Yard readings the user enters (N, not
-  // fixed), used to compute the avg/hank/sd/cv summary stats — but only the summary was ever
-  // saved, so Custom Report could never show the individual readings themselves.
-  await client.query(`
-    ALTER TABLE drawframe.yarn_cv_percent
-      ADD COLUMN IF NOT EXISTS readings JSONB NOT NULL DEFAULT '{}'::jsonb;
-  `);
-
-  await client.query(`
-    ALTER TABLE drawframe.cots_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    ALTER TABLE drawframe.cots_breaker_data
-      ALTER COLUMN thick_place DROP NOT NULL;
-  `);
-  await client.query(`
-    ALTER TABLE drawframe.cots_finisher_data
-      ALTER COLUMN thick_place DROP NOT NULL;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS cots_data_entry_entry_id_uq
-    ON drawframe.cots_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE drawframe.u_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS drawframe_u_data_entry_entry_id_uq
-    ON drawframe.u_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE drawframe.drawframe_qc_header
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  // PP - Breaker and PP - Finisher share this table and the same PP id as entry_id (only
-  // entry_scope tells them apart), so entry_id alone can't be unique — a Finisher save under
-  // a PP id already used by that PP id's Breaker save would otherwise collide. Scope the
-  // uniqueness to (entry_id, entry_scope) instead.
-  await client.query(`DROP INDEX IF EXISTS drawframe.drawframe_qc_header_entry_id_uq;`);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS drawframe_qc_header_entry_id_scope_uq
-    ON drawframe.drawframe_qc_header (entry_id, entry_scope)
-    WHERE entry_id IS NOT NULL;
-  `);
-  // PP - Finisher Drawing shares this table with PP - Breaker Drawing (distinguished by
-  // entry_scope) but submits its own extra fields that Breaker doesn't have — add them so the
-  // Finisher form's data actually gets saved instead of being silently dropped.
-  await client.query(`
-    ALTER TABLE drawframe.drawframe_qc_header
-      ADD COLUMN IF NOT EXISTS insert_size NUMERIC,
-      ADD COLUMN IF NOT EXISTS web_funnel_size NUMERIC,
-      ADD COLUMN IF NOT EXISTS delivery_hank NUMERIC,
-      ADD COLUMN IF NOT EXISTS scanning_rolls_size VARCHAR(255);
-  `);
-  // drawframe_qc_header never had its own "operator" column at all — PP Breaker/Finisher
-  // Drawing's operator has always depended entirely on the separate submitted-notebook
-  // recording flow, which has proven fragile (some entries never got recorded, leaving Operator
-  // blank in Custom Report with no fallback). Persist it directly on the row too.
-  await client.query(`
-    ALTER TABLE drawframe.drawframe_qc_header
-      ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-
-};
-
-const ensureDrawframeWheelChangeTable = async () => {
-  await client.query(`CREATE SCHEMA IF NOT EXISTS drawframe`);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS drawframe.wheel_change (
-      id BIGSERIAL PRIMARY KEY,
-      entry_id TEXT,
-      type TEXT NOT NULL DEFAULT 'Wheel Change',
-      line_type TEXT,
-      wheel_change_type TEXT,
-      wheel_change_type_label TEXT,
-      entry_date DATE,
-      parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
-      rows JSONB NOT NULL DEFAULT '{}'::jsonb,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    ALTER TABLE drawframe.wheel_change
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'Wheel Change',
-      ADD COLUMN IF NOT EXISTS line_type TEXT,
-      ADD COLUMN IF NOT EXISTS wheel_change_type TEXT,
-      ADD COLUMN IF NOT EXISTS wheel_change_type_label TEXT,
-      ADD COLUMN IF NOT EXISTS entry_date DATE,
-      ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
-      ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '{}'::jsonb,
-      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending',
-      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
-      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS review_remarks TEXT;
-  `);
-  // ADD COLUMN IF NOT EXISTS above is a no-op once the column already exists,
-  // so a stale/incorrect default from an older migration would otherwise
-  // persist forever. Force it explicitly on every startup.
-  await client.query(`
-    ALTER TABLE drawframe.wheel_change ALTER COLUMN approval_status SET DEFAULT 'pending';
-  `);
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS drawframe_wheel_change_entry_id_uq
-    ON drawframe.wheel_change (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS drawframe_wheel_change_entry_date_idx
-    ON drawframe.wheel_change (entry_date DESC, id DESC);
   `);
 };
 
@@ -503,7 +231,13 @@ const saveWrappingAPercent = async (req, res, next) => {
     const sampleRows = normalizeJsonArray(payload.sample_rows ?? payload.sampleRows);
     const summaryRows = normalizeJsonArray(payload.summary_rows ?? payload.summaryRows);
     const rows = normalizeJsonArray(payload.rows);
-    const rawOcrRows = normalizeJsonArray(payload.raw_ocr_rows ?? payload.rawOcrRows);
+    // The frontend (buildAPercentPayload) sends the pre-edit OCR extraction as `ocr_json`,
+    // not `raw_ocr_rows`/`rawOcrRows` — those two keys were never actually sent, so this
+    // always normalized to [] and silently discarded the original OCR text on every save.
+    const rawOcrRows = normalizeJsonArray(
+      payload.raw_ocr_rows ?? payload.rawOcrRows ?? payload.ocr_json ?? payload.ocrJson
+    );
+    const operatorName = getAuthenticatedOperatorName(req);
 
     if (!sampleRows.length && !summaryRows.length && !rows.length && !rawOcrRows.length) {
       return res.status(400).json({ message: 'OCR rows are required' });
@@ -512,9 +246,9 @@ const saveWrappingAPercent = async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO wrapping.a_percent (
         entry_id, entry_type, schema_name, table_name, pdf_file,
-        meta, sample_rows, summary_rows, rows, raw_ocr_rows
+        meta, sample_rows, summary_rows, rows, raw_ocr_rows, operator
       )
-      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb)
+      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11)
       RETURNING *`,
       [
         payload.entry_id ?? null,
@@ -526,7 +260,8 @@ const saveWrappingAPercent = async (req, res, next) => {
         JSON.stringify(sampleRows),
         JSON.stringify(summaryRows),
         JSON.stringify(rows),
-        JSON.stringify(rawOcrRows)
+        JSON.stringify(rawOcrRows),
+        operatorName
       ]
     );
 
@@ -583,13 +318,19 @@ const getWrappingAPercent = async (req, res, next) => {
 
 const saveWrappingStretchPercent = async (req, res, next) => {
   try {
-    await ensureWrappingStretchPercentTable();
-
     const payload = req.body || {};
     const sampleRows = normalizeJsonArray(payload.sample_rows ?? payload.sampleRows);
     const summaryRows = normalizeJsonArray(payload.summary_rows ?? payload.summaryRows);
     const rows = normalizeJsonArray(payload.rows);
     const rawOcrRows = normalizeJsonArray(payload.raw_ocr_rows ?? payload.rawOcrRows);
+    // Stretch % can have multiple OCR "tables" (Table No 1, 2, ...), each with its own meta
+    // block + sample/summary rows (buildWrappingOcrPayload's `tables` array, wrappingOcrPayload.js
+    // lines 136-147). The flat `meta` column below only ever held the FIRST table's meta — every
+    // table after the first had its meta silently dropped (though the raw per-row data survived
+    // inside raw_ocr_rows/sample_rows since each row also carries its own "Table No"). Persist the
+    // full per-table breakdown too so nothing beyond the first table's meta is lost.
+    const tables = normalizeJsonArray(payload.tables);
+    const operatorName = getAuthenticatedOperatorName(req);
 
     if (!sampleRows.length && !summaryRows.length && !rows.length && !rawOcrRows.length) {
       return res.status(400).json({ message: 'OCR rows are required' });
@@ -598,9 +339,9 @@ const saveWrappingStretchPercent = async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO wrapping.stretch_percent (
         entry_id, entry_type, schema_name, table_name, pdf_file,
-        meta, sample_rows, summary_rows, rows, raw_ocr_rows
+        meta, sample_rows, summary_rows, rows, raw_ocr_rows, operator, tables
       )
-      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb)
+      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12::jsonb)
       RETURNING *`,
       [
         payload.entry_id ?? null,
@@ -612,7 +353,9 @@ const saveWrappingStretchPercent = async (req, res, next) => {
         JSON.stringify(sampleRows),
         JSON.stringify(summaryRows),
         JSON.stringify(rows),
-        JSON.stringify(rawOcrRows)
+        JSON.stringify(rawOcrRows),
+        operatorName,
+        JSON.stringify(tables)
       ]
     );
 
@@ -630,8 +373,6 @@ const saveWrappingStretchPercent = async (req, res, next) => {
 
 const getWrappingStretchPercent = async (req, res, next) => {
   try {
-    await ensureWrappingStretchPercentTable();
-
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.max(1, parseInt(req.query.limit, 10) || 50);
     const offset = (page - 1) * limit;
@@ -673,14 +414,15 @@ const saveWrappingComberNoilPercent = async (req, res, next) => {
 
     const result = await client.query(
       `INSERT INTO wrapping.comber_noil_percent (
-        entry_id, entry_type, schema_name, table_name, pdf_file,
+        entry_id, entry_type, operator, schema_name, table_name, pdf_file,
         meta, sample_rows, summary_rows, rows, raw_ocr_rows
       )
-      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb)
+      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb)
       RETURNING *`,
       [
         payload.entry_id ?? null,
         payload.entry_type ?? 'Comber Noil Percent',
+        String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null,
         payload.schema_name ?? 'wrapping',
         payload.table_name ?? 'comber_noil_percent',
         payload.pdf_file ?? payload.pdfFile ?? null,
@@ -735,7 +477,6 @@ const getWrappingComberNoilPercent = async (req, res, next) => {
 
 const saveWrappingDrawframeNotebook = async (req, res, next) => {
   try {
-    await ensureWrappingDrawframeNotebookTable();
 
     const inputRows = Array.isArray(req.body?.rows)
       ? req.body.rows
@@ -748,6 +489,9 @@ const saveWrappingDrawframeNotebook = async (req, res, next) => {
       return res.status(400).json({ message: 'rows are required' });
     }
 
+    const operatorName = getAuthenticatedOperatorName(req);
+    const submissionId = await nextWrappingDrawframeSubmissionId();
+
     await client.query('BEGIN');
 
     const savedRows = [];
@@ -758,22 +502,24 @@ const saveWrappingDrawframeNotebook = async (req, res, next) => {
 
       const result = await client.query(
         `INSERT INTO wrapping.drawframe_notebook (
-          entry_id, date_text, entry_date, source_id, mac_name,
-          shift, std_hank, avg_hank, sd, cv, user_name, remark
+          entry_id, ocr_id, serial_no, date_text, entry_date, mac_name,
+          shift, std_hank, avg_hank, sd, cv, operator, user_name, remark
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         RETURNING *`,
         [
-          row.entry_id ?? null,
+          submissionId,
+          row.entry_id ?? row.id_no ?? row.sourceId ?? row.ID ?? row.id_value ?? row.notebook_id ?? null,
+          toNullableNumber(row.serial_no ?? row.s_no ?? row.sno ?? row['S.No'] ?? row.SNo ?? (index + 1)),
           dateText || null,
           entryDate,
-          row.source_id ?? row.id_no ?? row.sourceId ?? row.ID ?? row.id_value ?? row.notebook_id ?? null,
           row.mac_name ?? row.machine_name ?? row.macName ?? row['Mac Name'] ?? null,
           row.shift ?? row.Shift ?? null,
           row.std_hank ?? row.standard_hank ?? row['Std. Hank'] ?? row.stdHank ?? null,
           toNullableNumber(row.avg_hank ?? row.average_hank ?? row['Avg. Hank'] ?? row.avgHank),
           toNullableNumber(row.sd ?? row.SD),
           row.cv ?? row.CV ?? null,
+          operatorName,
           row.user_name ?? row.user ?? row.User ?? null,
           row.remark ?? row.remarks ?? row.Remark ?? null
         ]
@@ -791,7 +537,7 @@ const saveWrappingDrawframeNotebook = async (req, res, next) => {
   } catch (error) {
     await client.query('ROLLBACK');
     if (isUniqueViolation(error)) {
-      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+      return res.status(409).json({ message: 'Duplicate OCR ID. Please use a unique ID.' });
     }
     next(error);
   }
@@ -799,7 +545,6 @@ const saveWrappingDrawframeNotebook = async (req, res, next) => {
 
 const getWrappingDrawframeNotebook = async (req, res, next) => {
   try {
-    await ensureWrappingDrawframeNotebookTable();
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.max(1, parseInt(req.query.limit, 10) || 50);
@@ -1515,7 +1260,6 @@ router.get('/cots/machine-numbers', async (req, res, next) => {
  */
 router.post('/yarn-cv', async (req, res) => {
     try {
-        await ensureDrawframeEntryIdColumns();
         const {
             entry_id,
             type,
@@ -1525,21 +1269,25 @@ router.post('/yarn-cv', async (req, res) => {
             remarks,
             num_readings,
             readings,
-            results
+            results,
+            operator
         } = req.body;
 
         if (!entry_id) {
             return res.status(400).json({ message: "entry_id is required and must be unique" });
         }
 
+        const operatorName = operator || String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null;
+        const serialNo = s_no || entry_id;
+
         await client.query('BEGIN');
 
         const qc = await client.query(
             `INSERT INTO drawframe.yarn_cv_percent
-            (entry_id, type, s_no, entry_date, machine_number, remarks, num_readings, readings)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+            (entry_id, type, s_no, entry_date, machine_number, remarks, num_readings, readings, operator)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
             RETURNING id`,
-            [entry_id, type, s_no, entry_date, machine_number, remarks, num_readings, JSON.stringify(readings || {})]
+            [entry_id, type, serialNo, entry_date, machine_number, remarks, num_readings, JSON.stringify(readings || {}), operatorName]
         );
 
         const qc_id = qc.rows[0].id;
@@ -1605,7 +1353,6 @@ router.post('/yarn-cv', async (req, res) => {
  */
 router.get('/yarn-cv', async (req, res) => {
     try {
-        await ensureDrawframeEntryIdColumns();
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
@@ -1671,21 +1418,21 @@ router.get('/yarn-cv', async (req, res) => {
  */
 router.post('/cots', async (req, res) => {
     try {
-        await ensureDrawframeEntryIdColumns();
         const { entry_id, entry_date, shift, sub_type, machines } = req.body;
 
         if (!entry_id) {
             return res.status(400).json({ message: "entry_id is required and must be unique" });
         }
 
+        const operatorName = getAuthenticatedOperatorName(req);
         await client.query('BEGIN');
 
         const entry = await client.query(
             `INSERT INTO drawframe.cots_data_entry
-            (entry_id, entry_date, shift, sub_type)
-            VALUES ($1,$2,$3,$4)
+            (entry_id, entry_date, shift, sub_type, operator)
+            VALUES ($1,$2,$3,$4,$5)
             RETURNING id`,
-            [entry_id, entry_date, shift, sub_type]
+            [entry_id, entry_date, shift, sub_type, operatorName]
         );
 
         const createdEntryId = entry.rows[0].id;
@@ -1708,7 +1455,7 @@ router.post('/cots', async (req, res) => {
                 await client.query(
                     `INSERT INTO drawframe.cots_finisher_data
                     (entry_id, mc_name, fan_waste, cot_change, stripper_w,
-                     auto_level, silver_worn, main_tin, scanning)
+                     auto_level, silver_worn, mass_thick_place, scanning)
                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
                     [
                         createdEntryId,
@@ -1783,7 +1530,6 @@ router.post('/cots', async (req, res) => {
  */
 router.get('/cots', async (req, res) => {
     try {
-        await ensureDrawframeEntryIdColumns();
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
@@ -1804,8 +1550,7 @@ router.get('/cots', async (req, res) => {
                     'mc_name', b.mc_name,
                     'fan_waste', b.fan_waste,
                     'cot_change', b.cot_change,
-                    'stripper_w', b.stripper_w,
-                    'thick_place', b.thick_place
+                    'stripper_w', b.stripper_w
                 )) AS machines
                 FROM drawframe.cots_breaker_data b
                 WHERE b.entry_id = qc.id
@@ -1818,7 +1563,7 @@ router.get('/cots', async (req, res) => {
                     'stripper_w', f.stripper_w,
                     'auto_level', f.auto_level,
                     'silver_worn', f.silver_worn,
-                    'main_tin', f.main_tin,
+                    'main_tin', f.mass_thick_place,
                     'scanning', f.scanning
                 )) AS machines
                 FROM drawframe.cots_finisher_data f
@@ -1908,7 +1653,6 @@ router.get('/cots', async (req, res) => {
  */
 router.post('/uqc', async (req, res) => {
     try {
-        await ensureDrawframeEntryIdColumns();
         console.log("UQC BODY:", req.body);
 
         const {
@@ -1917,13 +1661,13 @@ router.post('/uqc', async (req, res) => {
             entry_date,
             shift,
             variety,
-            department,
             mc_no,
             u_percent,
             cvm,
             cvm_1m,
             cvm_3m,
-            remarks
+            remarks,
+            operator
         } = req.body;
 
         if (!entry_id) {
@@ -1943,8 +1687,8 @@ router.post('/uqc', async (req, res) => {
 
         const result = await client.query(
             `INSERT INTO drawframe.u_data_entry
-            (entry_id, entry_type, entry_date, shift, variety, department, mc_no,
-             u_percent, cvm, cvm_1m, cvm_3m, remarks)
+            (entry_id, entry_type, entry_date, shift, variety, mc_no,
+             u_percent, cvm, cvm_1m, cvm_3m, remarks, operator)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             RETURNING *`,
             [
@@ -1953,13 +1697,13 @@ router.post('/uqc', async (req, res) => {
                 entry_date,
                 shift,
                 variety,
-                department,
                 mc_no,
                 toNumber(u_percent),
                 toNumber(cvm),
                 toNumber(cvm_1m),
                 toNumber(cvm_3m),
-                remarks
+                remarks,
+                operator || String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null
             ]
         );
 
@@ -2007,7 +1751,6 @@ router.post('/uqc', async (req, res) => {
  */
 router.get('/uqc', async (req, res) => {
     try {
-        await ensureDrawframeEntryIdColumns();
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
@@ -2102,7 +1845,6 @@ router.get('/uqc', async (req, res) => {
 
 router.post('/header', async (req, res, next) => {
   try {
-    await ensureDrawframeEntryIdColumns();
     console.log('[DF DEBUG] POST /header body', { entry_id: req.body.entry_id, type: req.body.type, count_name: req.body.count_name });
     const {
       entry_id,
@@ -2238,7 +1980,6 @@ router.post('/header', async (req, res, next) => {
 
 router.get('/header', async (req, res, next) => {
   try {
-    await ensureDrawframeEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -2281,8 +2022,6 @@ router.get('/header', async (req, res, next) => {
 
 const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChangeType = null, defaultWheelChangeTypeLabel = null) => {
   try {
-    await ensureDrawframeWheelChangeTable();
-
     const payload = req.body || {};
     const entry_id = String(payload.entry_id ?? payload.entryId ?? '').trim() || null;
     const type = String(payload.type ?? 'Wheel Change').trim() || 'Wheel Change';
@@ -2326,7 +2065,9 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
       ]
     );
 
-    await createWheelChangeApprovalTicket('drawframe.wheel_change', result.rows[0].id);
+    // No ticket raised here anymore - see runWheelChangeApprovalOverdueCheck
+    // in spinning.js, which raises it once this row's configured TAT window
+    // actually elapses with approval_status still 'pending'.
 
     res.status(201).json({
       message: 'Drawframe wheel change entry created successfully',
@@ -2344,8 +2085,6 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
 
 const getDrawframeWheelChangeEntries = async (req, res, next, defaultWheelChangeType = null) => {
   try {
-    await ensureDrawframeWheelChangeTable();
-
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
     const offset = (page - 1) * limit;
@@ -2426,7 +2165,6 @@ router.get('/wheel-change/type4-ldf3s', (req, res, next) => getDrawframeWheelCha
 
 router.get('/wheel-change/approvals', async (req, res, next) => {
   try {
-    await ensureDrawframeWheelChangeTable();
     const status = String(req.query.status ?? '').trim();
     const whereClause = status ? 'WHERE approval_status = $1' : '';
     const result = await client.query(
@@ -2442,7 +2180,6 @@ router.get('/wheel-change/approvals', async (req, res, next) => {
 
 router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
   try {
-    await ensureDrawframeWheelChangeTable();
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
@@ -2457,7 +2194,11 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
-    await closeWheelChangeApprovalTicket('drawframe.wheel_change', id);
+    await closeWheelChangeApprovalTicket('drawframe.wheel_change', id, {
+      decision: 'approved',
+      performedBy: req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
     res.status(200).json({
       message: 'Draw frame wheel change entry approved',
       data: withScreenEntryId('wheel_change', hydrateWheelChangeRow(result.rows[0]))
@@ -2470,7 +2211,6 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
 
 router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
   try {
-    await ensureDrawframeWheelChangeTable();
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
@@ -2486,7 +2226,11 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
-    await closeWheelChangeApprovalTicket('drawframe.wheel_change', id);
+    await closeWheelChangeApprovalTicket('drawframe.wheel_change', id, {
+      decision: 'rejected',
+      performedBy: req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
     res.status(200).json({
       message: 'Draw frame wheel change entry rejected',
       data: withScreenEntryId('wheel_change', hydrateWheelChangeRow(result.rows[0]))
@@ -2592,7 +2336,8 @@ router.put('/header/:ins_id', async (req, res, next) => {
       delivery_hank,
       delivery_speed,
       pressure_bar,
-      scanning_rolls_size
+      scanning_rolls_size,
+      user_name
     } = req.body;
 
     // ✅ Required validation
@@ -2638,8 +2383,9 @@ router.put('/header/:ins_id', async (req, res, next) => {
            delivery_hank = $17,
            delivery_speed = $18,
            pressure_bar = $19,
-           scanning_rolls_size = $20
-       WHERE ins_id = $21
+           scanning_rolls_size = $20,
+           operator = COALESCE($21, operator)
+       WHERE ins_id = $22
        RETURNING *`,
       [
         entry_id,
@@ -2662,6 +2408,7 @@ router.put('/header/:ins_id', async (req, res, next) => {
         delivery_speed,
         pressure_bar,
         scanning_rolls_size,
+        user_name || null,
         id
       ]
     );
@@ -2670,21 +2417,14 @@ router.put('/header/:ins_id', async (req, res, next) => {
       return res.status(404).json({ message: 'Drawframe entry not found' });
     }
 
-    // PP_SUB_DEPARTMENTS (ticketing_system's completion tracking) expects Breaker and
-    // Finisher to be logged as two distinct notebooks — hardcoding 'Drawframe QC Header'
-    // for both meant a real Finisher submission was indistinguishable from a Breaker one,
-    // so the batch-completion checker could never see "Drawframe Finisher Drawing
-    // Inspection" as actually done.
-    recordPpNotebookSubmission({
-      notebook: entry_scope === 'finisher' ? 'Drawframe Finisher Drawing Inspection' : 'Drawframe QC Header',
-      department: 'Drawframe',
-      entryId: entry_id,
-      sourceSchema: 'drawframe',
-      sourceTable: 'drawframe_qc_header',
-      submittedByUserId: req.user?.id,
-      submittedByName: req.user?.employee_id,
-      submittedPayload: { count_name, consignee_name, creation_date }
-    }).catch((err) => console.warn('[pp-notebook-log] Drawframe QC Header failed:', err.message));
+    // PP Batch completion tracking reads entry_scope directly off this table
+    // (see PP_BATCH_NOTEBOOKS in submittedNotebooks.routes.js), so it doesn't
+    // need this row logged into submitted_notebooks. The frontend
+    // (DrawFrameHeaderEntry.jsx) already calls recordSubmittedNotebook after
+    // every save, create or update - doing it here too created a second
+    // submitted_notebooks row per edit and, once overdue, a duplicate
+    // acknowledgement-overdue ticket for the same entry (the same bug fixed
+    // for AFIS Data Entry in mixing.js).
 
     res.status(200).json({
       message: 'Drawframe entry updated successfully',

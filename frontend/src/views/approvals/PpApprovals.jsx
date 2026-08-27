@@ -1,9 +1,12 @@
 import {
   approvePpApproval,
+  approvePpApprovalDepartment,
   fetchApprovedPpApprovals,
   fetchInactivePpApprovals,
   fetchPendingPpApprovals,
+  fetchRejectedPpApprovals,
   rejectPpApproval,
+  rejectPpApprovalDepartment,
 } from "@/apis/ppApprovals";
 import { isPpApproverUser } from "@/utils/accessControl";
 import { formatDateTime } from "@/utils/formatDateTime";
@@ -60,17 +63,21 @@ const extractPpParameters = (item) => {
   Object.entries(item.completion || {}).forEach(([key, submitted]) => {
     const departmentRow = item.department_details?.[key];
     const groupLabel = DEPARTMENT_LABELS[key] || humanizeKey(key);
+    const decisionRow = item.department_decisions?.[key] || null;
 
     // group/isSectionHeader/done drive ApprovalsQueueView's grouped-section
     // rendering (same section-per-department + field-tile layout as the
     // matrix's CombinedProcessParameterPreview) instead of its default flat
-    // field-card list.
+    // field-card list. decision/decisionReason feed its per-department
+    // Accept/Reject controls (see departmentApprove/departmentReject below).
     rows.push({
       key,
       group: key,
       groupLabel,
       isSectionHeader: true,
       done: submitted,
+      decision: decisionRow?.decision || null,
+      decisionReason: decisionRow?.reason || null,
       label: groupLabel,
       value: submitted ? "Submitted" : "Not submitted yet",
     });
@@ -117,13 +124,18 @@ function PpApprovals() {
       extractParameters={extractPpParameters}
       canApproveCheck={isPpApproverUser}
       accessDeniedText="Only L4, L5, or Admin can view and approve"
-      tabLabels={{ pending: "Awaiting L4 Approval", approved: "Active", rejected: "Inactive" }}
+      tabLabels={{ pending: "Awaiting L4 Approval", approved: "Active", rejected: "Rejected", inactive: "Inactive" }}
       operatorLabel="L1 Name"
       fetchPending={fetchPendingPpApprovals}
       fetchApproved={fetchApprovedPpApprovals}
-      fetchRejected={fetchInactivePpApprovals}
+      fetchRejected={fetchRejectedPpApprovals}
+      extraTabKey="inactive"
+      extraTabLabel="Inactive"
+      fetchExtraTab={fetchInactivePpApprovals}
       approve={approvePpApproval}
       reject={rejectPpApproval}
+      departmentApprove={approvePpApprovalDepartment}
+      departmentReject={rejectPpApprovalDepartment}
     />
   );
 }

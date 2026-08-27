@@ -85,6 +85,24 @@ export const fetchInactivePpApprovals = async (params = {}) => {
   }
 };
 
+// A PP id an L4 approver has sent back - process_parameters.master.status =
+// 'rejected'. Distinct from 'inactive' above (a Wheel Change saved against
+// an active PP). It stays 'rejected' until reviewed manually - there's no
+// automatic revert to pending_approval (departments can't yet resubmit
+// against a rejected PP id; see refreshProcessParameterStatus on the backend).
+export const fetchRejectedPpApprovals = async (params = {}) => {
+  try {
+    const response = await apiConfig.get(
+      "/process-parameters/approvals",
+      { status: "rejected", ...params },
+      { skipGlobalErrorModal: true }
+    );
+    return withTopLevelCountAndConsignee(response.data);
+  } catch (error) {
+    throwWithStatus(error, "Unable to load rejected PP ids.");
+  }
+};
+
 export const approvePpApproval = async (entryId, { department = "" } = {}) => {
   try {
     const response = await apiConfig.post(
@@ -108,5 +126,36 @@ export const rejectPpApproval = async (entryId, { department = "", reason = "" }
     return response.data;
   } catch (error) {
     throw new Error(extractApiError(error, "Unable to reject this PP id."));
+  }
+};
+
+// Per-department decisions within one PP id's review - see
+// backend/routes/processParameters.js's POST .../departments/:department_key/
+// approve|reject. Accepting a department is purely an audit record; rejecting
+// it deletes that department's submitted row so it becomes editable again
+// and immediately drops the whole PP id out of pending_approval.
+export const approvePpApprovalDepartment = async (entryId, departmentKey) => {
+  try {
+    const response = await apiConfig.post(
+      `/process-parameters/${encodeURIComponent(entryId)}/departments/${encodeURIComponent(departmentKey)}/approve`,
+      {},
+      { skipGlobalSuccessModal: true }
+    );
+    return response.data;
+  } catch (error) {
+    throw new Error(extractApiError(error, "Unable to approve this department."));
+  }
+};
+
+export const rejectPpApprovalDepartment = async (entryId, departmentKey, reason = "") => {
+  try {
+    const response = await apiConfig.post(
+      `/process-parameters/${encodeURIComponent(entryId)}/departments/${encodeURIComponent(departmentKey)}/reject`,
+      { reason },
+      { skipGlobalSuccessModal: true }
+    );
+    return response.data;
+  } catch (error) {
+    throw new Error(extractApiError(error, "Unable to reject this department."));
   }
 };

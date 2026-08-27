@@ -574,6 +574,10 @@
   margin-bottom: 18px;
 }
 
+.previewCardFull {
+  grid-column: 1 / -1;
+}
+
 .availableCard,
 .previewCard {
   min-height: 530px;
@@ -701,6 +705,74 @@
   max-height: 520px;
 }
 
+.tableLoader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 30px 0;
+  color: #667085;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.tableLoaderSpinner {
+  position: relative;
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  transform: rotate(45deg);
+  animation: tableLoaderRotate 1.2s infinite linear;
+}
+
+.tableLoaderDot {
+  position: absolute;
+  display: block;
+  width: 8px;
+  height: 8px;
+  background-color: #4056a8;
+  border-radius: 100%;
+  transform: scale(0.75);
+  transform-origin: 50% 50%;
+  opacity: 0.3;
+  animation: tableLoaderDotFade 1s infinite linear alternate;
+}
+
+.tableLoaderDot:nth-child(1) {
+  top: 0;
+  left: 0;
+}
+
+.tableLoaderDot:nth-child(2) {
+  top: 0;
+  right: 0;
+  animation-delay: 0.4s;
+}
+
+.tableLoaderDot:nth-child(3) {
+  right: 0;
+  bottom: 0;
+  animation-delay: 0.8s;
+}
+
+.tableLoaderDot:nth-child(4) {
+  bottom: 0;
+  left: 0;
+  animation-delay: 1.2s;
+}
+
+@keyframes tableLoaderRotate {
+  to {
+    transform: rotate(405deg);
+  }
+}
+
+@keyframes tableLoaderDotFade {
+  to {
+    opacity: 1;
+  }
+}
+
 .tableWrap table {
   width: 100%;
   min-width: max-content;
@@ -728,6 +800,35 @@
   font-weight: 600;
   letter-spacing: 0;
   text-transform: uppercase;
+}
+
+.sortableHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  padding: 2px;
+  margin: 0;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.45;
+  line-height: 0;
+}
+
+.sortButton:hover {
+  opacity: 0.8;
+}
+
+.sortButtonActive {
+  opacity: 1;
+  color: #2563eb;
 }
 
 .tableWrap tr:last-child td {
@@ -1181,6 +1282,14 @@
   border-color: #5f5f5f;
 }
 
+:global(:root[data-theme="dark"]) .tableLoader {
+  color: #c7ccd6;
+}
+
+:global(:root[data-theme="dark"]) .tableLoaderDot {
+  background-color: #7c8de8;
+}
+
 :global(:root[data-theme="dark"]) .fieldGroup,
 :global(:root[data-theme="dark"]) .modalField span,
 :global(:root[data-theme="dark"]) .sendToLabel,
@@ -1288,6 +1397,10 @@
 :global(:root[data-theme="dark"]) .tableWrap th {
   background: #242424;
   color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .sortButtonActive {
+  color: #60a5fa;
 }
 
 :global(:root[data-theme="dark"]) .tableWrap td {

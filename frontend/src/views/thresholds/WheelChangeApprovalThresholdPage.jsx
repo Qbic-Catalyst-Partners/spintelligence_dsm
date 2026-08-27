@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { FiCheckCircle, FiPlus, FiSlash, FiTrash2 } from "react-icons/fi";
@@ -11,6 +11,7 @@ import {
 import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
+import useRoleDepartmentAccess from "@/hooks/useRoleDepartmentAccess";
 import styles from "@/styles/SubmissionThreshold.module.css";
 
 const SEVERITY_OPTIONS = ["High", "Medium", "Low"];
@@ -23,6 +24,13 @@ const SEVERITY_OPTIONS = ["High", "Medium", "Low"];
 const SUB_DEPARTMENT_NAME_TO_WHEEL_CHANGE_DEPARTMENT = {
   Spinning: "Spinning",
   "Draw Frame": "Drawframe",
+  Carding: "Carding",
+  Simplex: "Simplex",
+};
+
+const WHEEL_CHANGE_DEPARTMENT_TO_SUB_DEPARTMENT = {
+  Spinning: "Spinning",
+  Drawframe: "Draw Frame",
   Carding: "Carding",
   Simplex: "Simplex",
 };
@@ -68,6 +76,7 @@ function MultiUserSelect({
 }) {
   const containerRef = useRef(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -82,31 +91,51 @@ function MultiUserSelect({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isOpen) setSearchText("");
+  }, [isOpen]);
+
   const selectedIds = new Set(normalizeIdList(value));
   const selectedNames = options
     .filter((option) => selectedIds.has(String(option.id)))
     .map((option) => option.name);
   const selectedLabel =
-    selectedNames.length > 1 ? `${selectedNames.length} selected` : selectedNames[0] || placeholder;
+    selectedNames.length > 0
+      ? `${selectedNames.length} user${selectedNames.length > 1 ? "s" : ""} selected`
+      : placeholder;
+  const filteredOptions = searchText.trim()
+    ? options.filter((option) => option.name?.toLowerCase().includes(searchText.trim().toLowerCase()))
+    : options;
 
   return (
     <div ref={containerRef} className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}>
-      <button
-        type="button"
-        className={styles.multiSelectButton}
-        onClick={() => {
-          if (!disabled) setIsOpen((current) => !current);
-        }}
-        disabled={disabled}
-      >
-        <span className={styles.multiSelectValue}>{selectedLabel}</span>
-        <span className={styles.multiSelectChevron}>{isOpen ? "^" : "v"}</span>
-      </button>
+      <div className={styles.multiSelectButton}>
+        <input
+          type="text"
+          className={styles.multiSelectValue}
+          value={isOpen ? searchText : ""}
+          placeholder={selectedLabel}
+          onFocus={() => !disabled && setIsOpen(true)}
+          onChange={(event) => {
+            setSearchText(event.target.value);
+            if (!disabled) setIsOpen(true);
+          }}
+          disabled={disabled}
+        />
+        <span
+          className={styles.multiSelectChevron}
+          onClick={() => {
+            if (!disabled) setIsOpen((current) => !current);
+          }}
+        >
+          {isOpen ? "^" : "v"}
+        </span>
+      </div>
 
       {isOpen ? (
         <div className={styles.multiSelectMenu}>
-          {options.length ? (
-            options.map((option) => {
+          {filteredOptions.length ? (
+            filteredOptions.map((option) => {
               const optionId = String(option.id);
               const isChecked = selectedIds.has(optionId);
               return (
@@ -147,6 +176,7 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
   const users = useSelector((state) => state.users?.users || []);
   const canAccessPage = isFullAccessUser(user);
+  const { hasDepartmentAccess } = useRoleDepartmentAccess(users);
 
   const [configs, setConfigs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -155,8 +185,6 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
   const [error, setError] = useState("");
   const [rules, setRules] = useState([createRule()]);
   const [editingDepartment, setEditingDepartment] = useState("");
-
-  const l4Options = useMemo(() => buildL4Options(users), [users]);
 
   const availableDepartments = departmentDirectory;
   const getAvailableSubDepartments = (departmentSlug) => {
@@ -224,8 +252,9 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
   };
 
   const openEditDepartment = (item) => {
+    const wheelChangeDepartment = item.wheel_change_department || item.config_key || item.department;
     const matchedSubDepartmentName = Object.keys(SUB_DEPARTMENT_NAME_TO_WHEEL_CHANGE_DEPARTMENT).find(
-      (name) => SUB_DEPARTMENT_NAME_TO_WHEEL_CHANGE_DEPARTMENT[name] === item.department
+      (name) => SUB_DEPARTMENT_NAME_TO_WHEEL_CHANGE_DEPARTMENT[name] === wheelChangeDepartment
     );
     const matchedDepartment = availableDepartments.find((department) =>
       department.subDepartments?.some((subDepartment) => subDepartment.name === matchedSubDepartmentName)
@@ -242,7 +271,7 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
       l4UserIds: normalizeIdList(item.l4_user_ids),
       tatHours: String(item.tat_hours ?? "24"),
     }]);
-    setEditingDepartment(item.department || "");
+    setEditingDepartment(wheelChangeDepartment || "");
     setMessage("Edit mode loaded from Existing Thresholds.");
     setError("");
   };
@@ -284,7 +313,14 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
           throw new Error("Please enter Approve Within Hours greater than 0 for every row.");
         }
 
-        return {
+      return {
+          // The backend's /wheel-change/approval-config only ever reads
+          // req.body.department, validated against WHEEL_CHANGE_DEPARTMENTS
+          // (Spinning/Drawframe/Carding/Simplex) - it never reads
+          // wheel_change_department. Sending the literal 'Quality Control'
+          // string here (the form's own Department field, a different
+          // concept from the backend's department) always failed that
+          // validation ("department must be one of ...").
           department: wheelChangeDepartment,
           severity: rule.severity,
           l4_user_ids: rule.l4UserIds.map((id) => Number(id)),
@@ -349,6 +385,11 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
           <div className={styles.rulesTable}>
             {rules.map((rule, index) => {
               const availableSubDepartments = getAvailableSubDepartments(rule.departmentSlug);
+              const rowSubDepartmentName =
+                availableSubDepartments.find((item) => item.slug === rule.subDepartmentSlug)?.name || "";
+              const rowL4Options = buildL4Options(
+                users.filter((candidate) => hasDepartmentAccess(candidate, rowSubDepartmentName))
+              );
               return (
                 <div className={styles.ruleCard} key={rule.id}>
                   <div className={styles.ruleGrid} style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr)) auto" }}>
@@ -357,7 +398,11 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
                       <select value={rule.departmentSlug} onChange={(event) => updateRule(rule.id, "departmentSlug", event.target.value)}>
                         <option value="">Select Department</option>
                         {availableDepartments.map((department) => (
-                          <option key={department.slug} value={department.slug}>
+                          <option
+                            key={department.slug}
+                            value={department.slug}
+                            disabled={department.slug === "electrical" || department.slug === "mechanical"}
+                          >
                             {department.name}
                           </option>
                         ))}
@@ -381,7 +426,7 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
                     </label>
 
                     <label className={styles.field} style={{ gridColumn: "3 / 4", gridRow: "1" }}>
-                      <span>Severity</span>
+                      <span>Criticality</span>
                       <select value={rule.severity} onChange={(event) => updateRule(rule.id, "severity", event.target.value)}>
                         {SEVERITY_OPTIONS.map((option) => (
                           <option key={option} value={option}>
@@ -395,7 +440,7 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
                       <span>L4 Approver</span>
                       <MultiUserSelect
                         value={rule.l4UserIds}
-                        options={l4Options}
+                        options={rowL4Options}
                         onChange={(nextIds) => updateRule(rule.id, "l4UserIds", nextIds)}
                         placeholder="Select L4 user"
                         emptyLabel="No L4 users available"
@@ -438,8 +483,8 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
 
           <p style={{ color: "#7b89a0", fontSize: "12px" }}>
             Once an L1 user submits a Wheel Change, it goes to L4 and the Approve Within timer starts. If L4 doesn&apos;t
-            act within that time, a ticket is raised and escalates to L5 Executive Leadership. If no specific L4 user is
-            selected, the approval task is raised on every current L4 user.
+            act within that time, a ticket is raised. If no specific L4 user is selected, the approval task is raised on
+            every current L4 user.
           </p>
 
           <div className={styles.formFooter}>
@@ -477,7 +522,7 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
       <div className={styles.shell}>
         <div className={styles.intro}>
           <h1>WC Threshold</h1>
-          <p>Set the L4 approver(s), severity and Approve Within time for each department&apos;s Wheel Change approvals.</p>
+          <p>Set the department, sub-department, severity, L4 approver(s), and Approve Within time for each Wheel Change approval.</p>
         </div>
         {content}
       </div>

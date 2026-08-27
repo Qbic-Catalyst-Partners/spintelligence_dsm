@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { useSelector } from "react-redux";
 import { createPortal } from "react-dom";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
@@ -291,6 +292,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   { selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], entryId = "", nextEntryIdPreview = "", tablePortalTargetId = "", lockedCountName = "", lockedConsigneeName = "" },
   ref
 ) {
+  const user = useSelector((state) => state.auth?.user);
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(createDefaultForm);
   const [errors, setErrors] = useState({});
@@ -371,9 +373,16 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
     setIsMounted(true);
   }, []);
 
+  // Was `[]` (mount-only) - see autoconer/AutoconerQ2.jsx's identical fix:
+  // without this, switching which PP id this component instance is editing
+  // (entryId prop changes without a remount) left the version list stale,
+  // so submit() below wrongly thought no row existed yet and attempted a
+  // create, failing with "Duplicate entry_id" against the row that already
+  // existed.
   useEffect(() => {
     loadVersions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryId]);
 
   useEffect(() => {
     if (entryId) {
@@ -453,7 +462,10 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
       if (field === "countName" && !entryId && !current.versionId) {
         const match = findLatestVersionByCountName(value);
         if (match) {
-          return { ...cloneForm(match.data), countName: value, versionId: "", paramId: current.paramId };
+          // paramId forced blank (not carried over from `current`) so save
+          // always reserves a brand new PP id instead of colliding with the
+          // matched historical entry's id ("Duplicate entry_id").
+          return { ...cloneForm(match.data), countName: value, versionId: "", paramId: "" };
         }
       }
 
@@ -529,6 +541,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
     lifter_combination_wheel: form.lifterCombinationWheel,
     lifter_wheel: form.lifterWheel,
     tension_wheel: form.tensionWheel,
+    user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
   });
 
   const getPreviewData = () => [

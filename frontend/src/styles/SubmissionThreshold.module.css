@@ -139,6 +139,12 @@
   font-weight: 700;
 }
 
+.sectionHeader p {
+  margin: 0;
+  color: #7b89a0;
+  font-size: 14px;
+}
+
 .cardHeader p {
   margin: 0;
   color: #7b89a0;
@@ -180,6 +186,68 @@
   align-items: end;
 }
 
+.slaApplyButton,
+.slaClearButton {
+  min-height: 32px;
+  min-width: 72px;
+  border: 1px solid #dbe2ec;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #6f7786;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.slaApplyButton {
+  color: #ffffff;
+  border-color: #2f5fbf;
+  background: #2f5fbf;
+}
+
+.slaClearButton {
+  margin-left: 8px;
+}
+
+.slaTableWrap {
+  overflow-x: auto;
+  border: 1px solid #e1e6ef;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.slaTable {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.slaTable thead th {
+  padding: 14px 16px;
+  background: #d0e2f4;
+  color: #1f2a44;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  border-bottom: 1px solid #bdd2e8;
+}
+
+.slaTable tbody td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #edf0f4;
+  color: #334155;
+  font-size: 14px;
+  vertical-align: middle;
+}
+
+.slaTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
 /* Simple auto-flowing grid for forms with only a few fields (e.g. Submitted Notebook
    Threshold's Sub-Department/Notebook Type/Acknowledge Within Hours) - the row/column
    overrides below are sized for Submission Threshold's 13-field layout and would
@@ -197,43 +265,22 @@
   min-width: 0;
 }
 
-/* Row 1: Frequency, Occurrences, Input Field Name (Sub-Department/Notebook Type moved
-   up to the shared .departmentRow above, so this grid now starts at Frequency) */
+/* Submission Frequency: keep the main controls on the top row and use the next row for L1/TAT. */
 .ruleGrid > .field:nth-of-type(1) { grid-column: 1 / 2; grid-row: 1; }
 .ruleGrid > .field:nth-of-type(2) { grid-column: 2 / 3; grid-row: 1; }
-.ruleGrid > .field:nth-of-type(7) { grid-column: 3 / 4; grid-row: 1; }
+.ruleGrid > .field:nth-of-type(3) { grid-column: 3 / 4; grid-row: 1; }
+.ruleGrid > .field:nth-of-type(4) { grid-column: 4 / 5; grid-row: 1; }
+.ruleGrid > .ruleActions { grid-column: 5 / 6; grid-row: 1; }
 
-/* Row 2: L1, TAT, L2, TAT */
-.ruleGrid > .field:nth-of-type(3) {
-  grid-column: 1 / 2;
-  grid-row: 2;
-}
-
-.ruleGrid > .field:nth-of-type(4) {
-  grid-column: 2 / 3;
-  grid-row: 2;
-}
-
-.ruleGrid > .field:nth-of-type(5) {
-  grid-column: 3 / 4;
-  grid-row: 2;
-}
-
-.ruleGrid > .field:nth-of-type(6) {
-  grid-column: 4 / 5;
-  grid-row: 2;
-}
-
-/* Row 3: Criticality, Typical Value (spans 2 cols for input + Numbers/Percentage), Plus, Minus */
-.ruleGrid > .field:nth-of-type(8) { grid-column: 1 / 2; grid-row: 3; }
-.ruleGrid > .field:nth-of-type(9) { grid-column: 2 / 4; grid-row: 3; }
-.ruleGrid > .field:nth-of-type(10) { grid-column: 4 / 5; grid-row: 3; }
-.ruleGrid > .field:nth-of-type(11) { grid-column: 5 / 6; grid-row: 3; }
-
-.ruleGrid > .ruleActions {
-  grid-column: 6 / 7;
-  grid-row: 3;
-}
+.ruleGrid > .field:nth-of-type(5) { grid-column: 1 / 2; grid-row: 2; }
+.ruleGrid > .field:nth-of-type(6) { grid-column: 2 / 3; grid-row: 2; }
+.ruleGrid > .field:nth-of-type(7) { grid-column: 3 / 4; grid-row: 2; }
+.ruleGrid > .field:nth-of-type(8) { grid-column: 4 / 5; grid-row: 2; }
+.ruleGrid > .field:nth-of-type(9) { grid-column: 5 / 6; grid-row: 2; }
+.ruleGrid > .field:nth-of-type(10) { grid-column: 1 / 2; grid-row: 3; }
+.ruleGrid > .field:nth-of-type(11) { grid-column: 2 / 4; grid-row: 3; }
+.ruleGrid > .field:nth-of-type(12) { grid-column: 4 / 5; grid-row: 3; }
+.ruleGrid > .field:nth-of-type(13) { grid-column: 5 / 6; grid-row: 3; }
 
 .field span {
   color: #42516a;
@@ -254,6 +301,13 @@
   font-size: 12px;
   outline: none;
   box-sizing: border-box;
+}
+
+.notebookTypeDisabledForWc:disabled {
+  background: #eef1f6;
+  color: #a5adba;
+  border-color: #e2e6ee;
+  cursor: not-allowed;
 }
 
 .actualValueRow {
@@ -368,13 +422,14 @@
 
 .field select:focus,
 .field input:focus,
-.multiSelectButton:focus {
+.multiSelectButton:focus-within {
   border-color: #5b74c7;
   box-shadow: 0 0 0 3px rgba(91, 116, 199, 0.12);
 }
 
 .multiSelectWrap {
   position: relative;
+  width: 100%;
 }
 
 .multiSelectDisabled {
@@ -385,19 +440,35 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  cursor: pointer;
+  gap: 8px;
 }
 
-.multiSelectValue {
+.multiSelectButton .multiSelectValue {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  border: none;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  margin: 0;
 }
 
 .multiSelectChevron {
   flex-shrink: 0;
   color: #7d8797;
   font-size: 11px;
+  cursor: pointer;
 }
 
 .multiSelectMenu {
@@ -413,20 +484,27 @@
   max-height: 170px;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 4px;
+  padding: 6px;
+  display: grid;
+  gap: 4px;
 }
 
 .singleSelectOption {
   width: 100%;
+  height: auto;
+  min-height: 0;
+  box-sizing: border-box;
   border: none;
+  margin: 0;
   background: #ffffff;
-  padding: 4px 8px;
+  padding: 6px;
   color: #29374f;
   font-size: 12px;
   text-align: left;
   cursor: pointer;
-  border-radius: 6px;
-  line-height: 1.2;
+  border-radius: 4px;
+  line-height: 1.3;
+  display: block;
 }
 
 .singleSelectOption:hover,
@@ -437,13 +515,13 @@
 .multiSelectOptionRow {
   display: flex;
   align-items: center;
-  gap: 3px;
-  min-height: 18px;
+  gap: 6px;
+  min-height: 0;
 }
 
 .multiSelectOptionRow input {
-  width: 13px;
-  height: 34px;
+  width: 9px;
+  height: 9px;
   margin: 0;
 }
 
@@ -651,10 +729,18 @@
 }
 
 .existingThresholdCard {
-  padding: 10px 0 0;
+  padding: 0;
   overflow: visible;
-  width: calc(100% - 72px);
-  justify-self: start;
+  width: 100%;
+  max-width: 100%;
+  justify-self: stretch;
+  box-sizing: border-box;
+}
+
+.existingThresholdSection {
+  width: 100%;
+  max-width: 100%;
+  justify-self: stretch;
   box-sizing: border-box;
 }
 
@@ -662,6 +748,142 @@
   overflow-x: auto;
   overflow-y: visible;
   margin-top: 0;
+}
+
+.existingThresholdList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 0 10px;
+}
+
+.existingThresholdListItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  width: 100%;
+  min-height: 80px;
+  border: 1px solid #dbe2ee;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 8px 18px;
+  box-sizing: border-box;
+}
+
+.existingThresholdSection .existingThresholdListItem {
+  width: 100%;
+}
+
+.existingThresholdSection .sectionHeader {
+  padding: 0 0 0 2px;
+}
+
+.existingThresholdListMain {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 6px 0;
+}
+
+.existingThresholdListTitle {
+  margin: 0;
+  color: #111827;
+  font-size: 15px;
+  line-height: 1.2;
+  font-weight: 800;
+}
+
+.existingThresholdListSubtitle {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.existingThresholdListMeta {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(140px, 0.8fr) minmax(170px, 1fr);
+  gap: 8px 12px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.existingThresholdMetaCell {
+  min-width: 0;
+}
+
+:global(:root[data-theme="dark"]) .existingThresholdListItem {
+  background: #000000;
+  border-color: #5f5f5f;
+}
+
+:global(:root[data-theme="dark"]) .existingThresholdListTitle,
+:global(:root[data-theme="dark"]) .existingThresholdListValue,
+:global(:root[data-theme="dark"]) .existingThresholdListSubtitle {
+  color: #ffffff;
+}
+
+.existingThresholdListLabel {
+  display: block;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.existingThresholdListValue {
+  display: block;
+  margin-top: 4px;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 800;
+}
+
+.existingThresholdMetaCell .statusBadge {
+  border: 0;
+  cursor: pointer;
+  padding: 6px 18px;
+}
+
+.slaStatusToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid #dbe2ee;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.slaStatusToggleButton {
+  min-height: 30px;
+  min-width: 74px;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.slaStatusToggleButtonActive {
+  background: #eaf6ee;
+  color: #20633f;
+}
+
+.slaStatusToggleButtonInactive {
+  background: #fff1f1;
+  color: #c73c3c;
+}
+
+.slaStatusToggleButton:disabled {
+  opacity: 0.9;
+  cursor: default;
 }
 
 .emptyState {

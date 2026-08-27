@@ -10,6 +10,7 @@ import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { fetchCardingDfkPressure, submitCardingDfkPressure } from "@/store/slices/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import styles from "./cardingdfk.module.css";
 
 const DFK_TYPE = "Card DFK Data";
@@ -64,6 +65,7 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
   const [openGroup, setOpenGroup] = useState(0);
   const [customFieldValues, setCustomFieldValues] = useState({});
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
+  const [showEmptyWarning, setShowEmptyWarning] = useState(false);
 
   const handleCustomFieldChange = (fieldId, value) => {
     setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
@@ -75,6 +77,12 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
     window.addEventListener("resize", checkScreen);
     return () => window.removeEventListener("resize", checkScreen);
   }, []);
+
+  useEffect(() => {
+    if (!showEmptyWarning) return undefined;
+    const timer = setTimeout(() => setShowEmptyWarning(false), 2000);
+    return () => clearTimeout(timer);
+  }, [showEmptyWarning]);
 
   const hasValues = useMemo(
     () =>
@@ -112,9 +120,7 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
   };
 
   const handleSave = async () => {
-    const entries = MACHINE_NAMES.filter((machineName) =>
-      Object.values(rows[machineName]).some((value) => value !== "")
-    ).map((machineName) => {
+    const entries = MACHINE_NAMES.map((machineName) => {
       const row = rows[machineName];
       return {
         machine_name: machineName,
@@ -155,6 +161,19 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
         console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
       }
 
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Carding",
+          screenName: selectedType || DFK_TYPE,
+          machineName: selectedType || DFK_TYPE,
+          entryId: nextEntryId,
+          values: previewItems,
+        });
+      } catch (ticketError) {
+        console.error("Threshold ticket generation failed:", ticketError);
+      }
+
       const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
       if (nextEntryId && customFieldEntries.length) {
         try {
@@ -188,13 +207,11 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
     if (!selectedType) nextErrors.selectedType = true;
     if (!date) nextErrors.date = true;
 
-    MACHINE_NAMES.forEach((machineName) => {
-      TABLE_COLUMNS.forEach((column) => {
-        if (String(rows[machineName][column.key] || "").trim() === "") {
-          nextErrors[`${machineName}-${column.key}`] = true;
-        }
-      });
-    });
+    if (!hasValues) {
+      setErrors(nextErrors);
+      setShowEmptyWarning(true);
+      return false;
+    }
 
     setErrors(nextErrors);
 
@@ -212,17 +229,31 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
   const previewItems = [
     { label: "Type", value: selectedType || DFK_TYPE },
     { label: "Entry ID", value: entryId || "-" },
-    ...MACHINE_NAMES.flatMap((machineName) =>
-      TABLE_COLUMNS.map((column) => ({
-        label: `${machineName} ${column.label}`,
-        value: rows[machineName][column.key],
-      }))
-    ),
     ...customFieldDefs.map((field) => ({
       label: field.field_label,
       value: customFieldValues[field.id],
     })),
   ];
+
+  const previewGroups = MACHINE_GROUPS.map((group) => {
+    const firstMachine = group[0];
+    const lastMachine = group[group.length - 1];
+    return {
+      key: `${firstMachine}-${lastMachine}`,
+      title: `${firstMachine} to ${lastMachine}`,
+      columns: [
+        { key: "machine_name", label: "Machine Name" },
+        ...TABLE_COLUMNS,
+      ],
+      rows: group.map((machineName) => ({
+        machine_name: machineName,
+        ...TABLE_COLUMNS.reduce((acc, column) => {
+          acc[column.key] = rows[machineName][column.key] || "0";
+          return acc;
+        }, {}),
+      })),
+    };
+  });
   const typeSelectStyle = {
     background: "#f1f5f9",
     backgroundColor: "#f1f5f9",
@@ -361,7 +392,7 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
             }
           }}
           saveLabel={isLoading ? "Saving..." : "Save Record"}
-          disabled={!hasValues || isLoading}
+          disabled={isLoading}
         />
       </div>
 
@@ -370,6 +401,8 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
         title="Carding Preview"
         subtitle="Carding Notebook / Card DFK Data"
         items={previewItems}
+        groups={previewGroups}
+        compactGroups
         typeValue={selectedType || DFK_TYPE}
         onCancel={() => setShowPreview(false)}
         onConfirm={handleSave}
@@ -379,6 +412,15 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
       <SuccessModal
         open={showSuccess}
         onClose={() => setShowSuccess(false)}
+      />
+
+      <SuccessModal
+        open={showEmptyWarning}
+        message="Kindly enter at least one input field to submit the form."
+        icon="!"
+        hideButton
+        variant="warning"
+        onClose={() => setShowEmptyWarning(false)}
       />
     </>
   );

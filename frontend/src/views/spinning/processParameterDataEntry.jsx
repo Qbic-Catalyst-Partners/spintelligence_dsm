@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useSelector } from "react-redux";
 import { createPortal } from "react-dom";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
@@ -496,6 +497,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   },
   ref
 ) {
+  const user = useSelector((state) => state.auth?.user);
   const formSectionRef = useRef(null);
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(createDefaultForm);
@@ -570,9 +572,16 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     }
   };
 
+  // Was `[]` (mount-only) - see autoconer/AutoconerQ2.jsx's identical fix:
+  // without this, switching which PP id this component instance is editing
+  // (entryId prop changes without a remount) left the version list stale,
+  // so submit() below wrongly thought no row existed yet and attempted a
+  // create, failing with "Duplicate entry_id" against the row that already
+  // existed.
   useEffect(() => {
     loadVersions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryId]);
 
   useEffect(() => {
     if (entryId) {
@@ -646,7 +655,10 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
       if (field === "countName" && !entryId && !current.versionId) {
         const match = findLatestVersionByCountName(value);
         if (match) {
-          return { ...cloneForm(match.data), countName: value, versionId: "", paramId: current.paramId };
+          // paramId forced blank (not carried over from `current`) so save
+          // always reserves a brand new PP id instead of colliding with the
+          // matched historical entry's id ("Duplicate entry_id").
+          return { ...cloneForm(match.data), countName: value, versionId: "", paramId: "" };
         }
       }
       return { ...current, [field]: value };
@@ -718,8 +730,11 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     slub_max: parseNumberValue(form.slubMax),
     thickness_min: parseNumberValue(form.thicknessMin),
     thickness_max: parseNumberValue(form.thicknessMax),
+    ramp: form.ramp,
+    offset: form.offset,
     lycra_draft: parseNumberValue(form.lycraDraft),
     lycra_percent: parseNumberValue(form.lycraPercent),
+    user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
   });
 
   const submit = async () => {

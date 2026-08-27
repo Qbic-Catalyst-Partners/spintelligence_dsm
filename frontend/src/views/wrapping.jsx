@@ -35,6 +35,19 @@ const OCR_TABLE_COLUMN_WIDTHS = {
   User: 120,
   Remark: 120,
 };
+const PREVIEW_ROW_FIELDS = [
+  "S.No",
+  "Date",
+  "ID",
+  "Mac Name",
+  "Shift",
+  "Std. Hank",
+  "Avg. Hank",
+  "SD",
+  "CV",
+  "User",
+  "Remark",
+];
 const WRAPPING_SAVE_ENDPOINTS = {
   carding: "/carding/wrapping-carding-notebook",
   drawing: "/drawframe/wrapping-drawframe-notebook",
@@ -43,11 +56,76 @@ const WRAPPING_SAVE_ENDPOINTS = {
 
 const toDocType = (type) => String(type || "Carding").trim().toLowerCase();
 const formatSavedRecordMessage = (selectedType, payload) => {
-  const resolvedId = String(payload?.id ?? payload?.entry_id ?? payload?.entryId ?? "").trim();
-  return resolvedId
-    ? `Saved ${selectedType} OCR record #${resolvedId}.`
-    : `Saved ${selectedType} OCR record.`;
+  const savedRows = Array.isArray(payload?.data) ? payload.data : [];
+  const resolvedId = String(
+    savedRows[0]?.entry_id ?? payload?.id ?? payload?.entry_id ?? payload?.entryId ?? ""
+  ).trim();
+  const rowCount = savedRows.length || payload?.count || 0;
+  if (!resolvedId) return `Saved ${selectedType} OCR record.`;
+  return rowCount > 1
+    ? `Saved ${selectedType} OCR record ${resolvedId} (${rowCount} rows).`
+    : `Saved ${selectedType} OCR record ${resolvedId}.`;
 };
+
+const getPreviewTableRows = (rows) =>
+  rows.map((row, index) => {
+    return {
+      "S.No": String(row?.["S.No"] || index + 1),
+      Date: String(row?.Date || row?.date || row?.entry_date || "").trim() || "-",
+      ID: String(row?.ID || row?.id || "").trim() || "-",
+      "Mac Name": String(row?.["Mac Name"] || row?.mac_name || "").trim() || "-",
+      Shift: String(row?.Shift || row?.shift || "").trim() || "-",
+      "Std. Hank": String(row?.["Std. Hank"] || row?.std_hank || "").trim() || "-",
+      "Avg. Hank": String(row?.["Avg. Hank"] || row?.avg_hank || "").trim() || "-",
+      SD: String(row?.SD || row?.sd || "").trim() || "-",
+      CV: String(row?.CV || row?.cv || "").trim() || "-",
+      User: String(row?.User || row?.user || row?.user_name || "").trim() || "-",
+      Remark: String(row?.Remark || row?.remark || "").trim() || "-",
+    };
+  });
+
+const normalizeWrappingSaveRows = (rows) =>
+  rows.map((row, index) => {
+    const serialNo = row?.["S.No"] ?? row?.s_no ?? row?.sno ?? index + 1;
+    const dateText = row?.date_text ?? row?.Date ?? row?.date ?? row?.entry_date ?? "";
+    const macName = row?.mac_name ?? row?.["Mac Name"] ?? row?.machine_name ?? row?.macName ?? "";
+    const shift = row?.shift ?? row?.Shift ?? "";
+    const stdHank = row?.std_hank ?? row?.["Std. Hank"] ?? row?.stdHank ?? "";
+    const avgHank = row?.avg_hank ?? row?.["Avg. Hank"] ?? row?.avgHank ?? "";
+    const sd = row?.sd ?? row?.SD ?? "";
+    const cv = row?.cv ?? row?.CV ?? "";
+    const userName = row?.user_name ?? row?.user ?? row?.User ?? "";
+    const remark = row?.remark ?? row?.remarks ?? row?.Remark ?? "";
+
+    return {
+      ...row,
+      serial_no: serialNo,
+      s_no: serialNo,
+      sno: serialNo,
+      date_text: dateText,
+      date: dateText,
+      Date: dateText,
+      mac_name: macName,
+      "Mac Name": macName,
+      shift,
+      Shift: shift,
+      std_hank: stdHank,
+      "Std. Hank": stdHank,
+      avg_hank: avgHank,
+      "Avg. Hank": avgHank,
+      sd,
+      SD: sd,
+      cv,
+      CV: cv,
+      user_name: userName,
+      user: userName,
+      User: userName,
+      remark,
+      remarks: remark,
+      Remark: remark,
+      entry_id: row?.entry_id ?? row?.id_no ?? row?.sourceId ?? row?.ID ?? row?.id_value ?? row?.notebook_id ?? null,
+    };
+  });
 
 function Wrapping({ fixedType = "", backPath = "/departments/quality-control", title = "Quality Control - Wrapping Notebook" }) {
   const router = useRouter();
@@ -187,7 +265,7 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
         mc_name: rows.find((row) => String(row["Mac Name"] || "").trim())?.["Mac Name"] || "",
         ocr_json: ocrJson,
         manual_json: rows,
-        rows,
+        rows: normalizeWrappingSaveRows(rows),
       });
       setMessage("");
       setSuccessMessage(formatSavedRecordMessage(selectedType, response.data));
@@ -403,13 +481,9 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
         open={showPreview}
         title="Wrapping Preview"
         subtitle="Wrapping Notebook"
-        items={[
-          { label: "Type", value: selectedType },
-          { label: "File", value: file?.name || "-" },
-          { label: "Rows", value: rows.length },
-          ...rows.map((row, index) => ({ label: `Row ${index + 1}`, value: row, wide: true })),
-        ]}
-        typeValue={selectedType}
+        items={[]}
+        tableColumns={MACHINE_FIELDS.map((field) => ({ key: field, label: field, width: OCR_TABLE_COLUMN_WIDTHS[field] }))}
+        tableRows={getPreviewTableRows(rows)}
         onCancel={() => setShowPreview(false)}
         onConfirm={confirmSubmit}
         confirmLabel={isSaving ? "Submitting..." : "Submit"}

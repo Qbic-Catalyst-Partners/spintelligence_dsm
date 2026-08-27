@@ -16,51 +16,12 @@ const normalizeUserLevel = (value) => {
   return VALID_USER_LEVELS.includes(normalized) ? normalized : "L1";
 };
 
-// users.user_details.level has a CHECK constraint that predates L4/L5 -
-// without this, saving level='L4' or 'L5' fails at the database layer even
-// though normalizeUserLevel above now happily passes them through.
-let userLevelConstraintEnsured = false;
-const ensureUserLevelConstraintAllowsL4L5 = async () => {
-  if (userLevelConstraintEnsured) return;
-  await client.query(`
-    DO $$
-    BEGIN
-      IF EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'user_details_level_chk'
-      ) THEN
-        ALTER TABLE users.user_details DROP CONSTRAINT user_details_level_chk;
-      END IF;
-      ALTER TABLE users.user_details
-        ADD CONSTRAINT user_details_level_chk
-        CHECK (level IN ('L1', 'L2', 'L3', 'L4', 'L5'));
-    END $$;
-  `);
-  userLevelConstraintEnsured = true;
-};
-
 // Reporting hierarchy (Employee-Hierarchy-and-Workflow-System_V2.pdf): every
 // user except L5 must be linked to exactly one reporting manager from the
 // level immediately above. This single column is the source of truth every
 // later escalation/visibility phase will walk, replacing the old ad-hoc
 // per-threshold approver-id arrays and the many-to-many supervisor_assignments
 // table.
-let reportsToColumnEnsured = false;
-const ensureReportsToColumn = async () => {
-  if (reportsToColumnEnsured) return;
-  // Plain nullable integer, no FK constraint: production's users.user_details
-  // has no primary/unique constraint on id (confirmed live), so a real
-  // REFERENCES clause here would fail the moment this ALTER TABLE actually
-  // ran (unlike other tables' FK-to-user_details clauses in this codebase,
-  // which only ever "worked" because their CREATE TABLE IF NOT EXISTS was a
-  // no-op against an already-existing table). Integrity is enforced at the
-  // application level instead, via validateReportingManager below.
-  await client.query(`
-    ALTER TABLE users.user_details
-      ADD COLUMN IF NOT EXISTS reports_to_user_id INTEGER NULL
-  `);
-  reportsToColumnEnsured = true;
-};
-
 const LEVEL_ABOVE = { L1: "L2", L2: "L3", L3: "L4", L4: "L5" };
 
 // Enforces the PDF's "Key Rule": a user can only be assigned a reporting
@@ -97,7 +58,6 @@ const validateReportingManager = async (level, reportsToUserId) => {
 // approver-id arrays. Capped at 10 hops as a safety net against any cyclical
 // data slipping through validation.
 const getManagerChain = async (userId) => {
-  await ensureReportsToColumn();
   const chain = [];
   let currentId = userId;
   for (let hop = 0; hop < 10; hop++) {
@@ -163,7 +123,6 @@ const getManagerChain = async (userId) => {
 
 router.get('/', async (req, res, next) => {
   try {
-    await ensureReportsToColumn();
     const result = await client.query(`
       SELECT
         id,
@@ -173,6 +132,7 @@ router.get('/', async (req, res, next) => {
         phone,
         level,
         role,
+        role_id,
         department,
         account_status,
         created_at,
@@ -194,7 +154,6 @@ router.get('/', async (req, res, next) => {
 // per the PDF's "Key Rule".
 router.get('/eligible-managers', async (req, res, next) => {
   try {
-    await ensureReportsToColumn();
     const level = normalizeUserLevel(req.query.level);
     const managerLevel = LEVEL_ABOVE[level];
     if (!managerLevel) {
@@ -313,8 +272,6 @@ router.get('/eligible-managers', async (req, res, next) => {
  */
 router.post('/add-user', async (req, res, next) => {
   try {
-    await ensureUserLevelConstraintAllowsL4L5();
-    await ensureReportsToColumn();
     const {
       first_name,
       last_name,
@@ -555,8 +512,6 @@ router.patch('/change-password/:id', async (req, res, next) => {
  */
 router.patch('/:id', async (req, res, next) => {
   try {
-    await ensureUserLevelConstraintAllowsL4L5();
-    await ensureReportsToColumn();
     const { id } = req.params;
     const {
       first_name,
@@ -1100,8 +1055,6 @@ const readBulkUploadRows = (filePath, originalName) => {
  */
 router.post("/bulk-upload", upload.single("file"), async (req, res, next) => {
   try {
-    await ensureUserLevelConstraintAllowsL4L5();
-    await ensureReportsToColumn();
     if (!req.file) {
       return res.status(400).json({ message: "Upload file is required" });
     }
@@ -1346,4 +1299,3 @@ router.get("/export", async (req, res) => {
 
 module.exports = router;
 module.exports.getManagerChain = getManagerChain;
-module.exports.ensureReportsToColumn = ensureReportsToColumn;

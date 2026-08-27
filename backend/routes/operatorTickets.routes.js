@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
-const { createNotificationsForUsers, ensureNotificationMetadataColumns } = require('../utils/notifications');
+const { createNotificationsForUsers } = require('../utils/notifications');
+const { generateTicketId } = require('../utils/ticketId');
 const { ensureDelegationsTable } = require('./delegations.routes');
 const { getManagerChain } = require('./user.routes');
 const sendEmail = require('../email');
@@ -10,6 +11,30 @@ const csvParser = require('csv-parser');
 const { Readable } = require('stream');
 
 const csvUpload = multer({ storage: multer.memoryStorage() });
+
+// ticket_id has been stored two different ways across this app's history -
+// older tickets as plain "TK-0338", newer ones (generateTicketId, utils/
+// ticketId.js) with a leading "#" as "#TK-0346" - while the frontend's
+// formatTicketId always strips any leading "#" before sending an id to the
+// API. Net effect: a lookup here for a "#"-prefixed ticket (any PP Approval/
+// Wheel Change Approval/PP Batch ticket) silently 404'd as "Ticket not
+// found" even though it exists, since the bare id it received never matched
+// the stored "#..." value. Resolving to whichever form is actually stored -
+// once, right after the id is read off the request - lets every existing
+// `WHERE ticket_id = $1` query below keep working unchanged for both
+// formats. Mirrors the identical helper in supervisorTickets.routes.js.
+const resolveStoredTicketId = async (rawTicketId) => {
+  const trimmed = String(rawTicketId || '').trim();
+  if (!trimmed) return trimmed;
+  const bare = trimmed.replace(/^#/, '');
+  const result = await client.query(
+    `SELECT ticket_id FROM ticketing_system.operator_tickets
+     WHERE ticket_id = $1 OR ticket_id = $2
+     LIMIT 1`,
+    [bare, `#${bare}`]
+  );
+  return result.rows[0]?.ticket_id || trimmed;
+};
 
 // Employee-Hierarchy-and-Workflow-System_V2.pdf: escalation for every
 // threshold type should follow the L1 user's real reporting chain
@@ -274,7 +299,8 @@ const analyzeViolations = (parameterName, actualValue, thresholdRules) => {
         condition_level: rule?.condition_level || 'More Than',
         plus_threshold: rule?.plus_threshold ?? null,
         minus_threshold: rule?.minus_threshold ?? null,
-        deviation_percent: Number.isFinite(deviationPercent) ? Number(deviationPercent.toFixed(4)) : null
+        deviation_percent: Number.isFinite(deviationPercent) ? Number(deviationPercent.toFixed(4)) : null,
+        criticality: rule?.criticality || null
       });
     }
   }
@@ -293,11 +319,29 @@ const analyzeViolations = (parameterName, actualValue, thresholdRules) => {
   };
 };
 
+const SEVERITY_RANK = { High: 3, Medium: 2, Low: 1 };
+
 const deriveSeverity = (violationDetails) => {
   const missingCount = violationDetails?.missing_fields?.length || 0;
+  const breaches = violationDetails?.threshold_breaches || [];
+
   if (missingCount > 0) return 'High';
 
-  const breaches = violationDetails?.threshold_breaches || [];
+  // The criticality configured on the threshold rule itself (Value Threshold settings
+  // page) is authoritative - a rule set to Medium must produce a Medium-severity ticket,
+  // never a deviation-based guess. This used to ignore rule?.criticality entirely and
+  // always fall through to the distance-based heuristic below, so a rule configured as
+  // Medium/High still showed up as Low whenever the breach was numerically small.
+  let configuredSeverity = null;
+  for (const breach of breaches) {
+    const criticality = String(breach?.criticality || '').trim();
+    const rank = SEVERITY_RANK[criticality] || 0;
+    if (rank > (SEVERITY_RANK[configuredSeverity] || 0)) {
+      configuredSeverity = criticality;
+    }
+  }
+  if (configuredSeverity) return configuredSeverity;
+
   let maxDeviation = 0;
   for (const breach of breaches) {
     const pct = Number(breach?.deviation_percent);
@@ -372,259 +416,6 @@ const getUserByFullName = async (fullName) => {
 const parsePositiveInt = (value) => {
   const n = Number(value);
   return Number.isInteger(n) && n > 0 ? n : null;
-};
-
-const ensureThresholdMasterApprovalColumns = async () => {
-  await client.query(`
-    ALTER TABLE ticketing_system.threshold_master
-    ADD COLUMN IF NOT EXISTS approval_l1_user_id integer REFERENCES users.user_details(id)
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.threshold_master
-    ADD COLUMN IF NOT EXISTS approval_l2_user_id integer REFERENCES users.user_details(id)
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.threshold_master
-    ADD COLUMN IF NOT EXISTS approval_l3_user_id integer
-  `);
-};
-
-const ensureTicketApprovalsTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.ticket_approvals (
-      id BIGSERIAL PRIMARY KEY,
-      ticket_id TEXT NOT NULL,
-      level TEXT NOT NULL,
-      action_status TEXT NOT NULL,
-      performed_by TEXT,
-      role TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS ticket_approvals_ticket_id_idx
-    ON ticketing_system.ticket_approvals (ticket_id)
-  `);
-};
-
-const ensureThresholdMasterL1ApproverTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.threshold_master_l1_approvers (
-      id BIGSERIAL PRIMARY KEY,
-      threshold_master_id BIGINT NOT NULL,
-      approver_user_id INTEGER NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (threshold_master_id, approver_user_id)
-    )
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.threshold_master_l1_approvers
-    ADD COLUMN IF NOT EXISTS id BIGSERIAL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.threshold_master_l1_approvers
-    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  `);
-  await client.query(`
-    DELETE FROM ticketing_system.threshold_master_l1_approvers a
-    USING (
-      SELECT ctid,
-             ROW_NUMBER() OVER (
-               PARTITION BY threshold_master_id, approver_user_id
-               ORDER BY ctid
-             ) AS rn
-      FROM ticketing_system.threshold_master_l1_approvers
-    ) d
-    WHERE a.ctid = d.ctid
-      AND d.rn > 1
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS threshold_master_l1_approvers_threshold_user_uq
-    ON ticketing_system.threshold_master_l1_approvers (threshold_master_id, approver_user_id)
-  `);
-};
-
-const ensureThresholdMasterL2ApproverTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.threshold_master_l2_approvers (
-      id BIGSERIAL PRIMARY KEY,
-      threshold_master_id BIGINT NOT NULL,
-      approver_user_id INTEGER NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (threshold_master_id, approver_user_id)
-    )
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.threshold_master_l2_approvers
-    ADD COLUMN IF NOT EXISTS id BIGSERIAL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.threshold_master_l2_approvers
-    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  `);
-  await client.query(`
-    DELETE FROM ticketing_system.threshold_master_l2_approvers a
-    USING (
-      SELECT ctid,
-             ROW_NUMBER() OVER (
-               PARTITION BY threshold_master_id, approver_user_id
-               ORDER BY ctid
-             ) AS rn
-      FROM ticketing_system.threshold_master_l2_approvers
-    ) d
-    WHERE a.ctid = d.ctid
-      AND d.rn > 1
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS threshold_master_l2_approvers_threshold_user_uq
-    ON ticketing_system.threshold_master_l2_approvers (threshold_master_id, approver_user_id)
-  `);
-};
-
-const ensureThresholdMasterL3ApproverTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.threshold_master_l3_approvers (
-      id BIGSERIAL PRIMARY KEY,
-      threshold_master_id BIGINT NOT NULL,
-      approver_user_id INTEGER NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (threshold_master_id, approver_user_id)
-    )
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.threshold_master_l3_approvers
-    ADD COLUMN IF NOT EXISTS id BIGSERIAL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.threshold_master_l3_approvers
-    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  `);
-  await client.query(`
-    DELETE FROM ticketing_system.threshold_master_l3_approvers a
-    USING (
-      SELECT ctid,
-             ROW_NUMBER() OVER (
-               PARTITION BY threshold_master_id, approver_user_id
-               ORDER BY ctid
-             ) AS rn
-      FROM ticketing_system.threshold_master_l3_approvers
-    ) d
-    WHERE a.ctid = d.ctid
-      AND d.rn > 1
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS threshold_master_l3_approvers_threshold_user_uq
-    ON ticketing_system.threshold_master_l3_approvers (threshold_master_id, approver_user_id)
-  `);
-};
-
-const ensureOperatorTicketApprovalColumns = async () => {
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l1_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l2_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l3_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS submission_frequency_config_id bigint NULL REFERENCES ticketing_system.screen_submission_frequency(id)
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS tat_current_level text NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS l1_tat_due_at timestamptz NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS l2_tat_due_at timestamptz NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS l3_tat_due_at timestamptz NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l4_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l5_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS l4_tat_due_at timestamptz NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS l5_tat_due_at timestamptz NULL
-  `);
-};
-
-const ensureNotificationRecipientColumn = async () => {
-  await ensureNotificationMetadataColumns();
-};
-
-const getThresholdApproversFromMaster = async ({
-  department,
-  subDepartment,
-  inputScreen,
-  machineName,
-  parameterName
-}) => {
-  const normalizedParameters = normalizeParameterNames(parameterName);
-  if (!department || !subDepartment || !inputScreen || !normalizedParameters.length) {
-    return { approval_l1_user_ids: [], approval_l2_user_ids: [], approval_l3_user_ids: [] };
-  }
-
-  const result = await client.query(
-    `SELECT
-       tm.id,
-       tm.machine_name,
-       COALESCE(l1.approval_l1_user_ids, ARRAY[]::int[]) AS approval_l1_user_ids,
-       COALESCE(l2.approval_l2_user_ids, ARRAY[]::int[]) AS approval_l2_user_ids,
-       COALESCE(l3.approval_l3_user_ids, ARRAY[]::int[]) AS approval_l3_user_ids
-     FROM ticketing_system.threshold_master tm
-     LEFT JOIN LATERAL (
-       SELECT ARRAY_AGG(a.approver_user_id ORDER BY a.approver_user_id) AS approval_l1_user_ids
-       FROM ticketing_system.threshold_master_l1_approvers a
-       WHERE a.threshold_master_id = tm.id
-     ) l1 ON true
-     LEFT JOIN LATERAL (
-       SELECT ARRAY_AGG(a.approver_user_id ORDER BY a.approver_user_id) AS approval_l2_user_ids
-       FROM ticketing_system.threshold_master_l2_approvers a
-       WHERE a.threshold_master_id = tm.id
-     ) l2 ON true
-     LEFT JOIN LATERAL (
-       SELECT ARRAY_AGG(a.approver_user_id ORDER BY a.approver_user_id) AS approval_l3_user_ids
-       FROM ticketing_system.threshold_master_l3_approvers a
-       WHERE a.threshold_master_id = tm.id
-     ) l3 ON true
-     WHERE tm.department = $1
-       AND tm.sub_department = $2
-       AND tm.input_screen = $3
-       AND tm.input_field = ANY($4::text[])
-       AND tm.is_active = true
-       AND ($5::text IS NULL OR tm.machine_name = $5 OR tm.machine_name IS NULL)
-     ORDER BY CASE WHEN tm.machine_name = $5 THEN 0 ELSE 1 END, tm.id DESC
-     LIMIT 1`,
-    [department, subDepartment, inputScreen, normalizedParameters, machineName || null]
-  );
-
-  if (!result.rows.length) return { approval_l1_user_ids: [], approval_l2_user_ids: [], approval_l3_user_ids: [] };
-  return {
-    approval_l1_user_ids: result.rows[0].approval_l1_user_ids || [],
-    approval_l2_user_ids: result.rows[0].approval_l2_user_ids || [],
-    approval_l3_user_ids: result.rows[0].approval_l3_user_ids || []
-  };
 };
 
 const uniquePositiveIds = (ids = []) =>
@@ -874,44 +665,6 @@ const resolveApproverUserIds = async ({
   return resolvedUserIds;
 };
 
-const syncThresholdMasterL1Approvers = async (thresholdMasterId, approvalL1UserIds = []) => {
-  await ensureThresholdMasterL1ApproverTable();
-  await client.query(
-    `DELETE FROM ticketing_system.threshold_master_l1_approvers
-     WHERE threshold_master_id = $1`,
-    [thresholdMasterId]
-  );
-
-  for (const approverUserId of approvalL1UserIds) {
-    await client.query(
-      `INSERT INTO ticketing_system.threshold_master_l1_approvers
-       (threshold_master_id, approver_user_id)
-       VALUES ($1, $2)
-       ON CONFLICT (threshold_master_id, approver_user_id) DO NOTHING`,
-      [thresholdMasterId, approverUserId]
-    );
-  }
-};
-
-const syncThresholdMasterL2Approvers = async (thresholdMasterId, approvalL2UserIds = []) => {
-  await ensureThresholdMasterL2ApproverTable();
-  await client.query(
-    `DELETE FROM ticketing_system.threshold_master_l2_approvers
-     WHERE threshold_master_id = $1`,
-    [thresholdMasterId]
-  );
-
-  for (const approverUserId of approvalL2UserIds) {
-    await client.query(
-      `INSERT INTO ticketing_system.threshold_master_l2_approvers
-       (threshold_master_id, approver_user_id)
-       VALUES ($1, $2)
-       ON CONFLICT (threshold_master_id, approver_user_id) DO NOTHING`,
-      [thresholdMasterId, approverUserId]
-    );
-  }
-};
-
 const normalizeTicketStatusInput = (value) => {
   const normalized = String(value || '').trim().toLowerCase();
   const statuses = {
@@ -932,81 +685,126 @@ const normalizeTicketStatusInput = (value) => {
   return statuses[normalized] || null;
 };
 
-const syncThresholdMasterL3Approvers = async (thresholdMasterId, approvalL3UserIds = []) => {
-  await ensureThresholdMasterL3ApproverTable();
-  await client.query(
-    `DELETE FROM ticketing_system.threshold_master_l3_approvers
-     WHERE threshold_master_id = $1`,
-    [thresholdMasterId]
+const normalizeThresholdMode = (value) => {
+  const mode = String(value || '').trim().toLowerCase();
+  if (mode === 'percentage' || mode === 'percent' || mode === '%') return 'Percentage';
+  return 'Number';
+};
+
+const buildUniqueTicketKey = ({ department, subDepartment, notebook, field, l1UserId, criticality, valueMode }) =>
+  [
+    department,
+    subDepartment,
+    notebook,
+    field,
+    l1UserId,
+    criticality,
+    valueMode
+  ]
+    .map((part) => String(part ?? '').trim().toLowerCase())
+    .join('::');
+
+const rejectLegacyThresholdL2Fields = (payload) => {
+  const legacyL2Keys = [
+    'approval_l2',
+    'approvalL2',
+    'approval_l2_name',
+    'approvalL2Name',
+    'approval_l2_names',
+    'approvalL2Names',
+    'approval_l2_user_id',
+    'approvalL2UserId',
+    'approval_l2_user_ids',
+    'approvalL2UserIds',
+    'approval_l2_id',
+    'approvalL2Id',
+    'approval_l2_ids',
+    'approvalL2Ids',
+    'l2_tat_hours',
+  ];
+
+  const present = legacyL2Keys.filter(
+    (key) => payload?.[key] !== undefined && payload?.[key] !== null && payload?.[key] !== ''
   );
 
-  for (const approverUserId of approvalL3UserIds) {
-    await client.query(
-      `INSERT INTO ticketing_system.threshold_master_l3_approvers
-       (threshold_master_id, approver_user_id)
-       VALUES ($1, $2)
-       ON CONFLICT (threshold_master_id, approver_user_id) DO NOTHING`,
-      [thresholdMasterId, approverUserId]
-    );
+  if (present.length) {
+    const err = new Error(`Legacy L2 fields are not allowed for value thresholds: ${present.join(', ')}`);
+    err.statusCode = 400;
+    throw err;
   }
 };
 
-const getThresholdByIdWithApprovers = async (id) => {
-  await ensureThresholdMasterL1ApproverTable();
-  await ensureThresholdMasterL2ApproverTable();
-  await ensureThresholdMasterL3ApproverTable();
+const VALID_COMPARISON_MODES = new Set(['more_than', 'less_than', 'more_and_less_than']);
+const normalizeComparisonMode = (value) => {
+  const mode = String(value || '').trim().toLowerCase();
+  return VALID_COMPARISON_MODES.has(mode) ? mode : 'more_and_less_than';
+};
+
+const upsertValueThresholdRule = async (payload) => {
+  rejectLegacyThresholdL2Fields(payload);
+
+  const department = pickDropdownValue(payload.department);
+  const subDepartment = pickDropdownValue(payload.sub_department ?? payload.subDepartment);
+  const notebook = pickDropdownValue(payload.notebook);
+  const field = pickDropdownValue(payload.field);
+  const criticality = pickDropdownValue(payload.criticality);
+  const comparisonMode = normalizeComparisonMode(
+    payload.comparison_operator ?? payload.comparisonOperator ?? payload.condition_level ?? payload.conditionLevel ?? payload.comparison
+  );
+  const valueMode = normalizeThresholdMode(payload.value_mode ?? payload.valueMode);
+  const typicalValue = String(payload.typical_value ?? payload.typicalValue ?? '').trim();
+  const plusValue = toNumericIfPossible(payload.plus_value ?? payload.plusValue);
+  const minusValue = toNumericIfPossible(payload.minus_value ?? payload.minusValue);
+  const rawL1UserIds = payload.approval_l1_user_ids ?? payload.approvalL1UserIds;
+  const l1UserIds = Array.isArray(rawL1UserIds)
+    ? rawL1UserIds.map((value) => parsePositiveInt(value)).filter(Boolean)
+    : [];
+  const l1UserId = parsePositiveInt(payload.l1_user_id ?? payload.l1UserId ?? l1UserIds[0]);
+  const l1UserName = pickDropdownValue(payload.l1_user_name ?? payload.l1UserName);
+  let resolvedL1UserName = l1UserName;
+
+  if (!resolvedL1UserName && l1UserId) {
+    const l1User = await getUserById(l1UserId);
+    resolvedL1UserName = l1User?.full_name || l1User?.name || l1User?.employee_id || null;
+  }
+
+  if (!department || !subDepartment || !notebook || !field || !criticality || !typicalValue || !l1UserId) {
+    const err = new Error('department, sub_department, notebook, field, l1, criticality, typical_value, plus_value, and minus_value are required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const uniqueTicketKey = buildUniqueTicketKey({
+      department,
+      subDepartment,
+      notebook,
+      field,
+      l1UserId,
+    criticality,
+    valueMode
+  });
 
   const result = await client.query(
-    `SELECT
-       tm.id,
-       tm.department,
-       tm.sub_department,
-       tm.input_screen,
-       tm.machine_name,
-       tm.input_field,
-       tm.condition_level,
-       tm.plus_threshold,
-       tm.minus_threshold,
-       tm.actual_value,
-       tm.is_active,
-       COALESCE(l1.approval_l1_user_ids, ARRAY[]::int[]) AS approval_l1_user_ids,
-       COALESCE(l1.approval_l1_names, ARRAY[]::text[]) AS approval_l1_names,
-       COALESCE(l2.approval_l2_user_ids, ARRAY[]::int[]) AS approval_l2_user_ids,
-       COALESCE(l2.approval_l2_names, ARRAY[]::text[]) AS approval_l2_names,
-       COALESCE(l3.approval_l3_user_ids, ARRAY[]::int[]) AS approval_l3_user_ids,
-       COALESCE(l3.approval_l3_names, ARRAY[]::text[]) AS approval_l3_names,
-       tm.created_at,
-       tm.updated_at
-     FROM ticketing_system.threshold_master tm
-     LEFT JOIN LATERAL (
-       SELECT
-         ARRAY_AGG(u.id ORDER BY u.full_name, u.id) AS approval_l1_user_ids,
-         ARRAY_AGG(u.full_name ORDER BY u.full_name, u.id) AS approval_l1_names
-       FROM ticketing_system.threshold_master_l1_approvers a
-       JOIN users.user_details u ON u.id = a.approver_user_id
-       WHERE a.threshold_master_id = tm.id
-     ) l1 ON true
-     LEFT JOIN LATERAL (
-       SELECT
-         ARRAY_AGG(u.id ORDER BY u.full_name, u.id) AS approval_l2_user_ids,
-         ARRAY_AGG(u.full_name ORDER BY u.full_name, u.id) AS approval_l2_names
-       FROM ticketing_system.threshold_master_l2_approvers a
-       JOIN users.user_details u ON u.id = a.approver_user_id
-       WHERE a.threshold_master_id = tm.id
-     ) l2 ON true
-     LEFT JOIN LATERAL (
-       SELECT
-         ARRAY_AGG(u.id ORDER BY u.full_name, u.id) AS approval_l3_user_ids,
-         ARRAY_AGG(u.full_name ORDER BY u.full_name, u.id) AS approval_l3_names
-       FROM ticketing_system.threshold_master_l3_approvers a
-       JOIN users.user_details u ON u.id = a.approver_user_id
-       WHERE a.threshold_master_id = tm.id
-     ) l3 ON true
-     WHERE tm.id = $1`,
-    [id]
+    `INSERT INTO ticketing_system.value_threshold_rules
+      (department, sub_department, notebook, field, l1_user_id, approval_l1_user_ids, l1_user_name, criticality, comparison_mode, typical_value, value_mode, plus_value, minus_value, unique_ticket_key, is_active, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
+     ON CONFLICT (unique_ticket_key)
+     DO UPDATE SET
+       l1_user_name = EXCLUDED.l1_user_name,
+       approval_l1_user_ids = EXCLUDED.approval_l1_user_ids,
+       criticality = EXCLUDED.criticality,
+       comparison_mode = EXCLUDED.comparison_mode,
+       typical_value = EXCLUDED.typical_value,
+       value_mode = EXCLUDED.value_mode,
+       plus_value = EXCLUDED.plus_value,
+       minus_value = EXCLUDED.minus_value,
+       is_active = EXCLUDED.is_active,
+       updated_at = NOW()
+     RETURNING *`,
+    [department, subDepartment, notebook, field, l1UserId, l1UserIds.length ? l1UserIds : [l1UserId], resolvedL1UserName, criticality, comparisonMode, typicalValue, valueMode, plusValue, minusValue, uniqueTicketKey, Boolean(payload.is_active ?? payload.isActive ?? true)]
   );
 
-  return result.rows[0] || null;
+  return result.rows[0];
 };
 
 const getThresholdApproverOptions = async () => {
@@ -1101,126 +899,15 @@ const parseTatHours = (value) => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 
-const ensureScreenFrequencyTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.screen_submission_frequency (
-      id BIGSERIAL PRIMARY KEY,
-      screen_name TEXT NOT NULL,
-      department TEXT NULL,
-      sub_department TEXT NULL,
-      range INTEGER NOT NULL,
-      frequency INTEGER NULL,
-      is_active BOOLEAN NOT NULL DEFAULT true,
-      approval_l1 TEXT NULL,
-      approval_l1_name TEXT NULL,
-      approval_l2 TEXT NULL,
-      approval_l2_name TEXT NULL,
-      approval_l3 TEXT NULL,
-      approval_l3_name TEXT NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      UNIQUE (screen_name, department, sub_department)
-    )
-  `);
+const normalizeSlaLevel = (value) => {
+  const level = String(value || "").trim().toUpperCase();
+  return ["L1", "L2", "L3", "L4"].includes(level) ? level : null;
+};
 
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS frequency INTEGER NULL
-  `);
-
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS approval_l1 TEXT NULL
-  `);
-
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS approval_l1_name TEXT NULL
-  `);
-
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS approval_l2 TEXT NULL
-  `);
-
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS approval_l2_name TEXT NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS approval_l3 TEXT NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS approval_l3_name TEXT NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS l1_tat_hours INTEGER NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS l2_tat_hours INTEGER NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS l3_tat_hours INTEGER NULL
-  `);
-  // Employee-Hierarchy-and-Workflow-System_V2.pdf: Submission Threshold
-  // escalates all the way to L5, not just L2/L3 - this table previously had
-  // no L4/L5 TAT columns at all, capping escalation at L3.
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS l4_tat_hours INTEGER NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS l5_tat_hours INTEGER NULL
-  `);
-  // PDF's Submission Threshold config: "L1 User: Select the specific L1
-  // user(s) to whom this threshold applies" - who is being tracked, not who
-  // approves anything (there is no L1 "approver" concept for this threshold
-  // type). Previously nothing recorded this, so there was no way to know
-  // which L1 user(s) a given screen's frequency requirement applies to.
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS tracked_l1_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]
-  `);
-  // Value-range breach check alongside the existing frequency check - optional per
-  // row (input_field left blank keeps a config frequency-only, as before).
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS input_field TEXT NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS criticality TEXT NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS actual_value NUMERIC NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS value_mode TEXT NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS plus_threshold NUMERIC NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS minus_threshold NUMERIC NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS positive_tolerance_percent NUMERIC NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS negative_tolerance_percent NUMERIC NULL
-  `);
+const normalizeSlaHours = (value) => {
+  const hours = Number(value);
+  if (!Number.isInteger(hours) || hours < 1 || hours > 100) return null;
+  return hours;
 };
 
 // Employee-Hierarchy-and-Workflow-System_V2.pdf: "If an L1 user fails to
@@ -1241,7 +928,7 @@ const checkSubmissionFrequencyValueBreach = async (config) => {
   if (!source) return null; // screen not wired to a known submission table - skip gracefully
 
   const latestRow = await client.query(
-    `SELECT "${config.input_field}" AS field_value, "${source.dateColumn}" AS submitted_at
+    `SELECT "${config.input_field}" AS field_value, "${source.dateColumn}" AS submitted_at, entry_id
      FROM ${source.table}
      WHERE "${config.input_field}" IS NOT NULL
      ORDER BY "${source.dateColumn}" DESC
@@ -1279,6 +966,7 @@ const checkSubmissionFrequencyValueBreach = async (config) => {
     typical_value: config.actual_value,
     plus_threshold: config.plus_threshold,
     minus_threshold: config.minus_threshold,
+    entry_id: latestRow.rows[0]?.entry_id || null,
     message: `${config.input_field} on ${config.screen_name} submitted value ${actualValue} is outside the typical range.`
   };
 
@@ -1286,31 +974,41 @@ const checkSubmissionFrequencyValueBreach = async (config) => {
   const l1TatHours = Number(config.l1_tat_hours) > 0 ? Number(config.l1_tat_hours) : null;
   const l1TatDueAt = l1TatHours ? new Date(Date.now() + l1TatHours * 60 * 60 * 1000).toISOString() : null;
 
-  const ticket = await client.query(
-    `INSERT INTO ticketing_system.operator_tickets
-     (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
-      severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type,
-      violation_details, submission_frequency_config_id, tat_current_level, l1_tat_due_at)
-     VALUES (
-       'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-       $1, $2::jsonb, $3::jsonb, $4::jsonb,
-       $5, 'Open', NOW(), $6, $7, 'THRESHOLD_BREACH', 'SUBMISSION_FREQUENCY',
-       $8::jsonb, $9, 'L1', $10
-     )
-     RETURNING *`,
-    [
-      config.screen_name,
-      JSON.stringify([config.input_field]),
-      JSON.stringify([Number(actualValue)]),
-      JSON.stringify([{ actual_value: config.actual_value, plus_threshold: config.plus_threshold, minus_threshold: config.minus_threshold }]),
-      severity,
-      config.department,
-      config.sub_department,
-      JSON.stringify(violationDetails),
-      config.id,
-      l1TatDueAt
-    ]
-  );
+  const ticketId = await generateTicketId(client);
+  let ticket;
+  try {
+    ticket = await client.query(
+      `INSERT INTO ticketing_system.operator_tickets
+       (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+        severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind,
+        violation_details, submission_frequency_config_id, tat_current_level, l1_tat_due_at)
+       VALUES (
+         'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+         $1, $2::jsonb, $3::jsonb, $4::jsonb,
+         $5, 'Open', NOW(), $6, $7, 'THRESHOLD_BREACH', 'SUBMISSION_FREQUENCY', 'submission_frequency',
+         $8::jsonb, $9, 'L1', $10
+       )
+       RETURNING *`,
+      [
+        ticketId,
+        config.screen_name,
+        JSON.stringify([config.input_field]),
+        JSON.stringify([Number(actualValue)]),
+        JSON.stringify([{ actual_value: config.actual_value, plus_threshold: config.plus_threshold, minus_threshold: config.minus_threshold }]),
+        severity,
+        config.department,
+        config.sub_department,
+        JSON.stringify(violationDetails),
+        config.id,
+        l1TatDueAt
+      ]
+    );
+  } catch (error) {
+    // 23505 = operator_tickets_subfreq_breach_open_uq - another run already
+    // raised this exact ticket first.
+    if (error?.code !== '23505') throw error;
+    return null;
+  }
 
   const inserted = ticket.rows[0];
 
@@ -1331,9 +1029,28 @@ const checkSubmissionFrequencyValueBreach = async (config) => {
   return inserted;
 };
 
+// Backstops checkSubmissionFrequencyValueBreach's and this function's own
+// per-user check-then-insert dedup - same reasoning as the PP/Wheel Change
+// Approval unique indexes. Two separate partial indexes since the two ticket
+// shapes have different dedup keys (config alone vs. config+user) and
+// different ticket_reason values.
+const ensureSubmissionFrequencyTicketIndexes = async () => {
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_subfreq_breach_open_uq
+    ON ticketing_system.operator_tickets (submission_frequency_config_id)
+    WHERE ticket_type = 'SUBMISSION_FREQUENCY' AND ticket_reason = 'THRESHOLD_BREACH'
+      AND status NOT IN ('Closed', 'No Due')
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_subfreq_missed_open_uq
+    ON ticketing_system.operator_tickets (submission_frequency_config_id, user_id)
+    WHERE ticket_type = 'SUBMISSION_FREQUENCY' AND ticket_reason = 'MISSING_VALUE'
+      AND status NOT IN ('Closed', 'No Due')
+  `);
+};
+
 const runSubmissionFrequencyCheck = async () => {
-  await ensureScreenFrequencyTable();
-  await ensureOperatorTicketApprovalColumns();
+  await ensureSubmissionFrequencyTicketIndexes();
 
   const configs = await client.query(
     `SELECT * FROM ticketing_system.screen_submission_frequency WHERE is_active = true`
@@ -1348,23 +1065,69 @@ const runSubmissionFrequencyCheck = async () => {
       if (valueBreachTicket) created.push(valueBreachTicket);
     }
 
-    const trackedUserIds = Array.isArray(config.tracked_l1_user_ids) ? config.tracked_l1_user_ids : [];
-    if (!trackedUserIds.length) continue; // nobody configured to track for this screen yet
+    // The Submission Threshold settings screen saves one L1 user per screen
+    // as approval_l1 (a display name, chosen from a dropdown - see
+    // SubmissionThreshold.js), not a tracked_l1_user_ids array - that column
+    // was never actually part of this table (see ensureScreenFrequencyTable
+    // above). Resolving by name is what's actually configured; nobody
+    // assigned means nobody to raise a ticket against.
+    const assignedL1Name = String(config.approval_l1 || '').trim();
+    if (!assignedL1Name) continue; // nobody configured to track for this screen yet
+
+    // eslint-disable-next-line no-await-in-loop
+    const l1UserRow = await client.query(
+      `SELECT id, full_name FROM users.user_details WHERE full_name = $1 AND level = 'L1' LIMIT 1`,
+      [assignedL1Name]
+    );
+    const l1UserId = l1UserRow.rows[0]?.id;
+    if (!l1UserId) continue; // configured name doesn't match a real L1 user (renamed/removed) - nothing to assign to
 
     const windowDays = Number(config.range) > 0 ? Number(config.range) : 7;
     const requiredCount = Number(config.frequency) > 0 ? Number(config.frequency) : 1;
 
-    for (const l1UserId of trackedUserIds) {
+    {
+      // Only evaluate fully completed days. "Every 1 day" means today's
+      // submission is not judged until the day ends.
       // eslint-disable-next-line no-await-in-loop
       const submissionCount = await client.query(
         `SELECT COUNT(*) FROM ticketing_system.submitted_notebooks
          WHERE submitted_by_user_id = $1
            AND (input_screen = $2 OR notebook = $2)
-           AND submitted_at >= NOW() - ($3 || ' days')::interval`,
+           AND submitted_at >= DATE_TRUNC('day', NOW()) - ($3 || ' days')::interval
+           AND submitted_at < DATE_TRUNC('day', NOW())`,
         [l1UserId, config.screen_name, windowDays]
       );
       const actualCount = Number(submissionCount.rows[0]?.count) || 0;
-      if (actualCount >= requiredCount) continue;
+      if (actualCount >= requiredCount) {
+        // The L1 user has since caught up in the current rolling window -
+        // this only ever raised a ticket, it never had a companion "resolve
+        // once fixed" step, so a since-resolved ticket would otherwise sit
+        // open and keep escalating through L2-L5 regardless of whether the
+        // actual problem still exists. Close any ticket still open for this
+        // exact config+user now that the same measurement that flagged it
+        // says it's no longer true.
+        // eslint-disable-next-line no-await-in-loop
+        const closedResult = await client.query(
+          `UPDATE ticketing_system.operator_tickets
+           SET status = 'Closed'
+           WHERE submission_frequency_config_id = $1
+             AND user_id = $2
+             AND ticket_reason = 'MISSING_VALUE'
+             AND (violation_details->>'category') = 'MISSED_FREQUENCY'
+             AND status NOT IN ('Closed', 'No Due')
+           RETURNING ticket_id`,
+          [config.id, l1UserId]
+        );
+        for (const closedRow of closedResult.rows) {
+          // eslint-disable-next-line no-await-in-loop
+          await client.query(
+            `INSERT INTO ticketing_system.ticket_logs (ticket_id, action, performed_by, role, created_at)
+             VALUES ($1, 'AUTO_RESOLVED_CAUGHT_UP', 'System', 'System', NOW())`,
+            [closedRow.ticket_id]
+          );
+        }
+        continue; // eslint-disable-line no-continue
+      }
 
       // eslint-disable-next-line no-await-in-loop
       const existingTicket = await client.query(
@@ -1372,16 +1135,17 @@ const runSubmissionFrequencyCheck = async () => {
          WHERE submission_frequency_config_id = $1
            AND user_id = $2
            AND status NOT IN ('Closed', 'No Due')
-           AND created_at >= NOW() - ($3 || ' days')::interval
          LIMIT 1`,
-        [config.id, l1UserId, windowDays]
+        [config.id, l1UserId]
       );
       if (existingTicket.rows[0]?.ticket_id) continue;
 
       // eslint-disable-next-line no-await-in-loop
       const userRow = await client.query(`SELECT full_name FROM users.user_details WHERE id = $1`, [l1UserId]);
-      const l1TatHours = Number(config.l1_tat_hours) > 0 ? Number(config.l1_tat_hours) : null;
-      const l1TatDueAt = l1TatHours ? new Date(Date.now() + l1TatHours * 60 * 60 * 1000).toISOString() : null;
+      // No TAT-hours column exists on this config table (unlike the other
+      // threshold types) - there's nothing configured to derive a due date
+      // from, so this stays unset rather than inventing a default.
+      const l1TatDueAt = null;
       const violationDetails = {
         category: 'MISSED_FREQUENCY',
         ticket_type: 'SUBMISSION_FREQUENCY',
@@ -1393,35 +1157,45 @@ const runSubmissionFrequencyCheck = async () => {
       };
 
       // eslint-disable-next-line no-await-in-loop
-      const ticket = await client.query(
-        `INSERT INTO ticketing_system.operator_tickets
-         (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value,
-          severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type,
-          violation_details, approval_l1_user_ids, submission_frequency_config_id, tat_current_level, l1_tat_due_at)
-         VALUES (
-           'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-           $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb,
-           'Medium', 'Open', NOW(), $7, $8, 'MISSING_VALUE', 'SUBMISSION_FREQUENCY',
-           $9::jsonb, $10::int[], $11, 'L1', $12
-         )
-         RETURNING *`,
-        [
-          l1UserId,
-          userRow.rows[0]?.full_name || null,
-          config.screen_name,
-          JSON.stringify([config.screen_name]),
-          JSON.stringify([actualCount]),
-          JSON.stringify([{ screen_name: config.screen_name, required_occurrences: requiredCount, window_days: windowDays }]),
-          config.department,
-          config.sub_department,
-          JSON.stringify(violationDetails),
-          [l1UserId],
-          config.id,
-          l1TatDueAt
-        ]
-      );
-
-      const inserted = ticket.rows[0];
+      const ticketId = await generateTicketId(client);
+      let inserted;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const ticket = await client.query(
+          `INSERT INTO ticketing_system.operator_tickets
+           (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value,
+            severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind,
+            violation_details, approval_l1_user_ids, submission_frequency_config_id, tat_current_level, l1_tat_due_at)
+           VALUES (
+             $1,
+             $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb,
+             'Medium', 'Open', NOW(), $8, $9, 'MISSING_VALUE', 'SUBMISSION_FREQUENCY', 'submission_frequency',
+             $10::jsonb, $11::int[], $12, 'L1', $13
+           )
+           RETURNING *`,
+          [
+            ticketId,
+            l1UserId,
+            userRow.rows[0]?.full_name || null,
+            config.screen_name,
+            JSON.stringify([config.screen_name]),
+            JSON.stringify([actualCount]),
+            JSON.stringify([{ screen_name: config.screen_name, required_occurrences: requiredCount, window_days: windowDays }]),
+            config.department,
+            config.sub_department,
+            JSON.stringify(violationDetails),
+            [l1UserId],
+            config.id,
+            l1TatDueAt
+          ]
+        );
+        inserted = ticket.rows[0];
+      } catch (error) {
+        // 23505 = operator_tickets_subfreq_missed_open_uq - another run
+        // already raised this exact ticket (same config+user) first.
+        if (error?.code !== '23505') throw error;
+        continue; // eslint-disable-line no-continue
+      }
       created.push(inserted);
 
       // eslint-disable-next-line no-await-in-loop
@@ -1449,54 +1223,21 @@ const runSubmissionFrequencyCheck = async () => {
 // screen config's single approval_lN id only for a level the chain doesn't
 // reach.
 const runSubmissionFrequencyTatCheck = async () => {
-  await ensureScreenFrequencyTable();
-  await ensureOperatorTicketApprovalColumns();
 
-  await client.query(
-    `UPDATE ticketing_system.operator_tickets ot
-     SET tat_current_level = 'L2',
-         status = CASE WHEN ot.status = 'Open' THEN 'In Progress' ELSE ot.status END,
-         l1_tat_due_at = NULL,
-         l2_tat_due_at = COALESCE(
-           ot.l2_tat_due_at,
-           CASE
-             WHEN sf.l2_tat_hours IS NULL THEN NULL
-             ELSE ot.created_at + (sf.l2_tat_hours || ' hours')::interval
-           END
-         )
-     FROM ticketing_system.screen_submission_frequency sf
-     WHERE sf.id = ot.submission_frequency_config_id
-       AND ot.ticket_reason = 'MISSING_VALUE'
-       AND (ot.violation_details->>'category') = 'MISSED_FREQUENCY'
-       AND COALESCE(ot.tat_current_level, 'L1') = 'L1'`
-  );
-
-  // Fill in approval_l2_user_ids from each ticket's own submitter's real
-  // manager (falling back to the screen config's single approval_l2 id) -
-  // done per-row rather than in the bulk UPDATE above since getManagerChain
-  // needs its own query per user.
-  const needingL2Approver = await client.query(
-    `SELECT ot.ticket_id, ot.user_id, sf.approval_l2
-     FROM ticketing_system.operator_tickets ot
-     JOIN ticketing_system.screen_submission_frequency sf ON sf.id = ot.submission_frequency_config_id
-     WHERE ot.tat_current_level = 'L2'
-       AND ot.ticket_reason = 'MISSING_VALUE'
-       AND (ot.violation_details->>'category') = 'MISSED_FREQUENCY'
-       AND (ot.approval_l2_user_ids IS NULL OR ot.approval_l2_user_ids = ARRAY[]::int[])`
-  );
-  for (const row of needingL2Approver.rows) {
-    const chain = row.user_id ? await getManagerChain(row.user_id) : [];
-    const l2Manager = chain.find((manager) => manager.level === 'L2');
-    const fallbackId = parseTatHours(row.approval_l2, null);
-    const approverIds = l2Manager ? [l2Manager.id] : (fallbackId ? [fallbackId] : []);
-    if (approverIds.length) {
-      // eslint-disable-next-line no-await-in-loop
-      await client.query(
-        `UPDATE ticketing_system.operator_tickets SET approval_l2_user_ids = $1 WHERE ticket_id = $2`,
-        [approverIds, row.ticket_id]
-      );
-    }
-  }
+  // L1->L2 is deliberately NOT auto-escalated by TAT here (unlike every
+  // tier below) - a Submission Frequency ticket means "L1 missed their
+  // submissions," and L1 is the one who has to actually go fix that by
+  // submitting the missing notebook entries, not just wait it out. It only
+  // moves to L2 for review once L1 genuinely does that and clicks Fix &
+  // Submit (PUT /operator-tickets/submit/:id, which already resolves the L2
+  // approver from the submitter's real reporting chain and escalates
+  // correctly) - matching PP Approval/Wheel Change Approval/Acknowledgement,
+  // which are all likewise driven by a real action rather than a clock.
+  // This used to unconditionally bump every L1 ticket to L2 on the very next
+  // check (no L1 TAT column exists on this config, so there was never a real
+  // wait involved) regardless of whether L1 had done anything at all -
+  // meaning the ticket was visible "at L1" for at most ~15 minutes before
+  // silently jumping to L2, making it look like nothing was ever raised.
 
   const tiers = [
     { level: 'L2', dueColumn: 'l2_tat_due_at', nextLevel: 'L3', nextDueColumn: 'l3_tat_due_at', tatHoursColumn: 'l3_tat_hours', fallbackColumn: 'approval_l3' },
@@ -1524,6 +1265,22 @@ const runSubmissionFrequencyTatCheck = async () => {
       const nextManager = chain.find((manager) => manager.level === tier.nextLevel);
       const fallbackId = tier.fallbackColumn ? parseTatHours(ticket.fallback_approver, null) : null;
       const nextApproverIds = nextManager ? [nextManager.id] : (fallbackId ? [fallbackId] : []);
+      // Unlike L1->L2 (always has a fallback: the submitter's own manager
+      // chain almost always reaches an L2, plus L2/L3 tiers have a config
+      // fallback column), L3->L4 and L4->L5 have NO config fallback - if
+      // getManagerChain doesn't reach that far up, advancing anyway used to
+      // leave the ticket at the next tier with an EMPTY approver array,
+      // invisible to literally everyone (canApproveOrRejectTicket/GET
+      // /tickets both gate on being named in that array, and unlike PP
+      // Approval there's no "any L4/L5 can act" carve-out here - this is
+      // meant to be reporting-chain-scoped, not company-wide). Skipping the
+      // advance keeps it visible to whoever already holds it at the current
+      // tier and lets a later run retry once/if the chain is fixed, instead
+      // of orphaning it to nobody.
+      if (!nextApproverIds.length) {
+        console.warn(`[submission-frequency] ${ticket.ticket_id} due to escalate ${tier.level}->${tier.nextLevel} but no approver resolved - leaving at ${tier.level}`);
+        continue; // eslint-disable-line no-continue
+      }
       const nextTatHours = Number(ticket.next_tat_hours) > 0 ? Number(ticket.next_tat_hours) : null;
       const nextDueAt = nextTatHours ? new Date(Date.now() + nextTatHours * 60 * 60 * 1000).toISOString() : null;
 
@@ -1539,19 +1296,17 @@ const runSubmissionFrequencyTatCheck = async () => {
       );
       if (result.rows[0]) escalated.push(result.rows[0]);
 
-      if (nextApproverIds.length) {
-        // eslint-disable-next-line no-await-in-loop
-        await createNotificationsForUsers(nextApproverIds, {
-          ticketId: ticket.ticket_id,
-          type: 'SUBMISSION_FREQUENCY',
-          category: 'Tickets',
-          priority: 'High',
-          title: `Submission frequency missed (escalated to ${tier.nextLevel}): ${ticket.machine_name || ticket.ticket_id}`,
-          body: `This ticket was not actioned at ${tier.level} in time and has escalated to ${tier.nextLevel}.`,
-          linkUrl: `/supervisor-tickets/${ticket.ticket_id}`,
-          payload: { ticket_id: ticket.ticket_id }
-        });
-      }
+      // eslint-disable-next-line no-await-in-loop
+      await createNotificationsForUsers(nextApproverIds, {
+        ticketId: ticket.ticket_id,
+        type: 'SUBMISSION_FREQUENCY',
+        category: 'Tickets',
+        priority: 'High',
+        title: `Submission frequency missed (escalated to ${tier.nextLevel}): ${ticket.machine_name || ticket.ticket_id}`,
+        body: `This ticket was not actioned at ${tier.level} in time and has escalated to ${tier.nextLevel}.`,
+        linkUrl: `/supervisor-tickets/${ticket.ticket_id}`,
+        payload: { ticket_id: ticket.ticket_id }
+      });
     }
   }
 
@@ -1605,6 +1360,69 @@ router.post('/submission-frequency/check', async (req, res, next) => {
   }
 });
 
+router.get('/ticket-resolution-sla', async (req, res, next) => {
+  try {
+    const result = await client.query(
+      `SELECT level, resolution_hours, is_active, created_at, updated_at
+       FROM ticketing_system.ticket_resolution_sla
+       ORDER BY CASE level WHEN 'L1' THEN 1 WHEN 'L2' THEN 2 WHEN 'L3' THEN 3 WHEN 'L4' THEN 4 ELSE 5 END`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/ticket-resolution-sla', async (req, res, next) => {
+  try {
+    const level = normalizeSlaLevel(req.body?.level);
+    const hours = normalizeSlaHours(req.body?.resolution_hours ?? req.body?.hours);
+    const isActive = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
+    if (!level) return res.status(400).json({ message: 'level must be L1, L2, L3, or L4' });
+    if (!hours) return res.status(400).json({ message: 'resolution_hours must be between 1 and 100' });
+
+    const result = await client.query(
+      `INSERT INTO ticketing_system.ticket_resolution_sla (level, resolution_hours, is_active, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (level)
+       DO UPDATE SET resolution_hours = EXCLUDED.resolution_hours, is_active = EXCLUDED.is_active, updated_at = NOW()
+       RETURNING level, resolution_hours, is_active, created_at, updated_at`,
+      [level, hours, isActive]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/ticket-resolution-sla/:level/status', async (req, res, next) => {
+  try {
+    const level = normalizeSlaLevel(req.params.level);
+    const isActive = req.body?.is_active;
+    if (!level) return res.status(400).json({ message: 'level must be L1, L2, L3, or L4' });
+    if (typeof isActive !== 'boolean') return res.status(400).json({ message: 'is_active must be boolean' });
+
+    const result = await client.query(
+      `UPDATE ticketing_system.ticket_resolution_sla
+       SET is_active = $1, updated_at = NOW()
+       WHERE level = $2
+       RETURNING level, resolution_hours, is_active, created_at, updated_at`,
+      [isActive, level]
+    );
+    if (result.rows[0]) return res.json(result.rows[0]);
+
+    const inserted = await client.query(
+      `INSERT INTO ticketing_system.ticket_resolution_sla (level, resolution_hours, is_active, updated_at)
+       VALUES ($1, 24, $2, NOW())
+       RETURNING level, resolution_hours, is_active, created_at, updated_at`,
+      [level, isActive]
+    );
+    return res.json(inserted.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
 /**
  * @swagger
  * /operator-tickets/submission-frequency:
@@ -1648,9 +1466,6 @@ router.post('/submission-frequency/check', async (req, res, next) => {
  */
 router.post('/submission-frequency', async (req, res, next) => {
   try {
-    await ensureScreenFrequencyTable();
-    await ensureOperatorTicketApprovalColumns();
-    console.log('[DEBUG submission-frequency POST] req.body =', JSON.stringify(req.body));
 
     const {
       screen_name,
@@ -1660,37 +1475,14 @@ router.post('/submission-frequency', async (req, res, next) => {
       frequency = null,
       is_active = true,
       approval_l1 = null,
-      approval_l1_name = null,
-      approval_l2 = null,
-      approval_l2_name = null,
-      approval_l3 = null,
-      approval_l3_name = null,
-      l1_tat_hours = null,
-      l2_tat_hours = null,
-      l3_tat_hours = null,
-      tracked_l1_user_ids = [],
-      input_field = null,
       criticality = null,
-      actual_value = null,
-      value_mode = null,
-      plus_threshold = null,
-      minus_threshold = null,
-      positive_tolerance_percent = null,
-      negative_tolerance_percent = null
     } = req.body || {};
-
-    const normalizedTrackedL1UserIds = Array.isArray(tracked_l1_user_ids)
-      ? tracked_l1_user_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
-      : [];
 
     const normalizedRange = normalizeFrequency(range);
     const normalizedFrequency =
       frequency === null || frequency === undefined || frequency === ''
         ? null
         : Number(frequency);
-    const normalizedL1TatHours = parseTatHours(l1_tat_hours);
-    const normalizedL2TatHours = parseTatHours(l2_tat_hours);
-    const normalizedL3TatHours = parseTatHours(l3_tat_hours);
 
     if (!screen_name || !normalizedRange) {
       return res.status(400).json({
@@ -1708,24 +1500,6 @@ router.post('/submission-frequency', async (req, res, next) => {
         message: 'frequency must be a positive integer'
       });
     }
-    if (l1_tat_hours !== null && l1_tat_hours !== undefined && l1_tat_hours !== '' && !normalizedL1TatHours) {
-      return res.status(400).json({
-        error: 'Invalid L1 TAT',
-        message: 'l1_tat_hours must be a positive integer'
-      });
-    }
-    if (l2_tat_hours !== null && l2_tat_hours !== undefined && l2_tat_hours !== '' && !normalizedL2TatHours) {
-      return res.status(400).json({
-        error: 'Invalid L2 TAT',
-        message: 'l2_tat_hours must be a positive integer'
-      });
-    }
-    if (l3_tat_hours !== null && l3_tat_hours !== undefined && l3_tat_hours !== '' && !normalizedL3TatHours) {
-      return res.status(400).json({
-        error: 'Invalid L3 TAT',
-        message: 'l3_tat_hours must be a positive integer'
-      });
-    }
 
     const result = await client.query(
       `INSERT INTO ticketing_system.screen_submission_frequency
@@ -1737,49 +1511,17 @@ router.post('/submission-frequency', async (req, res, next) => {
          frequency,
          is_active,
          approval_l1,
-         approval_l1_name,
-         approval_l2,
-         approval_l2_name,
-         approval_l3,
-         approval_l3_name,
-         l1_tat_hours,
-         l2_tat_hours,
-         l3_tat_hours,
-         tracked_l1_user_ids,
-         input_field,
          criticality,
-         actual_value,
-         value_mode,
-         plus_threshold,
-         minus_threshold,
-         positive_tolerance_percent,
-         negative_tolerance_percent,
          updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::int[], $17, $18, $19, $20, $21, $22, $23, $24, NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
        ON CONFLICT (screen_name, department, sub_department)
        DO UPDATE SET
          range = EXCLUDED.range,
          frequency = EXCLUDED.frequency,
          is_active = EXCLUDED.is_active,
          approval_l1 = EXCLUDED.approval_l1,
-         approval_l1_name = EXCLUDED.approval_l1_name,
-         approval_l2 = EXCLUDED.approval_l2,
-         approval_l2_name = EXCLUDED.approval_l2_name,
-         approval_l3 = EXCLUDED.approval_l3,
-         approval_l3_name = EXCLUDED.approval_l3_name,
-         l1_tat_hours = EXCLUDED.l1_tat_hours,
-         l2_tat_hours = EXCLUDED.l2_tat_hours,
-         l3_tat_hours = EXCLUDED.l3_tat_hours,
-         tracked_l1_user_ids = EXCLUDED.tracked_l1_user_ids,
-         input_field = EXCLUDED.input_field,
          criticality = EXCLUDED.criticality,
-         actual_value = EXCLUDED.actual_value,
-         value_mode = EXCLUDED.value_mode,
-         plus_threshold = EXCLUDED.plus_threshold,
-         minus_threshold = EXCLUDED.minus_threshold,
-         positive_tolerance_percent = EXCLUDED.positive_tolerance_percent,
-         negative_tolerance_percent = EXCLUDED.negative_tolerance_percent,
          updated_at = NOW()
        RETURNING *`,
       [
@@ -1790,23 +1532,7 @@ router.post('/submission-frequency', async (req, res, next) => {
         normalizedFrequency,
         is_active,
         approval_l1,
-        approval_l1_name,
-        approval_l2,
-        approval_l2_name,
-        approval_l3,
-        approval_l3_name,
-        normalizedL1TatHours,
-        normalizedL2TatHours,
-        normalizedL3TatHours,
-        normalizedTrackedL1UserIds,
-        input_field,
         criticality,
-        actual_value,
-        value_mode,
-        plus_threshold,
-        minus_threshold,
-        positive_tolerance_percent,
-        negative_tolerance_percent
       ]
     );
 
@@ -1831,7 +1557,6 @@ router.post('/submission-frequency', async (req, res, next) => {
  */
 router.get('/submission-frequency', async (req, res, next) => {
   try {
-    await ensureScreenFrequencyTable();
 
     const result = await client.query(
       `SELECT
@@ -1843,19 +1568,6 @@ router.get('/submission-frequency', async (req, res, next) => {
          frequency,
          is_active,
          approval_l1,
-         approval_l1_name,
-         approval_l2,
-         approval_l2_name,
-         l1_tat_hours,
-         l2_tat_hours,
-         input_field,
-         criticality,
-         actual_value,
-         value_mode,
-         plus_threshold,
-         minus_threshold,
-         positive_tolerance_percent,
-         negative_tolerance_percent,
          created_at,
          updated_at
        FROM ticketing_system.screen_submission_frequency
@@ -1884,14 +1596,12 @@ router.get('/submission-frequency', async (req, res, next) => {
  */
 router.post('/submission-frequency/check', async (req, res, next) => {
   try {
-    await ensureScreenFrequencyTable();
-    await ensureOperatorTicketApprovalColumns();
 
     const noDueTickets = await runSubmissionFrequencyTatCheck();
 
     const today = new Date();
     const rows = await client.query(
-      `SELECT id, screen_name, department, sub_department, range, frequency, is_active, l1_tat_hours, l2_tat_hours, l3_tat_hours
+      `SELECT id, screen_name, department, sub_department, range, frequency, is_active
        FROM ticketing_system.screen_submission_frequency
        WHERE is_active = true`
     );
@@ -1965,146 +1675,7 @@ router.post('/submission-frequency/check', async (req, res, next) => {
   }
 });
 
-const upsertThresholdMaster = async ({
-  department,
-  subDepartment,
-  inputScreen,
-  machineName,
-  inputField,
-  conditionLevel,
-  plusThreshold,
-  minusThreshold,
-  actualValue,
-  isActive,
-  approvalL1UserIds = [],
-  approvalL2UserIds = [],
-  approvalL3UserIds = []
-}) => {
-  await ensureThresholdMasterApprovalColumns();
-  await ensureThresholdMasterL1ApproverTable();
-  await ensureThresholdMasterL2ApproverTable();
-  await ensureThresholdMasterL3ApproverTable();
-  const normalizedMachineName = machineName && String(machineName).trim() !== '' ? String(machineName).trim() : null;
-  if (!normalizedMachineName) {
-    const err = new Error('machine_name is required for threshold_master');
-    err.statusCode = 400;
-    throw err;
-  }
-  const primaryApprovalL1UserId = approvalL1UserIds[0] ?? null;
-  const primaryApprovalL2UserId = approvalL2UserIds[0] ?? null;
-  const primaryApprovalL3UserId = approvalL3UserIds[0] ?? null;
-  const updateResult = await client.query(
-    `UPDATE ticketing_system.threshold_master
-     SET management_field = $1,
-         erp_product_code = $2,
-         parameter_name = $5,
-         threshold_value = $7,
-         condition_level = $6,
-         plus_threshold = $7,
-         minus_threshold = $8,
-         actual_value = $9,
-         is_active = $10,
-         approval_l1_user_id = $11,
-         approval_l2_user_id = $12,
-         approval_l3_user_id = $13,
-         updated_at = NOW()
-     WHERE lower(trim(department)) = lower(trim($1))
-       AND lower(trim(sub_department)) = lower(trim($2))
-       AND lower(trim(input_screen)) = lower(trim($3))
-       AND lower(trim(machine_name)) = lower(trim($4))
-       AND lower(trim(input_field)) = lower(trim($5))
-     RETURNING *`,
-    [department, subDepartment, inputScreen, normalizedMachineName, inputField, conditionLevel, plusThreshold, minusThreshold, actualValue ?? null, isActive, primaryApprovalL1UserId, primaryApprovalL2UserId, primaryApprovalL3UserId]
-  );
-
-  if (updateResult.rowCount > 0) {
-    await syncThresholdMasterL1Approvers(updateResult.rows[0].id, approvalL1UserIds);
-    await syncThresholdMasterL2Approvers(updateResult.rows[0].id, approvalL2UserIds);
-    await syncThresholdMasterL3Approvers(updateResult.rows[0].id, approvalL3UserIds);
-    return getThresholdByIdWithApprovers(updateResult.rows[0].id);
-  }
-
-  const legacyUpdateResult = await client.query(
-    `UPDATE ticketing_system.threshold_master
-     SET department = COALESCE(department, $1),
-         sub_department = COALESCE(sub_department, $2),
-         input_screen = COALESCE(input_screen, $3),
-         input_field = COALESCE(input_field, $5),
-         threshold_value = $7,
-         condition_level = $6,
-         plus_threshold = $7,
-         minus_threshold = $8,
-         actual_value = $9,
-         is_active = $10,
-         approval_l1_user_id = $11,
-         approval_l2_user_id = $12,
-         approval_l3_user_id = $13,
-         updated_at = NOW()
-     WHERE lower(trim(management_field)) = lower(trim($1))
-       AND lower(trim(erp_product_code)) = lower(trim($2))
-       AND lower(trim(machine_name)) = lower(trim($4))
-       AND lower(trim(parameter_name)) = lower(trim($5))
-     RETURNING *`,
-    [department, subDepartment, inputScreen, normalizedMachineName, inputField, conditionLevel, plusThreshold, minusThreshold, actualValue ?? null, isActive, primaryApprovalL1UserId, primaryApprovalL2UserId, primaryApprovalL3UserId]
-  );
-
-  if (legacyUpdateResult.rowCount > 0) {
-    await syncThresholdMasterL1Approvers(legacyUpdateResult.rows[0].id, approvalL1UserIds);
-    await syncThresholdMasterL2Approvers(legacyUpdateResult.rows[0].id, approvalL2UserIds);
-    await syncThresholdMasterL3Approvers(legacyUpdateResult.rows[0].id, approvalL3UserIds);
-    return getThresholdByIdWithApprovers(legacyUpdateResult.rows[0].id);
-  }
-
-  try {
-    const insertResult = await client.query(
-      `INSERT INTO ticketing_system.threshold_master
-       (management_field, erp_product_code, parameter_name, threshold_value, department, sub_department, input_screen, machine_name, input_field, condition_level, plus_threshold, minus_threshold, actual_value, is_active, approval_l1_user_id, approval_l2_user_id, approval_l3_user_id, created_at, updated_at)
-       VALUES ($1, $2, $5, $7, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
-       RETURNING *`,
-      [department, subDepartment, inputScreen, normalizedMachineName, inputField, conditionLevel, plusThreshold, minusThreshold, actualValue ?? null, isActive, primaryApprovalL1UserId, primaryApprovalL2UserId, primaryApprovalL3UserId]
-    );
-    await syncThresholdMasterL1Approvers(insertResult.rows[0].id, approvalL1UserIds);
-    await syncThresholdMasterL2Approvers(insertResult.rows[0].id, approvalL2UserIds);
-    await syncThresholdMasterL3Approvers(insertResult.rows[0].id, approvalL3UserIds);
-    return getThresholdByIdWithApprovers(insertResult.rows[0].id);
-  } catch (error) {
-    if (error?.code !== '23505') throw error;
-
-    const retryLegacyUpdate = await client.query(
-      `UPDATE ticketing_system.threshold_master
-       SET department = COALESCE(department, $1),
-           sub_department = COALESCE(sub_department, $2),
-           input_screen = COALESCE(input_screen, $3),
-           input_field = COALESCE(input_field, $5),
-           threshold_value = $7,
-           condition_level = $6,
-           plus_threshold = $7,
-           minus_threshold = $8,
-           actual_value = $9,
-           is_active = $10,
-           approval_l1_user_id = $11,
-           approval_l2_user_id = $12,
-           approval_l3_user_id = $13,
-           updated_at = NOW()
-       WHERE lower(trim(management_field)) = lower(trim($1))
-         AND lower(trim(erp_product_code)) = lower(trim($2))
-         AND lower(trim(machine_name)) = lower(trim($4))
-         AND lower(trim(parameter_name)) = lower(trim($5))
-       RETURNING *`,
-      [department, subDepartment, inputScreen, normalizedMachineName, inputField, conditionLevel, plusThreshold, minusThreshold, actualValue ?? null, isActive, primaryApprovalL1UserId, primaryApprovalL2UserId, primaryApprovalL3UserId]
-    );
-
-    if (retryLegacyUpdate.rowCount > 0) {
-      await syncThresholdMasterL1Approvers(retryLegacyUpdate.rows[0].id, approvalL1UserIds);
-      await syncThresholdMasterL2Approvers(retryLegacyUpdate.rows[0].id, approvalL2UserIds);
-      await syncThresholdMasterL3Approvers(retryLegacyUpdate.rows[0].id, approvalL3UserIds);
-      return getThresholdByIdWithApprovers(retryLegacyUpdate.rows[0].id);
-    }
-    throw error;
-  }
-};
-
-const getThresholdMapFromMaster = async ({
+const getValueThresholdRuleMap = async ({
   department,
   subDepartment,
   inputScreen,
@@ -2117,26 +1688,37 @@ const getThresholdMapFromMaster = async ({
   }
 
   const result = await client.query(
-    `SELECT input_field, plus_threshold, minus_threshold, actual_value, condition_level, machine_name
-     FROM ticketing_system.threshold_master
+    `SELECT field, typical_value, plus_value, minus_value, comparison_mode, value_mode, criticality, l1_user_id, l1_user_name
+     FROM ticketing_system.value_threshold_rules
      WHERE department = $1
        AND sub_department = $2
-       AND input_screen = $3
-       AND input_field = ANY($4::text[])
+       AND notebook = $3
+       AND field = ANY($4::text[])
        AND is_active = true
-       AND ($5::text IS NULL OR machine_name = $5 OR machine_name IS NULL)
-     ORDER BY CASE WHEN machine_name = $5 THEN 0 ELSE 1 END`,
-    [department, subDepartment, inputScreen, normalizedParameters, machineName || null]
+       AND l1_user_id IS NOT NULL
+     ORDER BY id DESC`,
+    [department, subDepartment, inputScreen, normalizedParameters]
   );
 
   const thresholdMap = {};
   for (const row of result.rows) {
-    if (thresholdMap[row.input_field]) continue;
-    thresholdMap[row.input_field] = {
-      plus_threshold: row.plus_threshold,
-      minus_threshold: row.minus_threshold,
-      actual_value: row.actual_value,
-      condition_level: row.condition_level
+    if (thresholdMap[row.field]) continue;
+    // Keyed to match what evaluateThresholdBreach/analyzeViolations actually
+    // read (condition_level/actual_value/plus_threshold/minus_threshold) -
+    // this used to hand back the raw value_threshold_rules column names
+    // (typical_value/plus_value/minus_value, no condition_level at all), so
+    // evaluateThresholdBreach always read undefined thresholds and every
+    // POST /operator-tickets call reported "No violations found" even for a
+    // genuine breach.
+    thresholdMap[row.field] = {
+      actual_value: row.typical_value,
+      plus_threshold: row.plus_value,
+      minus_threshold: row.minus_value,
+      condition_level: row.comparison_mode,
+      value_mode: row.value_mode,
+      criticality: row.criticality,
+      l1_user_id: row.l1_user_id,
+      l1_user_name: row.l1_user_name
     };
   }
   return thresholdMap;
@@ -2360,12 +1942,12 @@ const getThresholdMapFromMaster = async ({
 
 router.get('/', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
-    await ensureNotificationRecipientColumn();
     await ensureDelegationsTable();
+    // Reporting-hierarchy visibility (below) walks reports_to_user_id, so make
+    // sure the column exists before the recursive scope subquery references it.
 
     const page = parseInt(req.query.page) || 1;
-    const limit = 6; 
+    const limit = 6;
     const offset = (page - 1) * limit;
     const { status, severity, machine, start_date, end_date } = req.query;
 
@@ -2421,6 +2003,14 @@ router.get('/', async (req, res, next) => {
     const viewerUserId = canViewAllTickets ? null : parsePositiveInt(req.user?.id);
     if (viewerUserId) {
       values.push(viewerUserId);
+      // A supervisor must see every ticket owned by anyone below them in the
+      // reporting hierarchy (Owned/Mapped tabs), regardless of the ticket's
+      // status (Open/In Progress/Submit) and regardless of whether its
+      // approval_lN_user_ids arrays were ever populated. The reports_to_user_id
+      // chain is the source of truth: this recursive subquery collects every
+      // descendant of the viewer, so any ticket whose owner (the L1 operator)
+      // rolls up to this viewer is visible. The approval-array and delegation
+      // checks are kept as additional inclusion paths.
       where.push(`(
         ot.user_id = $${values.length}
         OR $${values.length} = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
@@ -2429,10 +2019,20 @@ router.get('/', async (req, res, next) => {
         OR $${values.length} = ANY(COALESCE(ot.approval_l4_user_ids, ARRAY[]::int[]))
         OR $${values.length} = ANY(COALESCE(ot.approval_l5_user_ids, ARRAY[]::int[]))
         OR ot.user_id IN (
+          WITH RECURSIVE reportees AS (
+            SELECT id FROM users.user_details WHERE reports_to_user_id = $${values.length}
+            UNION
+            SELECT u.id FROM users.user_details u
+            JOIN reportees r ON u.reports_to_user_id = r.id
+          )
+          SELECT id FROM reportees
+        )
+        OR ot.user_id IN (
           SELECT owner_user_id FROM users.delegations
           WHERE delegate_user_id = $${values.length}
             AND from_date <= CURRENT_DATE
             AND to_date >= CURRENT_DATE
+            AND revoked_at IS NULL
         )
       )`);
     }
@@ -2447,6 +2047,7 @@ router.get('/', async (req, res, next) => {
           SELECT owner_user_id FROM users.delegations
           WHERE from_date <= CURRENT_DATE
             AND to_date >= CURRENT_DATE
+            AND revoked_at IS NULL
         )`
       : viewerUserId
         ? `(ot.user_id != ${viewerUserId} AND ot.user_id IN (
@@ -2454,6 +2055,7 @@ router.get('/', async (req, res, next) => {
             WHERE delegate_user_id = ${viewerUserId}
               AND from_date <= CURRENT_DATE
               AND to_date >= CURRENT_DATE
+              AND revoked_at IS NULL
           ))`
         : 'false';
 
@@ -2469,6 +2071,24 @@ router.get('/', async (req, res, next) => {
           ot.severity,
           ot.status,
           ot.created_at,
+          ot.ticket_type,
+          ot.ticket_kind,
+          ot.violation_details,
+          ot.violation_details->>'entry_id' AS entry_id,
+          ot.tat_current_level,
+          (
+            SELECT string_agg(ud.full_name, ', ' ORDER BY ud.full_name)
+            FROM users.user_details ud
+            WHERE ud.id = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
+          ) AS assigned_user_names,
+          (
+            SELECT tl.created_at
+            FROM ticketing_system.ticket_logs tl
+            WHERE tl.ticket_id = ot.ticket_id
+              AND UPPER(tl.action) IN ('APPROVED', 'ACKNOWLEDGED', 'SUBMITTED', 'RESUBMITTED', 'REJECTED')
+            ORDER BY tl.created_at DESC
+            LIMIT 1
+          ) AS resolved_at,
           ${isDelegatedExpr} AS is_delegated,
           COUNT(*) OVER()::int AS total_count,
           COALESCE(
@@ -2497,7 +2117,11 @@ router.get('/', async (req, res, next) => {
           ot.threshold_value,
           ot.severity,
           ot.status,
-          ot.created_at
+          ot.created_at,
+          ot.ticket_type,
+          ot.ticket_kind,
+          ot.violation_details,
+          ot.tat_current_level
       ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\\D', '', 'g'), '')::bigint DESC, ot.created_at DESC;
     `;
 
@@ -2523,7 +2147,6 @@ router.get('/', async (req, res, next) => {
 
 router.get('/submission-ticketing', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
     const offset = (page - 1) * limit;
@@ -2585,6 +2208,162 @@ router.get('/submission-ticketing', async (req, res, next) => {
          COUNT(*) OVER()::int AS total_count
        FROM ticketing_system.operator_tickets ot
        LEFT JOIN users.user_details ud ON ud.id = ot.user_id
+       WHERE ${where.join(' AND ')}
+       ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\\D', '', 'g'), '')::bigint DESC, ot.created_at DESC
+       LIMIT $${limitIndex}
+       OFFSET $${offsetIndex}`,
+      values
+    );
+
+    const totalCount = result.rows[0]?.total_count || 0;
+    return res.status(200).json({
+      tickets: result.rows,
+      data: result.rows,
+      pagination: {
+        totalItems: totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+        currentPage: page,
+        itemsPerPage: limit
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PP_BATCH_INCOMPLETE tickets - the frontend has called this exact path
+// (getProcessParameterTickets in operatorApi.js) since before this route
+// existed, silently 404ing every time and leaving the Process Parameter tab
+// on both the operator dashboard and SupervisorDashboard's L1 view always
+// empty. Mirrors /submission-ticketing's shape/filters/pagination, scoped by
+// the same viewer-visibility rule as the base '/' route (admin/L5 see
+// everything, everyone else only tickets naming them as an approver at some
+// level or as the ticket's owner).
+router.get('/process-parameter-ticketing', async (req, res, next) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
+    const offset = (page - 1) * limit;
+
+    const status = String(req.query.status || '').trim();
+    const severity = String(req.query.severity || '').trim();
+    const startDate = String(req.query.start_date || '').trim();
+    const endDate = String(req.query.end_date || '').trim();
+
+    const values = [];
+    const where = [`ot.ticket_type = 'PP_BATCH_INCOMPLETE'`];
+
+    if (status && status.toLowerCase() !== 'all') {
+      values.push(status);
+      where.push(`ot.status = $${values.length}`);
+    }
+    if (severity && severity.toLowerCase() !== 'all') {
+      values.push(severity);
+      where.push(`ot.severity = $${values.length}`);
+    }
+    if (startDate) {
+      values.push(startDate);
+      where.push(`ot.created_at::date >= $${values.length}::date`);
+    }
+    if (endDate) {
+      values.push(endDate);
+      where.push(`ot.created_at::date <= $${values.length}::date`);
+    }
+
+    const requesterEmployeeId = String(req.user?.employee_id || '').trim().toUpperCase();
+    const requesterRole = String(req.user?.role || '').trim().toLowerCase();
+    const requesterLevel = String(req.user?.level || '').trim().toUpperCase();
+    const canViewAllTickets =
+      requesterEmployeeId === 'ADMIN001' ||
+      requesterRole === 'admin' ||
+      requesterRole === 'super admin' ||
+      requesterRole === 'superadmin' ||
+      requesterLevel === 'L5';
+
+    const viewerUserId = canViewAllTickets ? null : parsePositiveInt(req.user?.id);
+    if (viewerUserId) {
+      values.push(viewerUserId);
+      where.push(`(
+        ot.user_id = $${values.length}
+        OR $${values.length} = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
+        OR $${values.length} = ANY(COALESCE(ot.approval_l2_user_ids, ARRAY[]::int[]))
+        OR $${values.length} = ANY(COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[]))
+        OR $${values.length} = ANY(COALESCE(ot.approval_l4_user_ids, ARRAY[]::int[]))
+        OR $${values.length} = ANY(COALESCE(ot.approval_l5_user_ids, ARRAY[]::int[]))
+        OR ot.user_id IN (
+          SELECT owner_user_id FROM users.delegations
+          WHERE delegate_user_id = $${values.length}
+            AND from_date <= CURRENT_DATE
+            AND to_date >= CURRENT_DATE
+            AND revoked_at IS NULL
+        )
+      )`);
+    }
+
+    values.push(limit);
+    const limitIndex = values.length;
+    values.push(offset);
+    const offsetIndex = values.length;
+
+    const result = await client.query(
+      `SELECT
+         ot.ticket_id,
+         ot.machine_name,
+         ot.parameter_name,
+         ot.severity,
+         ot.status,
+         ot.created_at,
+         ot.tat_current_level,
+         ot.violation_details,
+         ot.violation_details->>'entry_id' AS entry_id,
+         ot.violation_details->>'first_created_at' AS entry_created_at,
+         ot.approval_l1_user_ids,
+         ot.approval_l2_user_ids,
+         ot.approval_l3_user_ids,
+         ot.approval_l4_user_ids,
+         ot.approval_l5_user_ids,
+         (
+           -- Whoever is assigned to actually resolve/approve it at the tier
+           -- it's sitting at right now (PP escalates L1 -> L4 directly), not
+           -- always L1's original assignees - once it's at L4, the L1 names
+           -- are no longer who owns the next action on it.
+           SELECT string_agg(ud.full_name, ', ' ORDER BY ud.full_name)
+           FROM users.user_details ud
+           WHERE ud.id = ANY(COALESCE(
+             CASE UPPER(COALESCE(ot.tat_current_level, 'L1'))
+               WHEN 'L2' THEN ot.approval_l2_user_ids
+               WHEN 'L3' THEN ot.approval_l3_user_ids
+               WHEN 'L4' THEN ot.approval_l4_user_ids
+               WHEN 'L5' THEN ot.approval_l5_user_ids
+               ELSE ot.approval_l1_user_ids
+             END,
+             ARRAY[]::int[]
+           ))
+         ) AS assigned_user_names,
+         (
+           SELECT MAX(v.value::numeric)
+           FROM jsonb_each_text(COALESCE(ot.violation_details->'screen_thresholds', '{}'::jsonb)) v
+         ) AS completion_time_provided_hours,
+         GREATEST(
+           0,
+           EXTRACT(EPOCH FROM (NOW() - NULLIF(ot.violation_details->>'first_created_at', '')::timestamptz)) / 3600
+         )::numeric(10,1) AS time_lagged_hours,
+         resolution_log.resolved_at,
+         COUNT(*) OVER()::int AS total_count
+       FROM ticketing_system.operator_tickets ot
+       LEFT JOIN LATERAL (
+         -- ACTUAL RES TIME is when the ticket was last actually actioned -
+         -- this route (PP tickets specifically) never selected it at all, so
+         -- every PP ticket showed "--:--" for Actual Res Time and Resolution
+         -- Gap regardless of whether L1 had submitted it, matching the same
+         -- fix already applied to /supervisor-tickets/tickets.
+         SELECT tl.created_at AS resolved_at
+         FROM ticketing_system.ticket_logs tl
+         WHERE tl.ticket_id = ot.ticket_id
+           AND UPPER(tl.action) IN ('APPROVED', 'ACKNOWLEDGED', 'SUBMITTED', 'RESUBMITTED', 'REJECTED')
+         ORDER BY tl.created_at DESC
+         LIMIT 1
+       ) resolution_log ON true
        WHERE ${where.join(' AND ')}
        ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\\D', '', 'g'), '')::bigint DESC, ot.created_at DESC
        LIMIT $${limitIndex}
@@ -2672,8 +2451,7 @@ router.get('/submission-ticketing', async (req, res, next) => {
  */
 router.get('/:id/timeline', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
-    const ticketId = String(req.params.id || '').trim();
+    const ticketId = await resolveStoredTicketId(String(req.params.id || '').trim());
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
 
     const ticketRes = await client.query(
@@ -2694,7 +2472,22 @@ router.get('/:id/timeline', async (req, res, next) => {
       [ticketId]
     );
     if (!ticketRes.rows.length) return res.status(404).json({ message: 'Ticket not found' });
-    const ticket = ticketRes.rows[0];
+    let ticket = ticketRes.rows[0];
+
+    // Open/Reopened -> In Progress happens the moment someone actually opens
+    // the ticket's own detail page - this timeline endpoint is the one call
+    // every detail-page load makes unconditionally (unlike the ticket-by-id
+    // fetch, which is skipped whenever the ticket's already in the caller's
+    // local list), so it's the reliable place to record "viewed." This only
+    // touches status, not tat_current_level - Fix & Resubmit still shows
+    // correctly off tat_current_level='L1', independent of this status text.
+    if (['open', 'reopened'].includes(String(ticket.status || '').trim().toLowerCase())) {
+      const viewedResult = await client.query(
+        `UPDATE ticketing_system.operator_tickets SET status = 'In Progress' WHERE ticket_id = $1 RETURNING status`,
+        [ticketId]
+      );
+      ticket = { ...ticket, status: viewedResult.rows[0]?.status || 'In Progress' };
+    }
 
     const logRes = await client.query(
       `SELECT action, performed_by, role, created_at
@@ -2722,25 +2515,36 @@ router.get('/:id/timeline', async (req, res, next) => {
         null;
     }
 
+    // Only include events that actually happened - this used to fill gaps with
+    // invented sample copy ("vibration sensor", "Maintenance Team A (Technician:
+    // Surya Prakash)", a canned bearing/lubricant comment) whenever there was no
+    // real ticket_logs row or violation_details comment yet, which showed fabricated
+    // history on every ticket that hadn't been touched since creation.
     const timeline = [
       {
         at: ticket.created_at,
         title: 'Ticket Created',
-        detail: `Automated system alert triggered by vibration sensor ${ticket.machine_name || 'N/A'}`
-      },
-      {
-        at: assignedLog?.created_at || ticket.created_at,
-        title: 'Assigned to maintenance',
-        detail: assignedLog?.performed_by
-          ? `Ticket assigned by ${assignedLog.performed_by}`
-          : `Ticket assigned to Maintenance Team A (Technician : ${ticket.user_name || 'Surya Prakash'})`
-      },
-      {
-        at: submittedLog?.created_at || ticket.created_at,
-        title: 'L1 Comment',
-        detail: l1Comment || 'Check the lubricant levels. It seems the main bearing is overheating. Need to replace the grease and re-test the vibration levels. proceed with caution.'
+        detail: `Ticket raised for ${ticket.machine_name || ticket.user_name || 'the assigned owner'}`
       }
     ];
+
+    if (assignedLog) {
+      timeline.push({
+        at: assignedLog.created_at,
+        title: 'Assigned',
+        detail: assignedLog.performed_by
+          ? `Ticket assigned by ${assignedLog.performed_by}`
+          : 'Ticket assigned'
+      });
+    }
+
+    if (submittedLog || l1Comment) {
+      timeline.push({
+        at: submittedLog?.created_at || ticket.created_at,
+        title: 'L1 Comment',
+        detail: l1Comment || `Ticket ${String(submittedLog?.action || '').toLowerCase() || 'updated'} by L1`
+      });
+    }
 
     return res.status(200).json({
       ticket_id: ticket.ticket_id,
@@ -2754,7 +2558,7 @@ router.get('/:id/timeline', async (req, res, next) => {
 
 router.get('/:id', async (req, res, next) => {
   try {
-    const ticketId = req.params.id; // accept alphanumeric IDs
+    const ticketId = await resolveStoredTicketId(req.params.id); // accept alphanumeric IDs
 
     const query = `
       SELECT
@@ -2767,7 +2571,17 @@ router.get('/:id', async (req, res, next) => {
           ot.threshold_value,
           ot.severity,
           ot.status,
-          ot.created_at
+          ot.created_at,
+          ot.ticket_type,
+          ot.ticket_kind,
+          ot.violation_details,
+          ot.violation_details->>'entry_id' AS entry_id,
+          ot.tat_current_level,
+          (
+            SELECT string_agg(ud.full_name, ', ' ORDER BY ud.full_name)
+            FROM users.user_details ud
+            WHERE ud.id = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
+          ) AS assigned_user_names
 
       FROM ticketing_system.operator_tickets ot
       WHERE ot.ticket_id = $1
@@ -2780,7 +2594,22 @@ router.get('/:id', async (req, res, next) => {
       return res.status(404).json({ message: 'Ticket not found' });
     }
 
-    res.status(200).json(result.rows[0]);
+    const ticket = result.rows[0];
+    // Live, not the frozen-at-creation snapshot - so the operator sees which
+    // departments are ACTUALLY still missing right now, including any they
+    // (or another department) already fixed and saved since this ticket was
+    // raised or last submitted.
+    if (ticket.ticket_kind === 'pp_batch' || ticket.ticket_type === 'PP_BATCH_INCOMPLETE') {
+      const { getPpBatchCompletionForEntryId } = require('./submittedNotebooks.routes');
+      const { completedScreens, missingScreens } = await getPpBatchCompletionForEntryId(ticket.entry_id);
+      ticket.violation_details = {
+        ...(ticket.violation_details || {}),
+        completed_screens: completedScreens,
+        missing_screens: missingScreens,
+      };
+    }
+
+    res.status(200).json(ticket);
   } catch (err) {
     next(err);
   }
@@ -2843,10 +2672,24 @@ router.get('/:id', async (req, res, next) => {
  *       500:
  *         description: Internal server error
  */
+// Backstops this route's own check-then-insert dedup (the "same entry
+// re-triggering the same breach" guard below, a few hundred lines down) -
+// same reasoning as the PP/Wheel Change Approval unique indexes. Scoped to
+// rows that actually supplied entry_id, matching that guard's own
+// `if (normalizedEntryId)` condition - callers without one intentionally get
+// no dedup at all today, so this shouldn't start enforcing one for them.
+const ensureValueThresholdTicketIndex = async () => {
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_value_threshold_open_uq
+    ON ticketing_system.operator_tickets (machine_name, (violation_details->>'entry_id'))
+    WHERE ticket_type = 'VALUE_THRESHOLD' AND status <> 'Closed'
+      AND NULLIF(violation_details->>'entry_id', '') IS NOT NULL
+  `);
+};
+
 router.post('/', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
-    await ensureNotificationRecipientColumn();
+    await ensureValueThresholdTicketIndex();
     const {
       user_id,
       user_name,
@@ -2858,13 +2701,15 @@ router.post('/', async (req, res, next) => {
       sub_department,
       input_screen,
       management_field,
-      erp_product_code
+      erp_product_code,
+      entry_id
     } = req.body;
 
     const normalizedParameterNames = normalizeParameterNames(parameter_name);
     // Backward-compat alias: older runtime snapshots may still reference this identifier.
     const normalizedParameterNamesAll = normalizedParameterNames;
     const normalizedActualValue = parseMaybeJsonObject(actual_value);
+    const normalizedEntryId = String(entry_id || '').trim() || null;
     const normalizedThresholdValue = parseMaybeJsonObject(threshold_value);
 
     if (!machine_name || !parameter_name || !actual_value) {
@@ -2899,7 +2744,7 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ message: 'user_id or user_name is required (or login user context)' });
     }
 
-    const masterThresholds = await getThresholdMapFromMaster({
+    const masterThresholds = await getValueThresholdRuleMap({
       department: department || management_field,
       subDepartment: sub_department || erp_product_code,
       inputScreen: input_screen,
@@ -2907,28 +2752,25 @@ router.post('/', async (req, res, next) => {
       parameterName: normalizedParameterNames
     });
 
-    const fallbackRules = normalizeThresholdRules(normalizedThresholdValue);
-    const effectiveThresholds = Object.keys(masterThresholds).length ? masterThresholds : fallbackRules;
-    const thresholdApprovers = await getThresholdApproversFromMaster({
-      department: department || management_field,
-      subDepartment: sub_department || erp_product_code,
-      inputScreen: input_screen,
-      machineName: machine_name,
-      parameterName: normalizedParameterNames
-    });
-    const approvalL1UserIds = thresholdApprovers.approval_l1_user_ids || [];
+    const effectiveThresholds = masterThresholds;
+    const l1UserIds = Array.from(new Set(
+      Object.values(masterThresholds)
+        .map((rule) => Number(rule.l1_user_id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    ));
+    const approvalL1UserIds = l1UserIds;
     const escalationChain = await resolveTicketEscalationChain(assignedUserId, {
-      l2: thresholdApprovers.approval_l2_user_ids || [],
-      l3: thresholdApprovers.approval_l3_user_ids || [],
+      l2: approvalL1UserIds,
+      l3: []
     });
     const approvalL2UserIds = escalationChain.l2;
     const approvalL3UserIds = escalationChain.l3;
     const approvalL4UserIds = escalationChain.l4;
     const approvalL5UserIds = escalationChain.l5;
 
-    if (!effectiveThresholds) {
+    if (!effectiveThresholds || !Object.keys(effectiveThresholds).length) {
       return res.status(400).json({
-        message: 'threshold_value missing and no threshold found in threshold_master'
+        message: 'No active value threshold found for this constraint'
       });
     }
 
@@ -2943,33 +2785,76 @@ router.post('/', async (req, res, next) => {
         message: 'No violations found. Ticket requires null actual values or threshold breaches.'
       });
     }
+
+    // Same entry re-triggering the same breach (double submit, retry, accidental
+    // double-click) must not raise a second ticket - only when the caller
+    // actually supplied entry_id, since older callers without it fall back to
+    // no dedupe rather than colliding on machine_name/parameter_name alone
+    // (which would wrongly merge two genuinely different entries).
+    if (normalizedEntryId) {
+      const existingTicket = await client.query(
+        `SELECT ticket_id FROM ticketing_system.operator_tickets
+         WHERE ticket_type = 'VALUE_THRESHOLD'
+           AND machine_name = $1
+           AND (violation_details->>'entry_id') = $2
+           AND status <> 'Closed'
+         LIMIT 1`,
+        [machine_name, normalizedEntryId]
+      );
+      if (existingTicket.rows[0]?.ticket_id) {
+        return res.status(200).json({
+          message: 'Ticket already open for this entry',
+          ticket: { ticket_id: existingTicket.rows[0].ticket_id }
+        });
+      }
+    }
+
     const severity = deriveSeverity(violationDetails);
 
+    const ticketId = await generateTicketId(client);
     const insertQuery = `
       INSERT INTO ticketing_system.operator_tickets
-      (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids)
-      VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3, $4, $5, $6, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, $11::jsonb, $12::int[], $13::int[], $14::int[], $15::int[], $16::int[])
+      (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Open', CURRENT_TIMESTAMP, $9, $10, $11, 'VALUE_THRESHOLD', 'value_threshold', $12::jsonb, $13::int[], $14::int[], $15::int[], $16::int[], $17::int[])
       RETURNING *;
     `;
 
-    const result = await client.query(insertQuery, [
-      assignedUserId,
-      assignedUserName,
-      machine_name,
-      JSON.stringify(normalizedParameterNames),
-      JSON.stringify(normalizedActualValue),
-      JSON.stringify(effectiveThresholds),
-      severity,
-      management_field || null,
-      erp_product_code || null,
-      ticketReason,
-      JSON.stringify(violationDetails),
-      approvalL1UserIds,
-      approvalL2UserIds,
-      approvalL3UserIds,
-      approvalL4UserIds,
-      approvalL5UserIds
-    ]);
+    let result;
+    try {
+      result = await client.query(insertQuery, [
+        ticketId,
+        assignedUserId,
+        assignedUserName,
+        machine_name,
+        JSON.stringify(normalizedParameterNames),
+        JSON.stringify(normalizedActualValue),
+        JSON.stringify(effectiveThresholds),
+        severity,
+        management_field || null,
+        erp_product_code || null,
+        ticketReason,
+        JSON.stringify({ ...violationDetails, entry_id: normalizedEntryId }),
+        approvalL1UserIds,
+        approvalL2UserIds,
+        approvalL3UserIds,
+        approvalL4UserIds,
+        approvalL5UserIds
+      ]);
+    } catch (error) {
+      // 23505 = operator_tickets_value_threshold_open_uq - lost a race with
+      // another request that inserted this exact entry_id's ticket first.
+      if (error?.code !== '23505') throw error;
+      const winner = await client.query(
+        `SELECT ticket_id FROM ticketing_system.operator_tickets
+         WHERE ticket_type = 'VALUE_THRESHOLD' AND machine_name = $1 AND (violation_details->>'entry_id') = $2 AND status <> 'Closed'
+         LIMIT 1`,
+        [machine_name, normalizedEntryId]
+      );
+      return res.status(200).json({
+        message: 'Ticket already open for this entry',
+        ticket: { ticket_id: winner.rows[0]?.ticket_id }
+      });
+    }
 
     const ticket = result.rows[0];
     const approverLevels = [
@@ -3004,8 +2889,6 @@ router.post('/', async (req, res, next) => {
 router.post('/generate', async (req, res, next) => {
   let transactionStarted = false;
   try {
-    await ensureOperatorTicketApprovalColumns();
-    await ensureNotificationRecipientColumn();
     const tickets = Array.isArray(req.body?.tickets) ? req.body.tickets : [];
 
     if (!tickets.length) {
@@ -3030,7 +2913,8 @@ router.post('/generate', async (req, res, next) => {
         sub_department = null,
         input_screen = null,
         management_field = null,
-        erp_product_code = null
+        erp_product_code = null,
+        entry_id = null
       } = item;
 
       const normalizedParameterNames = normalizeParameterNames(parameter_name);
@@ -3067,7 +2951,7 @@ router.post('/generate', async (req, res, next) => {
         throw new Error('Each ticket must include user_id or user_name (or login user context)');
       }
 
-      const masterThresholds = await getThresholdMapFromMaster({
+      const masterThresholds = await getValueThresholdRuleMap({
         department: department || management_field,
         subDepartment: sub_department || erp_product_code,
         inputScreen: input_screen,
@@ -3075,20 +2959,16 @@ router.post('/generate', async (req, res, next) => {
         parameterName: normalizedParameterNames
       });
 
-      const fallbackRules = normalizeThresholdRules(normalizedThresholdValue);
-      const effectiveThresholds = Object.keys(masterThresholds).length ? masterThresholds : fallbackRules;
-      const thresholdApprovers = await getThresholdApproversFromMaster({
-        department: department || management_field,
-        subDepartment: sub_department || erp_product_code,
-        inputScreen: input_screen,
-        machineName: machine_name,
-        parameterName: normalizedParameterNames
-      });
-      const approvalL1UserIds = thresholdApprovers.approval_l1_user_ids || [];
-      const escalationChain = await resolveTicketEscalationChain(assignedUserId, {
-        l2: thresholdApprovers.approval_l2_user_ids || [],
-        l3: thresholdApprovers.approval_l3_user_ids || [],
-      });
+      const effectiveThresholds = masterThresholds;
+    const approvalL1UserIds = Array.from(new Set(
+      Object.values(masterThresholds)
+        .map((rule) => Number(rule.l1_user_id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    ));
+    const escalationChain = await resolveTicketEscalationChain(assignedUserId, {
+      l2: approvalL1UserIds,
+      l3: []
+    });
       const approvalL2UserIds = escalationChain.l2;
       const approvalL3UserIds = escalationChain.l3;
       const approvalL4UserIds = escalationChain.l4;
@@ -3098,16 +2978,17 @@ router.post('/generate', async (req, res, next) => {
           machine_name,
           parameter_name,
           reason: 'threshold_missing',
-          message: 'No threshold found in threshold_master and no fallback threshold provided'
+          message: 'No active value threshold found for this constraint'
         });
         continue;
       }
 
-      const { ticketReason, violationDetails } = analyzeViolations(
+      const { ticketReason, violationDetails: analyzedViolationDetails } = analyzeViolations(
         normalizedParameterNames,
         normalizedActualValue,
         effectiveThresholds
       );
+      const violationDetails = { ...analyzedViolationDetails, entry_id: entry_id || null };
 
       if (!ticketReason) {
         skipped.push({
@@ -3120,12 +3001,14 @@ router.post('/generate', async (req, res, next) => {
       }
       const severity = deriveSeverity(violationDetails);
 
+      const ticketId = await generateTicketId(client);
       const result = await client.query(
         `INSERT INTO ticketing_system.operator_tickets
-         (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids)
-         VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3, $4, $5, $6, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, $11::jsonb, $12::int[], $13::int[], $14::int[], $15::int[], $16::int[])
+         (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Open', CURRENT_TIMESTAMP, $9, $10, $11, 'VALUE_THRESHOLD', 'value_threshold', $12::jsonb, $13::int[], $14::int[], $15::int[], $16::int[], $17::int[])
          RETURNING *;`,
         [
+          ticketId,
           assignedUserId,
           assignedUserName,
           machine_name,
@@ -3183,84 +3066,57 @@ router.post('/generate', async (req, res, next) => {
 
 router.get('/thresholds/list', async (req, res, next) => {
   try {
-    await ensureThresholdMasterApprovalColumns();
-    await ensureThresholdMasterL1ApproverTable();
-    await ensureThresholdMasterL2ApproverTable();
-    await ensureThresholdMasterL3ApproverTable();
-    await ensureThresholdMasterL3ApproverTable();
-    const { department, sub_department, input_screen, machine_name, status } = req.query;
+    const { department, sub_department, notebook, field, l1_user_id, status } = req.query;
     const where = [];
     const values = [];
 
     if (department) {
       values.push(department);
-      where.push(`tm.department = $${values.length}`);
+      where.push(`vt.department = $${values.length}`);
     }
     if (sub_department) {
       values.push(sub_department);
-      where.push(`tm.sub_department = $${values.length}`);
+      where.push(`vt.sub_department = $${values.length}`);
     }
-    if (input_screen) {
-      values.push(input_screen);
-      where.push(`tm.input_screen = $${values.length}`);
+    if (notebook) {
+      values.push(notebook);
+      where.push(`vt.notebook = $${values.length}`);
     }
-    if (machine_name) {
-      values.push(machine_name);
-      where.push(`tm.machine_name = $${values.length}`);
+    if (field) {
+      values.push(field);
+      where.push(`vt.field = $${values.length}`);
+    }
+    if (l1_user_id) {
+      values.push(Number(l1_user_id));
+      where.push(`vt.l1_user_id = $${values.length}`);
     }
     if (status && ['active', 'inactive'].includes(String(status).toLowerCase())) {
       values.push(String(status).toLowerCase() === 'active');
-      where.push(`tm.is_active = $${values.length}`);
+      where.push(`vt.is_active = $${values.length}`);
     }
 
     const sql = `
       SELECT
-        tm.id,
-        tm.department,
-        tm.sub_department,
-        tm.input_screen,
-        tm.machine_name,
-        tm.input_field,
-        tm.condition_level,
-        tm.plus_threshold,
-        tm.minus_threshold,
-        tm.actual_value,
-        tm.is_active,
-        COALESCE(l1.approval_l1_user_ids, ARRAY[]::int[]) AS approval_l1_user_ids,
-        COALESCE(l1.approval_l1_names, ARRAY[]::text[]) AS approval_l1_names,
-        COALESCE(l2.approval_l2_user_ids, ARRAY[]::int[]) AS approval_l2_user_ids,
-        COALESCE(l2.approval_l2_names, ARRAY[]::text[]) AS approval_l2_names,
-        COALESCE(l3.approval_l3_user_ids, ARRAY[]::int[]) AS approval_l3_user_ids,
-        COALESCE(l3.approval_l3_names, ARRAY[]::text[]) AS approval_l3_names,
-        tm.created_at,
-        tm.updated_at
-      FROM ticketing_system.threshold_master tm
-      LEFT JOIN LATERAL (
-        SELECT
-          ARRAY_AGG(u.id ORDER BY u.full_name, u.id) AS approval_l1_user_ids,
-          ARRAY_AGG(u.full_name ORDER BY u.full_name, u.id) AS approval_l1_names
-        FROM ticketing_system.threshold_master_l1_approvers a
-        JOIN users.user_details u ON u.id = a.approver_user_id
-        WHERE a.threshold_master_id = tm.id
-      ) l1 ON true
-      LEFT JOIN LATERAL (
-        SELECT
-          ARRAY_AGG(u.id ORDER BY u.full_name, u.id) AS approval_l2_user_ids,
-          ARRAY_AGG(u.full_name ORDER BY u.full_name, u.id) AS approval_l2_names
-        FROM ticketing_system.threshold_master_l2_approvers a
-        JOIN users.user_details u ON u.id = a.approver_user_id
-        WHERE a.threshold_master_id = tm.id
-      ) l2 ON true
-      LEFT JOIN LATERAL (
-        SELECT
-          ARRAY_AGG(u.id ORDER BY u.full_name, u.id) AS approval_l3_user_ids,
-          ARRAY_AGG(u.full_name ORDER BY u.full_name, u.id) AS approval_l3_names
-        FROM ticketing_system.threshold_master_l3_approvers a
-        JOIN users.user_details u ON u.id = a.approver_user_id
-        WHERE a.threshold_master_id = tm.id
-      ) l3 ON true
+        vt.id,
+        vt.department,
+        vt.sub_department,
+        vt.notebook,
+        vt.field,
+        vt.l1_user_id,
+        vt.approval_l1_user_ids,
+        vt.l1_user_name,
+        vt.criticality,
+        vt.comparison_mode,
+        vt.typical_value,
+        vt.value_mode,
+        vt.plus_value,
+        vt.minus_value,
+        vt.is_active,
+        vt.created_at,
+        vt.updated_at
+      FROM ticketing_system.value_threshold_rules vt
       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-      ORDER BY tm.id DESC
+      ORDER BY vt.id DESC
     `;
 
     const result = await client.query(sql, values);
@@ -3270,10 +3126,179 @@ router.get('/thresholds/list', async (req, res, next) => {
   }
 });
 
+router.post('/thresholds', async (req, res, next) => {
+  try {
+    rejectLegacyThresholdL2Fields(req.body || {});
+    const result = await upsertValueThresholdRule(req.body || {});
+    res.status(201).json({
+      message: 'Value threshold saved successfully',
+      threshold: result
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// The Value Threshold settings screen (ThresholdValues.js) has always called
+// these three for edit/status-toggle/delete, but none of them were ever
+// actually built here - only list/create/bulk-create existed - so every
+// edit, activate/deactivate, or delete action on an existing Value Threshold
+// row has been failing with 404 since the screen was first built. Mirrors
+// the same COALESCE-partial-update pattern already used for Submission
+// Frequency's equivalent three routes below.
+router.patch('/thresholds/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const body = req.body || {};
+    rejectLegacyThresholdL2Fields(body);
+
+    const department = body.department !== undefined ? pickDropdownValue(body.department) : undefined;
+    const subDepartment = body.sub_department !== undefined || body.subDepartment !== undefined
+      ? pickDropdownValue(body.sub_department ?? body.subDepartment)
+      : undefined;
+    // The Value Threshold form (ThresholdValues.js) submits input_screen/input_field/
+    // actual_value/plus_threshold/minus_threshold - the same external names the create
+    // route (POST /thresholds/bulk) accepts - not the internal notebook/field/
+    // typical_value/plus_value/minus_value column names this route used to require
+    // exclusively. Since none of those internal names were ever actually sent, every
+    // edit's typical value/tolerances/field/notebook silently no-opped (COALESCE just
+    // kept the existing row unchanged) while the edit still reported success.
+    const notebook = (body.notebook ?? body.input_screen ?? body.inputScreen ?? body.screen ?? body.screen_name) !== undefined
+      ? pickDropdownValue(body.notebook ?? body.input_screen ?? body.inputScreen ?? body.screen ?? body.screen_name)
+      : undefined;
+    const field = (body.field ?? body.input_field ?? body.inputField ?? body.field_name ?? body.fieldName) !== undefined
+      ? pickDropdownValue(body.field ?? body.input_field ?? body.inputField ?? body.field_name ?? body.fieldName)
+      : undefined;
+    const criticality = (body.criticality ?? body.severity ?? body.priority) !== undefined
+      ? pickDropdownValue(body.criticality ?? body.severity ?? body.priority)
+      : undefined;
+    const comparisonMode = (body.comparison_operator ?? body.comparisonOperator ?? body.condition_level ?? body.conditionLevel ?? body.comparison) !== undefined
+      ? normalizeComparisonMode(body.comparison_operator ?? body.comparisonOperator ?? body.condition_level ?? body.conditionLevel ?? body.comparison)
+      : undefined;
+    const valueMode = (body.value_mode ?? body.valueMode) !== undefined
+      ? normalizeThresholdMode(body.value_mode ?? body.valueMode)
+      : undefined;
+    const typicalValue = (body.typical_value ?? body.typicalValue ?? body.actual_value ?? body.actualValue) !== undefined
+      ? String(body.typical_value ?? body.typicalValue ?? body.actual_value ?? body.actualValue).trim()
+      : undefined;
+    const plusValue = (body.plus_value ?? body.plusValue ?? body.plus_threshold ?? body.plusThreshold) !== undefined
+      ? toNumericIfPossible(body.plus_value ?? body.plusValue ?? body.plus_threshold ?? body.plusThreshold)
+      : undefined;
+    const minusValue = (body.minus_value ?? body.minusValue ?? body.minus_threshold ?? body.minusThreshold) !== undefined
+      ? toNumericIfPossible(body.minus_value ?? body.minusValue ?? body.minus_threshold ?? body.minusThreshold)
+      : undefined;
+    const rawL1UserIds = body.approval_l1_user_ids ?? body.approvalL1UserIds;
+    const l1UserIds = Array.isArray(rawL1UserIds)
+      ? rawL1UserIds.map((value) => parsePositiveInt(value)).filter(Boolean)
+      : undefined;
+    const l1UserId = (body.l1_user_id ?? body.l1UserId) !== undefined
+      ? parsePositiveInt(body.l1_user_id ?? body.l1UserId)
+      : l1UserIds?.[0];
+    let l1UserName = body.l1_user_name !== undefined || body.l1UserName !== undefined
+      ? pickDropdownValue(body.l1_user_name ?? body.l1UserName)
+      : undefined;
+    if (l1UserId && !l1UserName) {
+      const l1User = await getUserById(l1UserId);
+      l1UserName = l1User?.full_name || l1User?.name || l1User?.employee_id || null;
+    }
+    const isActive = typeof body.is_active === 'boolean' ? body.is_active : undefined;
+
+    const result = await client.query(
+      `UPDATE ticketing_system.value_threshold_rules
+       SET department = COALESCE($1, department),
+           sub_department = COALESCE($2, sub_department),
+           notebook = COALESCE($3, notebook),
+           field = COALESCE($4, field),
+           l1_user_id = COALESCE($5, l1_user_id),
+           approval_l1_user_ids = COALESCE($6, approval_l1_user_ids),
+           l1_user_name = COALESCE($7, l1_user_name),
+           criticality = COALESCE($8, criticality),
+           comparison_mode = COALESCE($9, comparison_mode),
+           typical_value = COALESCE($10, typical_value),
+           value_mode = COALESCE($11, value_mode),
+           plus_value = COALESCE($12, plus_value),
+           minus_value = COALESCE($13, minus_value),
+           is_active = COALESCE($14, is_active),
+           updated_at = NOW()
+       WHERE id = $15
+       RETURNING *`,
+      [
+        department, subDepartment, notebook, field,
+        l1UserId, l1UserIds, l1UserName, criticality,
+        comparisonMode, typicalValue, valueMode, plusValue, minusValue,
+        isActive, id
+      ]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'Value threshold not found' });
+    }
+
+    res.status(200).json({
+      message: 'Value threshold updated successfully',
+      threshold: result.rows[0]
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/thresholds/:id/status', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body || {};
+
+    if (typeof is_active !== 'boolean') {
+      return res.status(400).json({ message: 'is_active must be boolean' });
+    }
+
+    const result = await client.query(
+      `UPDATE ticketing_system.value_threshold_rules
+       SET is_active = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [is_active, id]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'Value threshold not found' });
+    }
+
+    res.status(200).json({
+      message: `Value threshold ${is_active ? 'activated' : 'deactivated'} successfully`,
+      threshold: result.rows[0]
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/thresholds/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const result = await client.query(
+      `DELETE FROM ticketing_system.value_threshold_rules
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'Value threshold not found' });
+    }
+
+    res.status(200).json({
+      message: 'Value threshold deleted successfully',
+      threshold: result.rows[0]
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch('/submission-frequency/:id', async (req, res, next) => {
   try {
-    await ensureScreenFrequencyTable();
-
     const { id } = req.params;
     const {
       screen_name,
@@ -3283,28 +3308,8 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
       frequency,
       is_active,
       approval_l1,
-      approval_l1_name,
-      approval_l2,
-      approval_l2_name,
-      approval_l3,
-      approval_l3_name,
-      l1_tat_hours,
-      l2_tat_hours,
-      l3_tat_hours,
-      tracked_l1_user_ids,
-      input_field,
       criticality,
-      actual_value,
-      value_mode,
-      plus_threshold,
-      minus_threshold,
-      positive_tolerance_percent,
-      negative_tolerance_percent
     } = req.body || {};
-
-    const normalizedTrackedL1UserIds = Array.isArray(tracked_l1_user_ids)
-      ? tracked_l1_user_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
-      : undefined;
 
     const normalizedRange =
       range === undefined ? undefined : normalizeFrequency(range);
@@ -3319,13 +3324,6 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
         : frequency === null || frequency === ''
           ? null
           : Number(frequency);
-    const normalizedL1TatHours =
-      l1_tat_hours === undefined ? undefined : parseTatHours(l1_tat_hours);
-    const normalizedL2TatHours =
-      l2_tat_hours === undefined ? undefined : parseTatHours(l2_tat_hours);
-    const normalizedL3TatHours =
-      l3_tat_hours === undefined ? undefined : parseTatHours(l3_tat_hours);
-
     if (
       normalizedFrequency !== undefined &&
       normalizedFrequency !== null &&
@@ -3333,31 +3331,6 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
     ) {
       return res.status(400).json({ message: 'frequency must be a positive integer' });
     }
-    if (
-      l1_tat_hours !== undefined &&
-      l1_tat_hours !== null &&
-      l1_tat_hours !== '' &&
-      !normalizedL1TatHours
-    ) {
-      return res.status(400).json({ message: 'l1_tat_hours must be a positive integer' });
-    }
-    if (
-      l2_tat_hours !== undefined &&
-      l2_tat_hours !== null &&
-      l2_tat_hours !== '' &&
-      !normalizedL2TatHours
-    ) {
-      return res.status(400).json({ message: 'l2_tat_hours must be a positive integer' });
-    }
-    if (
-      l3_tat_hours !== undefined &&
-      l3_tat_hours !== null &&
-      l3_tat_hours !== '' &&
-      !normalizedL3TatHours
-    ) {
-      return res.status(400).json({ message: 'l3_tat_hours must be a positive integer' });
-    }
-
     const result = await client.query(
       `UPDATE ticketing_system.screen_submission_frequency
        SET screen_name = COALESCE($1, screen_name),
@@ -3367,25 +3340,9 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
            frequency = COALESCE($5, frequency),
            is_active = COALESCE($6, is_active),
            approval_l1 = COALESCE($7, approval_l1),
-           approval_l1_name = COALESCE($8, approval_l1_name),
-           approval_l2 = COALESCE($9, approval_l2),
-           approval_l2_name = COALESCE($10, approval_l2_name),
-           approval_l3 = COALESCE($11, approval_l3),
-           approval_l3_name = COALESCE($12, approval_l3_name),
-           l1_tat_hours = COALESCE($13, l1_tat_hours),
-           l2_tat_hours = COALESCE($14, l2_tat_hours),
-           l3_tat_hours = COALESCE($15, l3_tat_hours),
-           tracked_l1_user_ids = COALESCE($17::int[], tracked_l1_user_ids),
-           input_field = COALESCE($18, input_field),
-           criticality = COALESCE($19, criticality),
-           actual_value = COALESCE($20, actual_value),
-           value_mode = COALESCE($21, value_mode),
-           plus_threshold = COALESCE($22, plus_threshold),
-           minus_threshold = COALESCE($23, minus_threshold),
-           positive_tolerance_percent = COALESCE($24, positive_tolerance_percent),
-           negative_tolerance_percent = COALESCE($25, negative_tolerance_percent),
+           criticality = COALESCE($8, criticality),
            updated_at = NOW()
-       WHERE id = $16
+       WHERE id = $9
        RETURNING *`,
       [
         screen_name,
@@ -3395,24 +3352,8 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
         normalizedFrequency,
         is_active,
         approval_l1,
-        approval_l1_name,
-        approval_l2,
-        approval_l2_name,
-        approval_l3,
-        approval_l3_name,
-        normalizedL1TatHours,
-        normalizedL2TatHours,
-        normalizedL3TatHours,
-        id,
-        normalizedTrackedL1UserIds,
-        input_field,
         criticality,
-        actual_value,
-        value_mode,
-        plus_threshold,
-        minus_threshold,
-        positive_tolerance_percent,
-        negative_tolerance_percent
+        id
       ]
     );
 
@@ -3431,8 +3372,6 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
 
 router.patch('/submission-frequency/:id/status', async (req, res, next) => {
   try {
-    await ensureScreenFrequencyTable();
-
     const { id } = req.params;
     const { is_active } = req.body;
 
@@ -3464,8 +3403,6 @@ router.patch('/submission-frequency/:id/status', async (req, res, next) => {
 
 router.delete('/submission-frequency/:id', async (req, res, next) => {
   try {
-    await ensureScreenFrequencyTable();
-
     const { id } = req.params;
 
     const result = await client.query(
@@ -3478,6 +3415,18 @@ router.delete('/submission-frequency/:id', async (req, res, next) => {
     if (!result.rowCount) {
       return res.status(404).json({ message: 'Submission threshold not found' });
     }
+
+    // Deleting the config that raised a ticket shouldn't leave that ticket
+    // open forever with nothing behind it anymore - the requirement it was
+    // tracking no longer exists, so it's no longer actionable. Tickets carry
+    // this config's id directly (submission_frequency_config_id), so this is
+    // an exact match, not a name-based guess.
+    await client.query(
+      `UPDATE ticketing_system.operator_tickets
+       SET status = 'Closed'
+       WHERE submission_frequency_config_id = $1 AND status <> 'Closed'`,
+      [id]
+    );
 
     res.status(200).json({
       message: 'Submission threshold deleted successfully'
@@ -3600,20 +3549,19 @@ router.post('/thresholds', async (req, res, next) => {
       });
     }
 
-    const result = await upsertThresholdMaster({
+    const result = await upsertValueThresholdRule({
       department: departmentValue,
-      subDepartment: subDepartmentValue,
-      inputScreen: inputScreenValue,
-      machineName: machine_name || null,
-      inputField: inputFieldValue,
-      conditionLevel: conditionLevelValue,
-      plusThreshold: plusThresholdFinal,
-      minusThreshold: minusThresholdFinal,
-      actualValue: actualValueFinal,
-      isActive: is_active,
-      approvalL1UserIds,
-      approvalL2UserIds,
-      approvalL3UserIds
+      sub_department: subDepartmentValue,
+      notebook: inputScreenValue,
+      field: inputFieldValue,
+      l1_user_id: approvalL1UserIds[0] || null,
+      approval_l1_user_ids: approvalL1UserIds,
+      criticality: conditionLevelValue,
+      typical_value: actualValueFinal,
+      value_mode: String(req.body?.value_mode || req.body?.valueMode || 'Number'),
+      plus_value: plusThresholdFinal,
+      minus_value: minusThresholdFinal,
+      is_active,
     });
 
     await notifyThresholdApprovers({
@@ -3658,6 +3606,7 @@ router.post('/thresholds/bulk', async (req, res, next) => {
 
     const saved = [];
     for (const item of items) {
+      rejectLegacyThresholdL2Fields(item);
       const {
         department,
         sub_department,
@@ -3676,6 +3625,9 @@ router.post('/thresholds/bulk', async (req, res, next) => {
         condition_level = 'More Than',
         condition,
         conditionLevel,
+        criticality,
+        severity,
+        priority,
         plus_threshold,
         plusThreshold,
         minus_threshold,
@@ -3763,20 +3715,28 @@ router.post('/thresholds/bulk', async (req, res, next) => {
         throw err;
       }
 
-      const savedRow = await upsertThresholdMaster({
+      const savedRow = await upsertValueThresholdRule({
         department: departmentValue,
-        subDepartment: subDepartmentValue,
-        inputScreen: inputScreenValue,
-        machineName: machineNameValue,
-        inputField: inputFieldValue,
-        conditionLevel: conditionLevelValue,
-        plusThreshold: plusThresholdFinal,
-        minusThreshold: minusThresholdFinal,
-        actualValue: actualValueFinal,
-        isActive: is_active,
-        approvalL1UserIds,
-        approvalL2UserIds,
-        approvalL3UserIds
+        sub_department: subDepartmentValue,
+        notebook: inputScreenValue,
+        field: inputFieldValue,
+        l1_user_id: approvalL1UserIds[0] || null,
+        approval_l1_user_ids: approvalL1UserIds,
+        // Was wrongly set to conditionLevelValue (the comparison mode, e.g.
+        // "more_and_less_than") - every ticket raised off a bulk-saved rule
+        // showed Low criticality regardless of what was actually selected in
+        // the Value Threshold form, since deriveSeverity's rank lookup on
+        // "more_and_less_than" always misses and falls back to the deviation
+        // heuristic. criticality/severity/priority are the same field sent
+        // three ways by the frontend (see thresholdItems.push in
+        // ThresholdValues.js) - none of them were ever read here.
+        criticality: pickDropdownValue(criticality ?? severity ?? priority),
+        comparison_operator: conditionLevelValue,
+        typical_value: actualValueFinal,
+        value_mode: String(item?.value_mode || item?.valueMode || 'Number'),
+        plus_value: plusThresholdFinal,
+        minus_value: minusThresholdFinal,
+        is_active,
       });
 
       saved.push(savedRow);
@@ -3821,6 +3781,7 @@ router.post('/thresholds/upload-csv', csvUpload.single('file'), async (req, res,
 
     const saved = [];
     for (const rawRow of rows) {
+      rejectLegacyThresholdL2Fields(rawRow);
       const department = rawRow.department;
       const sub_department = rawRow.sub_department || rawRow.subDepartment;
       const input_screen = rawRow.input_screen || rawRow.inputScreen;
@@ -3916,20 +3877,19 @@ router.post('/thresholds/upload-csv', csvUpload.single('file'), async (req, res,
         throw new Error('Invalid CSV row. Required: department, sub_department, input_screen, machine_name, input_field, plus_threshold, minus_threshold');
       }
 
-      const savedRow = await upsertThresholdMaster({
+      const savedRow = await upsertValueThresholdRule({
         department,
-        subDepartment: sub_department,
-        inputScreen: input_screen,
-        machineName: machine_name || null,
-        inputField: input_field,
-        conditionLevel: condition_level,
-        plusThreshold: plus_threshold,
-        minusThreshold: minus_threshold,
-        actualValue: actual_value,
-        isActive: is_active,
-        approvalL1UserIds,
-        approvalL2UserIds,
-        approvalL3UserIds
+        sub_department,
+        notebook: input_screen,
+        field: input_field,
+        l1_user_id: approvalL1UserIds[0] || null,
+        approval_l1_user_ids: approvalL1UserIds,
+        criticality: condition_level,
+        typical_value: actual_value,
+        value_mode: String(rawRow.value_mode || rawRow.valueMode || 'Number'),
+        plus_value: plus_threshold,
+        minus_value: minus_threshold,
+        is_active,
       });
 
       saved.push(savedRow);
@@ -3951,7 +3911,7 @@ router.post('/thresholds/upload-csv', csvUpload.single('file'), async (req, res,
 
 router.put('/:id/assign', async (req, res, next) => {
   try {
-    const ticketId = req.params.id;
+    const ticketId = await resolveStoredTicketId(req.params.id);
     const { user_id } = req.body;
 
     if (!user_id) {
@@ -3986,7 +3946,7 @@ router.put('/:id/assign', async (req, res, next) => {
 
 const updateOperatorTicketStatusHandler = async (req, res, next) => {
   try {
-    const ticketId = String(req.params.id || req.body?.ticket_id || req.body?.ticketId || '').trim();
+    const ticketId = await resolveStoredTicketId(String(req.params.id || req.body?.ticket_id || req.body?.ticketId || '').trim());
     const status = normalizeTicketStatusInput(req.body?.status || req.body?.ticket_status || req.body?.ticketStatus);
 
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
@@ -4123,7 +4083,7 @@ router.get('/workflow/guide', async (req, res) => {
 router.put('/submit/:id', async (req, res, next) => {
   try {
 
-    const ticketId = req.params.id;
+    const ticketId = await resolveStoredTicketId(req.params.id);
     // Accept multiple payload aliases and persist as operator_comment.
     const operatorCommentRaw =
       req.body?.operator_comment ??
@@ -4157,16 +4117,65 @@ router.put('/submit/:id', async (req, res, next) => {
       });
     }
 
+    // L1 submitting is what actually escalates the ticket. PP Entry Threshold
+    // tickets (PP_BATCH_INCOMPLETE) have no L2/L3 configured anywhere in PP
+    // Thresholds - only L1 and L4 - matching the same pattern as PP Approval,
+    // Wheel Change Approval, and Acknowledgement, which all escalate straight
+    // to L4 too. Every other ticket type keeps going to L2 (manually
+    // configured approval_l2_user_ids first, then the submitter's real
+    // reporting-chain L2 manager). Previously this only set status='Submit'
+    // and left tat_current_level at 'L1' forever, so the ticket kept showing
+    // the L1 Fix & Resubmit action instead of the next level's review action.
+    const isPpBatchTicket = ticket.ticket_kind === 'pp_batch' || ticket.ticket_type === 'PP_BATCH_INCOMPLETE';
+
+    let nextLevel;
+    let nextApproverIds;
+    // Refreshed completed/missing screens for a PP batch ticket, merged into
+    // violation_details below - null for every other ticket kind (nothing to
+    // refresh).
+    let refreshedPpScreens = null;
+    if (isPpBatchTicket) {
+      const { getPpNotebookThresholds, getPpBatchCompletionForEntryId } = require('./submittedNotebooks.routes');
+      const notebookThresholds = await getPpNotebookThresholds();
+      const entryId = ticket.violation_details?.entry_id;
+      const { completedScreens, missingScreens } = await getPpBatchCompletionForEntryId(entryId);
+      refreshedPpScreens = { completed_screens: completedScreens, missing_screens: missingScreens };
+      // Only the screens the operator was actually asked to fix (the ticket's
+      // original overdue set) decide who reviews next - a screen that was
+      // already missing but hadn't hit its own threshold yet when this
+      // ticket was raised shouldn't newly pull in its L4 approver here.
+      const overdueScreens = Array.isArray(ticket.violation_details?.overdue_screens) && ticket.violation_details.overdue_screens.length
+        ? ticket.violation_details.overdue_screens
+        : Array.isArray(ticket.parameter_name) ? ticket.parameter_name : [];
+      const l4Set = new Set();
+      for (const label of overdueScreens) {
+        const notebookRow = notebookThresholds.get(label);
+        (Array.isArray(notebookRow?.approval_l4_user_ids) ? notebookRow.approval_l4_user_ids : [])
+          .forEach((id) => l4Set.add(Number(id)));
+      }
+      nextLevel = 'L4';
+      nextApproverIds = Array.from(l4Set).filter((id) => Number.isInteger(id) && id > 0);
+    } else {
+      const fallbackL2Ids = Array.isArray(ticket.approval_l2_user_ids) ? ticket.approval_l2_user_ids : [];
+      const hierarchyL2Ids = ticket.user_id
+        ? (await getManagerChain(ticket.user_id)).filter((manager) => String(manager.level || '').trim().toUpperCase() === 'L2').map((manager) => manager.id)
+        : [];
+      nextLevel = 'L2';
+      nextApproverIds = Array.from(new Set([...fallbackL2Ids, ...hierarchyL2Ids].map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)));
+    }
     const updateResult = await client.query(
       `UPDATE ticketing_system.operator_tickets
        SET status = 'Submit',
-           violation_details = CASE
-             WHEN $2::text IS NULL OR btrim($2::text) = '' THEN violation_details
-             ELSE COALESCE(violation_details, '{}'::jsonb) || jsonb_build_object('operator_comment', $2::text)
-           END
+           tat_current_level = $3,
+           approval_l2_user_ids = CASE WHEN $3 = 'L2' THEN $4::int[] ELSE approval_l2_user_ids END,
+           approval_l4_user_ids = CASE WHEN $3 = 'L4' THEN $4::int[] ELSE approval_l4_user_ids END,
+           violation_details =
+             COALESCE(violation_details, '{}'::jsonb)
+             || CASE WHEN $2::text IS NULL OR btrim($2::text) = '' THEN '{}'::jsonb ELSE jsonb_build_object('operator_comment', $2::text) END
+             || $5::jsonb
        WHERE ticket_id = $1
        RETURNING *`,
-      [ticketId, operatorComment]
+      [ticketId, operatorComment, nextLevel, nextApproverIds, JSON.stringify(refreshedPpScreens || {})]
     );
 
     const updatedTicket = updateResult.rows[0];
@@ -4183,7 +4192,6 @@ router.put('/submit/:id', async (req, res, next) => {
       ]
     );
 
-    await ensureTicketApprovalsTable();
     await client.query(
       `INSERT INTO ticketing_system.ticket_approvals (ticket_id, level, action_status, performed_by, role)
        VALUES ($1, 'L1', $2, $3, $4)`,
@@ -4196,9 +4204,22 @@ router.put('/submit/:id', async (req, res, next) => {
     );
     await client.query(
       `INSERT INTO ticketing_system.ticket_approvals (ticket_id, level, action_status)
-       VALUES ($1, 'L2', 'Pending')`,
-      [ticketId]
+       VALUES ($1, $2, 'Pending')`,
+      [ticketId, nextLevel]
     );
+
+    if (nextApproverIds.length) {
+      await createNotificationsForUsers(nextApproverIds, {
+        ticketId,
+        type: `TICKET_SUBMITTED_TO_${nextLevel}`,
+        category: 'Tickets',
+        priority: 'High',
+        title: `Ticket submitted for ${nextLevel} review - ${ticketId}`,
+        body: `${ticket.user_name || ticket.user_id || 'An L1 user'} submitted ticket ${ticketId}.`,
+        linkUrl: `/operator-tickets/${ticketId}`,
+        payload: { ticket_id: ticketId, level: 'L2' }
+      });
+    }
 
     sendEmail({
       to: ticket.supevisor_email || 'otpdemoin@gmail.com',
@@ -4218,8 +4239,7 @@ router.put('/submit/:id', async (req, res, next) => {
 
 router.get('/:id/approvals', async (req, res, next) => {
   try {
-    await ensureTicketApprovalsTable();
-    const ticketId = req.params.id;
+    const ticketId = await resolveStoredTicketId(req.params.id);
 
     const result = await client.query(
       `SELECT ticket_id, level, action_status, performed_by, role, created_at
@@ -4235,13 +4255,13 @@ router.get('/:id/approvals', async (req, res, next) => {
   }
 });
 
-// Value Threshold L1->L2 tickets only: one row per ticket_approvals L2 entry (not
-// one row per ticket), so a ticket that was rejected and resubmitted shows each
-// L2 pending/approved/rejected cycle as its own separate, clickable list row.
-router.get('/approvals/l2-queue', async (req, res, next) => {
+// Approval queue for threshold tickets. The same ticket_approvals pattern is
+// used at L2/L3/L4/L5, so the frontend can request the queue for the current
+// supervisor level and get one row per approval-cycle entry.
+const getApprovalQueue = async (req, res, next) => {
   try {
-    await ensureTicketApprovalsTable();
 
+    const levelFilter = String(req.query.level || 'L2').trim().toUpperCase();
     const statusFilter = String(req.query.status || '').trim();
     const severityFilter = String(req.query.severity || '').trim();
     const machineFilter = String(req.query.machine || '').trim();
@@ -4250,16 +4270,34 @@ router.get('/approvals/l2-queue', async (req, res, next) => {
     const limit = Math.max(parseInt(req.query.limit, 10) || 25, 1);
     const offset = (page - 1) * limit;
 
+    const values = [];
     const where = [
-      `ta.level = 'L2'`,
-      `COALESCE(ot.ticket_type, 'THRESHOLD') = 'THRESHOLD'`,
+      // This queue is for the L1 -> L2 -> L3... hierarchy-chain ticket types
+      // only (Value Threshold, Submission Frequency) - PP Batch/PP Approval/
+      // Wheel Change/Acknowledgement escalate straight L1 -> L4 and are
+      // already served by their own dedicated feeds. This used to compare
+      // against the literal string 'THRESHOLD', which only matched legacy
+      // rows where ticket_type had never been set (COALESCE defaulted it to
+      // 'THRESHOLD') - once ticket_type started being populated for real as
+      // 'VALUE_THRESHOLD'/'SUBMISSION_FREQUENCY', that comparison stopped
+      // matching anything and this endpoint silently returned zero rows for
+      // every real ticket, hiding the entire L2-L5 approval queue.
+      `COALESCE(ot.ticket_type, 'VALUE_THRESHOLD') IN ('VALUE_THRESHOLD', 'SUBMISSION_FREQUENCY', 'THRESHOLD')`,
       nonAcknowledgementTicketWhere
     ];
-    const values = [];
 
     if (statusFilter && statusFilter.toLowerCase() !== 'all') {
       values.push(statusFilter);
       where.push(`ta.action_status = $${values.length}`);
+    } else if (!statusFilter) {
+      // Default to just the row actually awaiting action at this level. A
+      // reject -> resubmit cycle leaves the old row UPDATEd to 'Rejected'
+      // (see the reject handler) plus a brand-new 'Pending' row from the
+      // resubmit - both are legitimate history, but this queue represents
+      // "what does this level need to act on right now," so surfacing every
+      // past cycle's row here duplicated the same ticket on screen. Explicit
+      // ?status=all still returns full history for anywhere that wants it.
+      where.push(`ta.action_status = 'Pending'`);
     }
 
     if (severityFilter && severityFilter.toLowerCase() !== 'all') {
@@ -4270,6 +4308,44 @@ router.get('/approvals/l2-queue', async (req, res, next) => {
     if (machineFilter && machineFilter.toLowerCase() !== 'all') {
       values.push(machineFilter);
       where.push(`ot.machine_name = $${values.length}`);
+    }
+
+    // Scope the queue to the reporting-manager approver for this level. Each
+    // ticket's approval_lN_user_ids is resolved from the L1 user's reporting
+    // chain (getManagerChain) at creation/escalation time, so a plain L2/L3/L4
+    // approver must only see the tickets whose matching-level approver list
+    // includes them - otherwise every L2 sees every L2 ticket. Admin / full
+    // access users (and L5, the top authority) keep the unscoped view.
+    const requesterEmployeeId = String(req.user?.employee_id || '').trim().toUpperCase();
+    const requesterRole = String(req.user?.role || '').trim().toLowerCase();
+    const requesterLevel = String(req.user?.level || '').trim().toUpperCase();
+    const canViewAllApprovals =
+      requesterEmployeeId === 'ADMIN001' ||
+      /^ADMIN\s*0*\d+$/.test(requesterEmployeeId) ||
+      ['admin', 'super admin', 'superadmin'].includes(requesterRole) ||
+      requesterLevel === 'L5';
+
+    // L5 (and admin) get the unscoped queue across every level - the
+    // frontend's "Mapped" tab for L5 always sends level=L5, but L5 is meant
+    // to oversee every level's tickets, not just the ones that literally
+    // reached the L5 approval stage. A plain L2/L3/L4 approver still only
+    // sees their own level's queue.
+    if (!canViewAllApprovals) {
+      values.push(levelFilter);
+      where.push(`ta.level = $${values.length}`);
+    }
+
+    const approverColumnByLevel = {
+      L2: 'approval_l2_user_ids',
+      L3: 'approval_l3_user_ids',
+      L4: 'approval_l4_user_ids',
+      L5: 'approval_l5_user_ids'
+    };
+    const approverColumn = approverColumnByLevel[levelFilter];
+    const requesterUserId = parsePositiveInt(req.user?.id);
+    if (!canViewAllApprovals && approverColumn && requesterUserId) {
+      values.push(requesterUserId);
+      where.push(`$${values.length} = ANY(COALESCE(ot.${approverColumn}, ARRAY[]::int[]))`);
     }
 
     values.push(limit);
@@ -4295,9 +4371,30 @@ router.get('/approvals/l2-queue', async (req, res, next) => {
          ot.severity,
          ot.status AS ticket_status,
          ot.created_at AS ticket_created_at,
+         ot.tat_current_level,
+         ot.violation_details->>'entry_id' AS entry_id,
+         ot.approval_l1_user_ids,
+         ot.approval_l2_user_ids,
+         ot.approval_l3_user_ids,
+         ot.approval_l4_user_ids,
+         ot.approval_l5_user_ids,
+         resolution_log.resolved_at,
          COUNT(*) OVER()::int AS total_count
        FROM ticketing_system.ticket_approvals ta
        JOIN ticketing_system.operator_tickets ot ON ot.ticket_id = ta.ticket_id
+       LEFT JOIN LATERAL (
+         -- Same "Actual Res Time" source as the main ticket list
+         -- (supervisorTickets.routes.js) - the last submit/approve/reject/
+         -- acknowledge action logged for this ticket - so Value/Submission
+         -- Frequency tickets in the L2+ approval queue show a real resolution
+         -- time too instead of always "--:--".
+         SELECT tl.created_at AS resolved_at
+         FROM ticketing_system.ticket_logs tl
+         WHERE tl.ticket_id = ot.ticket_id
+           AND UPPER(tl.action) IN ('APPROVED', 'ACKNOWLEDGED', 'SUBMITTED', 'RESUBMITTED', 'REJECTED')
+         ORDER BY tl.created_at DESC
+         LIMIT 1
+       ) resolution_log ON true
        WHERE ${where.join(' AND ')}
        ORDER BY ta.created_at DESC
        LIMIT $${limitIndex}
@@ -4320,229 +4417,14 @@ router.get('/approvals/l2-queue', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+};
 
-router.patch('/thresholds/:id/status', async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { is_active } = req.body;
-
-    if (typeof is_active !== 'boolean') {
-      return res.status(400).json({ message: 'is_active must be boolean' });
-    }
-
-    const result = await client.query(
-      `UPDATE ticketing_system.threshold_master
-       SET is_active = $1,
-           updated_at = NOW()
-       WHERE id = $2
-       RETURNING *`,
-      [is_active, id]
-    );
-
-    if (!result.rowCount) {
-      return res.status(404).json({ message: 'Threshold not found' });
-    }
-
-    res.locals.activityDescription = `${is_active ? 'Activated' : 'Deactivated'} threshold for ${result.rows[0].machine_name} — ${result.rows[0].input_field}`;
-    res.locals.activityMetadata = { threshold_id: id, is_active };
-
-    res.status(200).json({
-      message: `Threshold ${is_active ? 'activated' : 'deactivated'} successfully`,
-      threshold: result.rows[0]
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-
-router.patch('/thresholds/:id', async (req, res, next) => {
-  try {
-    await ensureThresholdMasterApprovalColumns();
-    await ensureThresholdMasterL1ApproverTable();
-    await ensureThresholdMasterL2ApproverTable();
-    const { id } = req.params;
-
-    const {
-      condition_level,
-      plus_threshold,
-      minus_threshold,
-      actual_value,
-      approval_l1_name,
-      approval_l1_names,
-      approval_l1_user_id,
-      approval_l1_user_ids,
-      approval_l1_id,
-      approval_l1_ids,
-      approval_l2_name,
-      approval_l2_names,
-      approval_l2_user_id,
-      approval_l2_user_ids,
-      approval_l2_id,
-      approval_l2_ids,
-      approval_l3_name,
-      approval_l3_names,
-      approval_l3_user_id,
-      approval_l3_user_ids,
-      approval_l3_id,
-      approval_l3_ids
-    } = req.body;
-    const hasL1ApproverInput =
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l1_name') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l1_names') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l1_user_id') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l1_user_ids') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l1_id') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l1_ids');
-    const hasL2ApproverInput =
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l2_name') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l2_names') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l2_user_id') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l2_user_ids') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l2_id') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l2_ids');
-    const hasL3ApproverInput =
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l3_name') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l3_names') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l3_user_id') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l3_user_ids') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l3_id') ||
-      Object.prototype.hasOwnProperty.call(req.body, 'approval_l3_ids');
-
-    const normalized = normalizeThresholdInputs(
-      plus_threshold,
-      minus_threshold,
-      actual_value
-    );
-    let approvalL1UserIds = null;
-    let approvalL2UserIds = null;
-    let approvalL3UserIds = null;
-    try {
-      if (hasL1ApproverInput) {
-        approvalL1UserIds = await resolveApproverUserIds({
-          levelLabel: 'approval_l1',
-          expectedLevel: 'L1',
-          userIdValue: approval_l1_user_ids ?? approval_l1_ids ?? approval_l1_user_id ?? approval_l1_id,
-          nameValue: approval_l1_names ?? approval_l1_name
-        });
-      }
-      if (hasL2ApproverInput) {
-        approvalL2UserIds = await resolveApproverUserIds({
-          levelLabel: 'approval_l2',
-          expectedLevel: 'L2',
-          userIdValue: approval_l2_user_ids ?? approval_l2_ids ?? approval_l2_user_id ?? approval_l2_id,
-          nameValue: approval_l2_names ?? approval_l2_name
-        });
-      }
-      if (hasL3ApproverInput) {
-        approvalL3UserIds = await resolveApproverUserIds({
-          levelLabel: 'approval_l3',
-          expectedLevel: 'L3',
-          userIdValue: approval_l3_user_ids ?? approval_l3_ids ?? approval_l3_user_id ?? approval_l3_id,
-          nameValue: approval_l3_names ?? approval_l3_name
-        });
-      }
-    } catch (error) {
-      return res.status(400).json({ message: error.message });
-    }
-
-    const result = await client.query(
-      `UPDATE ticketing_system.threshold_master
-       SET condition_level = $1,
-           plus_threshold = $2,
-           minus_threshold = $3,
-           actual_value = $4,
-           approval_l1_user_id = CASE WHEN $5 THEN $6 ELSE approval_l1_user_id END,
-           approval_l2_user_id = CASE WHEN $7 THEN $8 ELSE approval_l2_user_id END,
-           approval_l3_user_id = CASE WHEN $9 THEN $10 ELSE approval_l3_user_id END,
-           updated_at = NOW()
-       WHERE id = $11
-       RETURNING *`,
-      [
-        condition_level || 'More Than',
-        normalized.plusThreshold,
-        normalized.minusThreshold,
-        normalized.actualValue,
-        hasL1ApproverInput,
-        approvalL1UserIds?.[0] ?? null,
-        hasL2ApproverInput,
-        approvalL2UserIds?.[0] ?? null,
-        hasL3ApproverInput,
-        approvalL3UserIds?.[0] ?? null,
-        id
-      ]
-    );
-
-    if (!result.rowCount) {
-      return res.status(404).json({ message: 'Threshold not found' });
-    }
-
-    if (hasL1ApproverInput) {
-      await syncThresholdMasterL1Approvers(id, approvalL1UserIds || []);
-    }
-    if (hasL2ApproverInput) {
-      await syncThresholdMasterL2Approvers(id, approvalL2UserIds || []);
-    }
-    if (hasL3ApproverInput) {
-      await syncThresholdMasterL3Approvers(id, approvalL3UserIds || []);
-    }
-    const threshold = await getThresholdByIdWithApprovers(id);
-
-    if (hasL1ApproverInput || hasL2ApproverInput || hasL3ApproverInput) {
-      await notifyThresholdApprovers({
-        thresholdId: id,
-        machineName: threshold.machine_name,
-        inputField: threshold.input_field,
-        department: threshold.department,
-        subDepartment: threshold.sub_department,
-        levels: [
-          ...(hasL1ApproverInput ? [{ level: 'L1', userIds: approvalL1UserIds || [] }] : []),
-          ...(hasL2ApproverInput ? [{ level: 'L2', userIds: approvalL2UserIds || [] }] : []),
-          ...(hasL3ApproverInput ? [{ level: 'L3', userIds: approvalL3UserIds || [] }] : [])
-        ]
-      });
-    }
-
-    res.locals.activityDescription = `Updated threshold #${id} (${threshold.machine_name} — ${threshold.input_field})`;
-    res.locals.activityMetadata = { threshold_id: id };
-
-    res.status(200).json({
-      message: 'Threshold updated successfully',
-      threshold
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.delete('/thresholds/:id', async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    const result = await client.query(
-      `DELETE FROM ticketing_system.threshold_master
-       WHERE id = $1
-       RETURNING *`,
-      [id]
-    );
-
-    if (!result.rowCount) {
-      return res.status(404).json({ message: 'Threshold not found' });
-    }
-
-    res.locals.activityDescription = `Deleted threshold for ${result.rows[0].machine_name} — ${result.rows[0].input_field}`;
-    res.locals.activityMetadata = { threshold_id: id };
-
-    res.status(200).json({
-      message: 'Threshold deleted successfully'
-    });
-  } catch (err) {
-    next(err);
-  }
+router.get('/approvals/queue', getApprovalQueue);
+router.get('/approvals/l2-queue', async (req, res, next) => {
+  req.query = { ...req.query, level: 'L2' };
+  return getApprovalQueue(req, res, next);
 });
 
 module.exports = router;
 module.exports.runSubmissionFrequencyTatCheck = runSubmissionFrequencyTatCheck;
 module.exports.runSubmissionFrequencyCheck = runSubmissionFrequencyCheck;
-module.exports.ensureTicketApprovalsTable = ensureTicketApprovalsTable;

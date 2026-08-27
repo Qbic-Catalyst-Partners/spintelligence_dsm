@@ -24,6 +24,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { clearAutoconerState } from "@/store/slices/autoconer";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 
 const autoconerTypes = [
@@ -264,6 +265,18 @@ function Autoconer() {
         previewItems,
         user,
       });
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Autoconer",
+          screenName: selectedType,
+          machineName: selectedType,
+          entryId: useParentEntryId ? entryId : previewEntryId,
+          values: previewItems,
+        });
+      } catch (ticketError) {
+        console.error("Threshold ticket generation failed:", ticketError);
+      }
       if (useParentEntryId) {
         await reserveEntryId();
       }

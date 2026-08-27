@@ -27,6 +27,7 @@ import {
   updateMixingProcessParameterEntry,
   getMixingProcessParameterEntries,
 } from "@/apis/mixing";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 
 const createBlankRow = (label) => ({
   label,
@@ -414,9 +415,16 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     setIsMounted(true);
   }, []);
 
+  // Was `[]` (mount-only) - see autoconer/AutoconerQ2.jsx's identical fix:
+  // without this, switching which PP id this component instance is editing
+  // (entryId prop changes without a remount) left the version list stale,
+  // so submit() below wrongly thought no row existed yet and attempted a
+  // create, failing with "Duplicate entry_id" against the row that already
+  // existed.
   useEffect(() => {
     loadVersions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryId]);
 
   useEffect(() => {
     if (entryId) {
@@ -498,11 +506,18 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
       if (field === "countName" && !entryId && !current.versionId) {
         const match = findLatestVersionByCountName(value);
         if (match) {
+          // Autofill values from the matched historical entry (same count
+          // name reused for a genuinely new batch) but never its PP id -
+          // versionId/paramId are forced blank here (not carried over from
+          // `current`, which itself could already be non-blank in some
+          // interleavings) so save always reserves and uses a brand new PP
+          // id, rather than colliding with the old entry's ("Duplicate
+          // entry_id").
           return {
             ...cloneForm(match.data),
             countName: value,
-            versionId: current.versionId,
-            paramId: current.paramId,
+            versionId: "",
+            paramId: "",
           };
         }
       }
@@ -588,7 +603,6 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,
-    process_parameter: "Mixing",
     status: "DONE",
     user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
     blends: form.rows.map((row, index) => ({
@@ -615,6 +629,22 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     setSavedProcessParameterId(nextParamId);
 
     const linkedEntryId = payload.entry_id || nextParamId;
+
+    // Registered here, immediately after the save itself succeeds — see cottonHVIDataEntry.jsx
+    // for why this can no longer live in the parent's post-submit/success-modal flow.
+    try {
+      await recordSubmittedNotebook({
+        department: "Quality Control",
+        subDepartment: "Mixing",
+        notebookName: "Process Parameter",
+        entryId: linkedEntryId,
+        registeredActions: { getPayload: () => payload },
+        user,
+      });
+    } catch (error) {
+      console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
+    }
+
     const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? "").trim() !== "");
     if (linkedEntryId && customFieldEntries.length > 0) {
       try {

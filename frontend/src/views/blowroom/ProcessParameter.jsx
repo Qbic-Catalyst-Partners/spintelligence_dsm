@@ -163,6 +163,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const [previewNextId, setPreviewNextId] = useState("");
   const [customFieldValues, setCustomFieldValues] = useState({});
 
+  const user = useSelector((state) => state.auth?.user);
   const operatorName = String(
     user?.name || user?.full_name || user?.user_name || user?.username || ""
   ).trim();
@@ -236,9 +237,16 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     }
   };
 
+  // Was `[]` (mount-only) - see autoconer/AutoconerQ2.jsx's identical fix:
+  // without this, switching which PP id this component instance is editing
+  // (entryId prop changes without a remount) left the version list stale,
+  // so submit() below wrongly thought no row existed yet and attempted a
+  // create, failing with "Duplicate entry_id" against the row that already
+  // existed.
   useEffect(() => {
     loadVersions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryId]);
 
   useEffect(() => {
     if (entryId) {
@@ -329,7 +337,10 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       if (field === "countName" && !entryId && !current.versionId) {
         const match = findLatestVersionByCountName(nextValue);
         if (match) {
-          return { ...match.data, countName: nextValue, versionId: "", paramId: current.paramId, type: selectedTypeName };
+          // paramId forced blank (not carried over from `current`) so save
+          // always reserves a brand new PP id instead of colliding with the
+          // matched historical entry's id ("Duplicate entry_id").
+          return { ...match.data, countName: nextValue, versionId: "", paramId: "", type: selectedTypeName };
         }
       }
 

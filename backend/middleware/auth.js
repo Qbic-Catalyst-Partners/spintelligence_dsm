@@ -9,9 +9,6 @@ const PUBLIC_DEPARTMENT_PATHS = [
   /^\/drawframe\/(?:wrapping\/)?(?:drawframe\/)?comber-noil-percent(?:-inspection)?(?:\/.*)?$/i,
   /^\/drawframe\/(?:wrapping\/)?(?:drawframe\/)?noil-percent(?:\/.*)?$/i,
   /^\/drawframe\/(?:wrapping\/)?(?:drawframe\/)?noils-percent(?:\/.*)?$/i,
-  /^\/drawframe\/(?:wrapping\/)?drawframe-notebook(?:\/.*)?$/i,
-  /^\/drawframe\/wrapping-drawframe-notebook(?:\/.*)?$/i,
-  /^\/drawframe\/drawframe-notebook\/wrapping(?:\/.*)?$/i,
   /^\/drawframe\/(?:yarn-cv|yarn-cv-percent|one-yard-half-yard-cv|one-yard-half-yard-cv-entry|1-yard-half-yard-cv)(?:\/.*)?$/i,
   /^\/drawframe\/yarn-cv\/(?:machine-numbers|master\/.*)(?:\/.*)?$/i,
   /^\/autoconer\/(?:master-data|master\/.*|count-master|employee-master)$/i,
@@ -58,6 +55,7 @@ function auth(req, res, next) {
       role: decoded.role,
       departments: decoded.departments,
       employee_id: decoded.employee_id,
+      full_name: decoded.full_name,
       level: decoded.level
     };
 

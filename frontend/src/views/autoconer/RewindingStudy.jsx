@@ -77,6 +77,7 @@ const createInitialForm = () => ({
   weight: "",
   noOfCuts: "",
   breakPerLakhMeter: "",
+  remarks: "",
 });
 
 const createReadingRows = (count = "", drumNo = "", weight = "") => {
@@ -340,7 +341,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
       cone_tip: form.coneTip,
       no_of_cuts: toNumberOrNull(form.noOfCuts),
       break_per_million_meter: toNumberOrNull(breakPerMillionMeter) || 0,
-      remarks: "Normal",
+      remarks: form.remarks || null,
       readings: filledRows.map((row) => ({
         drum_no: toNumberOrNull(row.drumNo) || 0,
         no_of_cones: toNumberOrNull(row.noOfCones) || 0,
@@ -691,10 +692,11 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Select Type" },
     { label: "Entry ID", field: "date", type: "text", value: effectiveEntryId, placeholder: "Entry ID" },
-    { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countNameDropdownOptions, placeholder: "Select count name" },
     { label: "Actual Count", field: "actualCount", type: "text", placeholder: "0.00" },
+    { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countNameDropdownOptions, placeholder: "Select count name" },
     { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoconerDropdownOptions, placeholder: "Select auto coner" },
     { label: "Cone Tip", field: "coneTip", type: "select", options: coneTipOptions, placeholder: "Select cone tip" },
+    { label: "Remarks", field: "remarks", type: "text", placeholder: "Enter remarks" },
   ];
 
   const topPortalTarget =
@@ -1006,8 +1008,8 @@ const RewindingStudy = forwardRef(function RewindingStudy(
           <tr className="border-b border-slate-300 text-left uppercase tracking-wide text-slate-500">
             <th className="px-2 py-2 font-semibold">Entry ID</th>
             <th className="px-2 py-2 font-semibold">Date</th>
-            <th className="px-2 py-2 font-semibold">Count Name</th>
             <th className="px-2 py-2 font-semibold">Actual Count</th>
+            <th className="px-2 py-2 font-semibold">Count Name</th>
             <th className="px-2 py-2 font-semibold">Auto Coner No.</th>
             <th className="px-2 py-2 font-semibold">Cone Tip</th>
             <th className="px-2 py-2 font-semibold">No. of Cuts</th>
@@ -1019,8 +1021,8 @@ const RewindingStudy = forwardRef(function RewindingStudy(
             <tr key={`${entry.entryId}-${index}`} className="border-b border-slate-100 last:border-b-0">
               <td className="px-2 py-2">{entry.entryId}</td>
               <td className="px-2 py-2">{entry.date}</td>
-              <td className="px-2 py-2">{entry.countName}</td>
               <td className="px-2 py-2">{entry.actualCount}</td>
+              <td className="px-2 py-2">{entry.countName}</td>
               <td className="px-2 py-2">{entry.autoConerNo}</td>
               <td className="px-2 py-2">{entry.coneTip}</td>
               <td className="px-2 py-2">{entry.noOfCuts}</td>

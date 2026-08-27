@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -17,6 +18,7 @@ import { deleteThresholdAPI, fetchThresholdsAPI, saveThresholdsBulkAPI, updateTh
 import Pagination from "@/components/Pagination";
 import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
+import useRoleDepartmentAccess from "@/hooks/useRoleDepartmentAccess";
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import { formatDateTime } from "@/utils/formatDateTime";
@@ -33,9 +35,7 @@ const createRule = () => ({
     negativeTolerance: "",
     criticality: "",
     approvalL1: [],
-    approvalL2: [],
     approvalL1Tat: "08:00",
-    approvalL2Tat: "08:00",
 });
 
 // TAT (turn-around time) helpers — 24-hour, hours-and-minutes only, no AM/PM.
@@ -159,8 +159,8 @@ const buildInitialFilters = () => ({
     status: "",
 });
 
-const getScreenFieldOptions = (screenName, thresholds) => {
-    const catalogFields = getThresholdFieldsForScreen(screenName);
+const getScreenFieldOptions = (screenName, thresholds, context) => {
+    const catalogFields = getThresholdFieldsForScreen(screenName, context);
 
     if (catalogFields.length) {
         return catalogFields;
@@ -281,7 +281,12 @@ const resolveUserName = (users, value) => {
         );
     });
 
-    return getUserDisplayName(matchedUser) || String(value ?? "").trim();
+    if (matchedUser) {
+        return getUserDisplayName(matchedUser);
+    }
+
+    const rawValue = String(value ?? "").trim();
+    return /^\d+$/.test(rawValue) ? "" : rawValue;
 };
 
 const resolveDisplayValues = (users, candidates) => {
@@ -308,24 +313,7 @@ const getApprovalValues = (item, users, level) => {
         item?.approvalL1,
     ];
 
-    const l2Candidates = [
-        item?.approval_l2_names,
-        item?.approvalL2Names,
-        item?.approval_l2_name,
-        item?.approvalL2Name,
-        item?.approved_by_name,
-        item?.approvedByName,
-        item?.approval_l2,
-        item?.approved_by,
-        item?.created_by_name,
-        item?.createdByName,
-        item?.updated_by_name,
-        item?.updatedByName,
-        item?.created_by,
-        item?.updated_by,
-    ];
-
-    return resolveDisplayValues(users, level === "l1" ? l1Candidates : l2Candidates);
+    return resolveDisplayValues(users, l1Candidates);
 };
 
 function ExpandableCell({ values = [], fallback = "-" }) {
@@ -414,6 +402,7 @@ function MultiSelectDropdown({
 }) {
     const containerRef = useRef(null);
     const [isOpen, setIsOpen] = useState(false);
+    const [searchText, setSearchText] = useState("");
 
     useEffect(() => {
         const handleOutsideClick = (event) => {
@@ -428,8 +417,16 @@ function MultiSelectDropdown({
         };
     }, []);
 
+    useEffect(() => {
+        if (!isOpen) {
+            setSearchText("");
+        }
+    }, [isOpen]);
+
     const selectedValues = Array.isArray(values) ? values : [];
-    const buttonLabel = selectedValues.length ? "Selected" : placeholder;
+    const buttonLabel = selectedValues.length
+        ? `${selectedValues.length} user${selectedValues.length > 1 ? "s" : ""} selected`
+        : placeholder;
 
     const toggleValue = (option) => {
         if (disabled) {
@@ -443,29 +440,44 @@ function MultiSelectDropdown({
         onChange?.(nextValues);
     };
 
+    const filteredOptions = searchText.trim()
+        ? options.filter((option) =>
+              option.name?.toLowerCase().includes(searchText.trim().toLowerCase())
+          )
+        : options;
+
     return (
         <div
             ref={containerRef}
             className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}
         >
-            <button
-                type="button"
-                className={styles.multiSelectButton}
-                onClick={() => {
-                    if (!disabled) {
-                        setIsOpen((current) => !current);
-                    }
-                }}
-                disabled={disabled}
-            >
-                <span className={styles.multiSelectValue}>{buttonLabel}</span>
-                <span className={styles.multiSelectChevron}>{isOpen ? "˄" : "˅"}</span>
-            </button>
+            <div className={styles.multiSelectButton}>
+                <input
+                    type="text"
+                    className={styles.multiSelectValue}
+                    value={isOpen ? searchText : ""}
+                    placeholder={buttonLabel}
+                    onFocus={() => !disabled && setIsOpen(true)}
+                    onChange={(event) => {
+                        setSearchText(event.target.value);
+                        if (!disabled) setIsOpen(true);
+                    }}
+                    disabled={disabled}
+                />
+                <span
+                    className={styles.multiSelectChevron}
+                    onClick={() => {
+                        if (!disabled) setIsOpen((current) => !current);
+                    }}
+                >
+                    {isOpen ? "˄" : "˅"}
+                </span>
+            </div>
 
             {isOpen ? (
                 <div className={styles.multiSelectMenu}>
-                    {options.length ? (
-                        options.map((option) => (
+                    {filteredOptions.length ? (
+                        filteredOptions.map((option) => (
                             <label key={option.id} className={styles.multiSelectOption}>
                                 <input
                                     type="checkbox"
@@ -491,6 +503,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
     const isHydrated = useSelector((state) => state.auth?.isHydrated);
     const users = useSelector((state) => state.users?.users || []);
     const canAccessPage = isFullAccessUser(user);
+    const { hasDepartmentAccess } = useRoleDepartmentAccess(users);
 
     const [activeTab, setActiveTab] = useState("new");
     const [thresholds, setThresholds] = useState([]);
@@ -505,12 +518,12 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
     const [formError, setFormError] = useState("");
     const [existingFilters, setExistingFilters] = useState(buildInitialFilters);
     const [existingPage, setExistingPage] = useState(1);
-    const [openActionMenuId, setOpenActionMenuId] = useState("");
     const [editingThresholdId, setEditingThresholdId] = useState("");
     const [statusUpdatingRowKey, setStatusUpdatingRowKey] = useState("");
     const [deletingRowKey, setDeletingRowKey] = useState("");
     const [existingMessage, setExistingMessage] = useState("");
     const [existingError, setExistingError] = useState("");
+    const [openActionMenu, setOpenActionMenu] = useState(null);
 
     const percentModeCacheRef = useRef(null);
     if (percentModeCacheRef.current === null) {
@@ -590,9 +603,9 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
 
     useEffect(() => {
         const handlePointerDown = (event) => {
-            const actionMenu = event.target.closest("[data-threshold-menu]");
-            if (!actionMenu) {
-                setOpenActionMenuId("");
+        const actionMenu = event.target.closest("[data-threshold-menu]");
+        if (!actionMenu) {
+                setOpenActionMenu(null);
             }
         };
 
@@ -611,24 +624,16 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
         : [];
 
     const fieldOptions = useMemo(
-        () => getScreenFieldOptions(selectedScreenName, thresholds),
-        [selectedScreenName, thresholds]
+        () => getScreenFieldOptions(selectedScreenName, thresholds, selectedSubDepartment?.name),
+        [selectedScreenName, thresholds, selectedSubDepartment]
     );
 
     const l1Options = useMemo(
-        () => buildUserOptions(users, (item) => normalizeLookupValue(item?.level) === "l1"),
-        [users]
-    );
-
-    const l2Options = useMemo(
         () =>
-            buildUserOptions(
-                users,
-                (item) =>
-                    normalizeLookupValue(item?.level) === "l2" ||
-                    String(item?.role || "").trim().toLowerCase().includes("supervisor")
+            buildUserOptions(users, (item) => normalizeLookupValue(item?.level) === "l1").filter((option) =>
+                hasDepartmentAccess(option, selectedSubDepartment?.name)
             ),
-        [users]
+        [users, selectedSubDepartment, hasDepartmentAccess]
     );
 
     useEffect(() => {
@@ -776,7 +781,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
             {
                 id: `${Date.now()}-edit`,
                 fieldName: item?.input_field || item?.parameter_name || "",
-                comparison: item?.comparison_operator || item?.condition_level || "more_and_less_than",
+                comparison: item?.comparison_mode || item?.comparison_operator || item?.condition_level || "more_and_less_than",
                 actualValue: String(item?.actual_value ?? ""),
                 valueMode: item?.value_mode === "percent" ? "percent" : "number",
                 positiveTolerance:
@@ -791,16 +796,12 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                 approvalL1: normalizeNameList(
                     item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1
                 ),
-                approvalL2: normalizeNameList(
-                    item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2
-                ),
                 approvalL1Tat: formatTatHours(item?.l1_tat_hours),
-                approvalL2Tat: formatTatHours(item?.l2_tat_hours),
             },
         ]);
         setEditingThresholdId(getThresholdIdentifier(item));
         setActiveTab("new");
-        setOpenActionMenuId("");
+        setOpenActionMenu(null);
         setFormMessage("Edit mode loaded from Existing Thresholds.");
         setFormError("");
         setExistingMessage("");
@@ -829,7 +830,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
         setStatusUpdatingRowKey(rowKey);
         setExistingMessage("");
         setExistingError("");
-        setOpenActionMenuId("");
+        setOpenActionMenu(null);
         setThresholds((current) =>
             current.map((item, index) =>
                 getThresholdRowKey(item, index) === rowKey
@@ -872,7 +873,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
         setDeletingRowKey(rowKey);
         setExistingMessage("");
         setExistingError("");
-        setOpenActionMenuId("");
+        setOpenActionMenu(null);
         setThresholds((current) => current.filter((item, index) => getThresholdRowKey(item, index) !== rowKey));
 
         try {
@@ -921,24 +922,14 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
             const rawNegativeTolerance = rule.negativeTolerance.trim();
             const criticality = String(rule.criticality || "").trim();
             const approvalL1Names = normalizeNameList(rule.approvalL1);
-            const approvalL2Names = normalizeNameList(rule.approvalL2);
             const approvalL1Users = resolveSelectedUsers(users, approvalL1Names);
-            const approvalL2Users = resolveSelectedUsers(users, approvalL2Names);
             const approvalL1Ids = approvalL1Users
                 .map((userItem) => String(userItem?.employeeId || userItem?.id || "").trim())
                 .filter(Boolean);
-            const approvalL2Ids = approvalL2Users
-                .map((userItem) => String(userItem?.employeeId || userItem?.id || "").trim())
-                .filter(Boolean);
             const primaryApprovalL1Name = approvalL1Names[0] || "";
-            const primaryApprovalL2Name = approvalL2Names[0] || "";
             const primaryApprovalL1Id = approvalL1Ids[0] || "";
-            const primaryApprovalL2Id = approvalL2Ids[0] || "";
 
             const staleApprovalL1Names = approvalL1Names.filter(
-                (name) => !resolveSelectedUsers(users, [name]).length
-            );
-            const staleApprovalL2Names = approvalL2Names.filter(
                 (name) => !resolveSelectedUsers(users, [name]).length
             );
 
@@ -948,9 +939,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                 (!rawPositiveTolerance && !rawNegativeTolerance) ||
                 !criticality ||
                 !approvalL1Names.length ||
-                !approvalL2Names.length ||
-                staleApprovalL1Names.length ||
-                staleApprovalL2Names.length
+                staleApprovalL1Names.length
             ) {
                 const missingFields = [];
 
@@ -975,14 +964,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                 } else if (staleApprovalL1Names.length) {
                     missingFields.push(
                         `approval_l1 (${staleApprovalL1Names.join(", ")} no longer exists — please re-select)`
-                    );
-                }
-
-                if (!approvalL2Names.length) {
-                    missingFields.push("approval_l2");
-                } else if (staleApprovalL2Names.length) {
-                    missingFields.push(
-                        `approval_l2 (${staleApprovalL2Names.join(", ")} no longer exists — please re-select)`
                     );
                 }
 
@@ -1054,13 +1035,8 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                 approval_l1_user_id: primaryApprovalL1Id || null,
                 approval_l1_names: approvalL1Names,
                 approval_l1_ids: approvalL1Ids,
+                approval_l1_user_ids: approvalL1Ids,
                 l1_tat_hours: tatValueToHours(rule.approvalL1Tat),
-                approval_l2: primaryApprovalL2Id || primaryApprovalL2Name,
-                approval_l2_name: primaryApprovalL2Name,
-                approval_l2_user_id: primaryApprovalL2Id || null,
-                approval_l2_names: approvalL2Names,
-                approval_l2_ids: approvalL2Ids,
-                l2_tat_hours: tatValueToHours(rule.approvalL2Tat),
                 comparison_operator: rule.comparison,
                 condition_level: rule.comparison,
                 actual_value:
@@ -1234,7 +1210,11 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                         >
                                             <option value="">Select Department</option>
                                             {availableDepartments.map((department) => (
-                                                <option key={department.slug} value={department.slug}>
+                                                <option
+                                                    key={department.slug}
+                                                    value={department.slug}
+                                                    disabled={department.slug === "electrical" || department.slug === "mechanical"}
+                                                >
                                                     {department.name}
                                                 </option>
                                             ))}
@@ -1329,9 +1309,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                                 <option value="High">High</option>
                                                             </select>
                                                         </label>
-                                                    </div>
 
-                                                    <div className={styles.ruleTopGrid}>
                                                         <label className={styles.field}>
                                                             <span>L1</span>
                                                             <MultiSelectDropdown
@@ -1342,20 +1320,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                                 onChange={(nextValues) =>
                                                                     handleRuleChange(rule.id, "approvalL1", nextValues)
                                                                 }
-                                                            />
-                                                        </label>
-
-                                                        <label className={styles.field}>
-                                                            <span>L2</span>
-                                                            <MultiSelectDropdown
-                                                                values={rule.approvalL2}
-                                                                options={l2Options}
-                                                                disabled={!l2Options.length}
-                                                                placeholder={l2Options.length ? "Select" : "No L2 users available"}
-                                                                onChange={(nextValues) =>
-                                                                    handleRuleChange(rule.id, "approvalL2", nextValues)
-                                                                }
-                                                                emptyLabel="No L2 users available"
                                                             />
                                                         </label>
                                                     </div>
@@ -1492,9 +1456,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                     value={existingFilters.departmentSlug}
                                     onChange={(event) => {
                                         const nextDepartmentSlug = event.target.value;
-                                        const nextDepartment = availableDepartments.find(
-                                            (item) => item.slug === nextDepartmentSlug
-                                        );
 
                                         setExistingFilters((current) => ({
                                             ...current,
@@ -1506,7 +1467,11 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                 >
                                     <option value="">Select Department</option>
                                     {availableDepartments.map((department) => (
-                                        <option key={department.slug} value={department.slug}>
+                                        <option
+                                            key={department.slug}
+                                            value={department.slug}
+                                            disabled={department.slug === "electrical" || department.slug === "mechanical"}
+                                        >
                                             {department.name}
                                         </option>
                                     ))}
@@ -1618,20 +1583,19 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                 <th>Input Field</th>
                                                 <th>Notebook Type</th>
                                                 <th>L1</th>
-                                                <th>L2</th>
                                                 <th>Criticality</th>
                                                 <th>Typical Value</th>
                                                 <th>Plus (+)</th>
                                                 <th>Minus (-)</th>
                                                 <th>Status</th>
-                                                <th>Created At</th>
+                                                <th>Updated At</th>
                                                 <th>Action</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {visibleThresholdRows.map((item, index) => {
                                                 const rowKey = getThresholdRowKey(item, existingPageStart + index);
-                                                const isMenuOpen = openActionMenuId === rowKey;
+                                                const isMenuOpen = openActionMenu?.rowKey === rowKey;
                                                 const isStatusUpdating = statusUpdatingRowKey === rowKey;
                                                 const isDeleting = deletingRowKey === rowKey;
                                                 const criticalityLabel = getCriticalityLabel(item);
@@ -1640,9 +1604,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                 );
                                                 const approvalL1Names = normalizeNameList(
                                                     item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1
-                                                );
-                                                const approvalL2Names = normalizeNameList(
-                                                    item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2
                                                 );
                                                 return (
                                                 <tr key={rowKey}>
@@ -1653,9 +1614,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                     </td>
                                                     <td>
                                                         <ExpandableCell values={approvalL1Names} />
-                                                    </td>
-                                                    <td>
-                                                        <ExpandableCell values={approvalL2Names} />
                                                     </td>
                                                     <td>
                                                         <span
@@ -1692,54 +1650,75 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                             {item?.is_active ? "Active" : "Inactive"}
                                                         </span>
                                                     </td>
-                                                    <td>{formatTimestamp(item.created_at || item.createdAt)}</td>
+                                                    <td>
+                                                        {formatTimestamp(
+                                                            item.updated_at || item.updatedAt || item.created_at || item.createdAt
+                                                        )}
+                                                    </td>
                                                     <td>
                                                         <div className={styles.actionMenuWrap} data-threshold-menu="true">
                                                             <button
                                                                 type="button"
                                                                 className={styles.actionMenuButton}
                                                                 aria-label="Open threshold actions"
-                                                                onClick={() =>
-                                                                    setOpenActionMenuId((current) =>
-                                                                        current === rowKey ? "" : rowKey
-                                                                    )
-                                                                }
+                                                                onClick={(event) => {
+                                                                    const rect = event.currentTarget.getBoundingClientRect();
+                                                                    const estimatedMenuHeight = 128;
+                                                                    setOpenActionMenu((current) =>
+                                                                        current?.rowKey === rowKey
+                                                                            ? null
+                                                                            : {
+                                                                                rowKey,
+                                                                                bottom: Math.max(12, window.innerHeight - rect.top + 6),
+                                                                                right: Math.max(12, window.innerWidth - rect.right),
+                                                                            }
+                                                                    );
+                                                                }}
                                                             >
                                                                 <FiMoreVertical />
                                                             </button>
-                                                            {isMenuOpen ? (
-                                                                <div className={styles.actionMenu}>
-                                                                    <button
-                                                                        type="button"
-                                                                        className={styles.actionMenuItem}
-                                                                        onClick={() => openEditThreshold(item)}
-                                                                        disabled={isDeleting || isStatusUpdating}
-                                                                    >
-                                                                        Edit
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        className={styles.actionMenuItem}
-                                                                        onClick={() => toggleThresholdStatus(rowKey)}
-                                                                        disabled={isStatusUpdating}
-                                                                    >
-                                                                        {isStatusUpdating
-                                                                            ? "Updating..."
-                                                                            : item?.is_active
-                                                                                ? "Inactive"
-                                                                                : "Active"}
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        className={`${styles.actionMenuItem} ${styles.actionMenuDelete}`}
-                                                                        onClick={() => deleteThresholdRow(rowKey)}
-                                                                        disabled={isDeleting || isStatusUpdating}
-                                                                    >
-                                                                        {isDeleting ? "Deleting..." : "Delete"}
-                                                                    </button>
-                                                                </div>
-                                                            ) : null}
                                                         </div>
+                                                        {isMenuOpen && typeof document !== "undefined" ? createPortal(
+                                                            <div
+                                                                className={styles.actionMenu}
+                                                                style={{
+                                                                    position: "fixed",
+                                                                    top: "auto",
+                                                                    bottom: openActionMenu.bottom,
+                                                                    right: openActionMenu.right,
+                                                                }}
+                                                            >
+                                                                <button
+                                                                    type="button"
+                                                                    className={styles.actionMenuItem}
+                                                                    onClick={() => openEditThreshold(item)}
+                                                                    disabled={isDeleting || isStatusUpdating}
+                                                                >
+                                                                    Edit
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className={styles.actionMenuItem}
+                                                                    onClick={() => toggleThresholdStatus(rowKey)}
+                                                                    disabled={isStatusUpdating}
+                                                                >
+                                                                    {isStatusUpdating
+                                                                        ? "Updating..."
+                                                                        : item?.is_active
+                                                                            ? "Inactive"
+                                                                            : "Active"}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className={`${styles.actionMenuItem} ${styles.actionMenuDelete}`}
+                                                                    onClick={() => deleteThresholdRow(rowKey)}
+                                                                    disabled={isDeleting || isStatusUpdating}
+                                                                >
+                                                                    {isDeleting ? "Deleting..." : "Delete"}
+                                                                </button>
+                                                            </div>,
+                                                            document.body
+                                                        ) : null}
                                                     </td>
                                                 </tr>
                                             )})}

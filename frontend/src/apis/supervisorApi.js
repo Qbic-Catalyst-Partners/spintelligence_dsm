@@ -2,7 +2,7 @@ import apiConfig from "./apiConfig";
 
 const formatTicketId = (ticketId) => {
   const id = String(ticketId || "").trim();
-  return id.startsWith("#") ? id : `#${id}`;
+  return id.startsWith("#") ? id.slice(1) : id;
 };
 
 const supervisorBaseCandidates = Array.from(
@@ -17,23 +17,23 @@ const supervisorBaseCandidates = Array.from(
   )
 );
 
-const requestSupervisorApi = async (method, path, data, params) => {
+const requestSupervisorApi = async (method, path, data, params, extraOptions = {}) => {
   let lastError = null;
 
   for (const base of supervisorBaseCandidates) {
     const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
     try {
       if (method === "get") {
-        return await apiConfig.get(url, params || {}, { skipGlobalErrorModal: true });
+        return await apiConfig.get(url, params || {}, { skipGlobalErrorModal: true, ...extraOptions });
       }
       if (method === "patch") {
-        return await apiConfig.patch(url, data || {}, { skipGlobalErrorModal: true });
+        return await apiConfig.patch(url, data || {}, { skipGlobalErrorModal: true, ...extraOptions });
       }
       if (method === "post") {
-        return await apiConfig.post(url, data || {}, { skipGlobalErrorModal: true });
+        return await apiConfig.post(url, data || {}, { skipGlobalErrorModal: true, ...extraOptions });
       }
       if (method === "delete") {
-        return await apiConfig.delete(url, { data: data || {} }, { skipGlobalErrorModal: true });
+        return await apiConfig.delete(url, { data: data || {} }, { skipGlobalErrorModal: true, ...extraOptions });
       }
       throw new Error(`Unsupported supervisor API method: ${method}`);
     } catch (error) {
@@ -219,6 +219,34 @@ export const rejectTicketApi = async (ticketId, reason) => {
     if (error.response && error.response.data) {
       throw new Error(
         error.response.data.message || "Failed to reject ticket"
+      );
+    }
+    throw new Error(error.message || "Server error occurred");
+  }
+};
+
+export const markAcknowledgeTicketSubmitApi = async (ticketId) => {
+  try {
+    const encodeId = encodeURIComponent(formatTicketId(ticketId));
+    // Fix & Submit on an Acknowledgement ticket immediately navigates to
+    // /submitted-notebooks (see handleAcknowledge in SupervisorDetails.js) -
+    // the real acknowledgement action happens on that next page, so the
+    // generic "submitted successfully" popup this PATCH would otherwise
+    // trigger is misleading (nothing has actually been acknowledged yet) and
+    // just flashes awkwardly mid-navigation.
+    const response = await requestSupervisorApi(
+      "patch",
+      `/tickets/acknowledge/mark-submit?ticketId=${encodeId}`,
+      undefined,
+      undefined,
+      { skipGlobalSuccessModal: true }
+    );
+
+    return response.data;
+  } catch (error) {
+    if (error.response && error.response.data) {
+      throw new Error(
+        error.response.data.message || "Failed to mark ticket as submitted"
       );
     }
     throw new Error(error.message || "Server error occurred");

@@ -11,6 +11,7 @@ import {
 import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
+import useRoleDepartmentAccess from "@/hooks/useRoleDepartmentAccess";
 import styles from "@/styles/SubmissionThreshold.module.css";
 
 // Must match backend's PP_BATCH_NOTEBOOKS labels exactly (routes/submittedNotebooks.routes.js)
@@ -39,7 +40,7 @@ const createRule = () => ({
   subDepartmentSlug: "",
   notebookLabel: "",
   severity: "High",
-  approvalL1Ids: [],
+  approvalL1Id: "",
   entryWithinHours: "24",
   approvalL4Ids: [],
   approveWithinHours: "24",
@@ -77,6 +78,7 @@ function MultiUserSelect({
 }) {
   const containerRef = useRef(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -91,31 +93,51 @@ function MultiUserSelect({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isOpen) setSearchText("");
+  }, [isOpen]);
+
   const selectedIds = new Set(normalizeIdList(value));
   const selectedNames = options
     .filter((option) => selectedIds.has(String(option.id)))
     .map((option) => option.name);
   const selectedLabel =
-    selectedNames.length > 1 ? `${selectedNames.length} selected` : selectedNames[0] || placeholder;
+    selectedNames.length > 0
+      ? `${selectedNames.length} user${selectedNames.length > 1 ? "s" : ""} selected`
+      : placeholder;
+  const filteredOptions = searchText.trim()
+    ? options.filter((option) => option.name?.toLowerCase().includes(searchText.trim().toLowerCase()))
+    : options;
 
   return (
     <div ref={containerRef} className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}>
-      <button
-        type="button"
-        className={styles.multiSelectButton}
-        onClick={() => {
-          if (!disabled) setIsOpen((current) => !current);
-        }}
-        disabled={disabled}
-      >
-        <span className={styles.multiSelectValue}>{selectedLabel}</span>
-        <span className={styles.multiSelectChevron}>{isOpen ? "^" : "v"}</span>
-      </button>
+      <div className={styles.multiSelectButton}>
+        <input
+          type="text"
+          className={styles.multiSelectValue}
+          value={isOpen ? searchText : ""}
+          placeholder={selectedLabel}
+          onFocus={() => !disabled && setIsOpen(true)}
+          onChange={(event) => {
+            setSearchText(event.target.value);
+            if (!disabled) setIsOpen(true);
+          }}
+          disabled={disabled}
+        />
+        <span
+          className={styles.multiSelectChevron}
+          onClick={() => {
+            if (!disabled) setIsOpen((current) => !current);
+          }}
+        >
+          {isOpen ? "^" : "v"}
+        </span>
+      </div>
 
       {isOpen ? (
         <div className={styles.multiSelectMenu}>
-          {options.length ? (
-            options.map((option) => {
+          {filteredOptions.length ? (
+            filteredOptions.map((option) => {
               const optionId = String(option.id);
               const isChecked = selectedIds.has(optionId);
               return (
@@ -146,17 +168,99 @@ function MultiUserSelect({
   );
 }
 
-// Combined PP Threshold + PP Approval config, per notebook: Department/
-// Sub-Department/Notebook/Severity/L1 Proposer/Entry-Within-Hours drive the
-// PP_BATCH_INCOMPLETE ticket (per-notebook, as before); L4 Approver/Approve-
-// Within-Hours drive the PP Approval ticket - applied whenever THIS
-// notebook's department is the one that completes a shared PP entry_id
-// last (see createPpApprovalTicket in processParameters.js).
-//
-// Existing rows are browsed/edited/deleted from the master Threshold hub's
-// unified "Existing Thresholds" tab (ThresholdsHub.jsx) - this component is
-// create/edit-only, matching that page's shared table instead of
-// duplicating its own list here.
+function SingleUserSelect({
+  value = "",
+  options = [],
+  onChange,
+  disabled = false,
+  placeholder = "Select",
+  emptyLabel = "No users available",
+}) {
+  const containerRef = useRef(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!containerRef.current?.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) setSearchText("");
+  }, [isOpen]);
+
+  const selectedId = String(value || "").trim();
+  const selectedOption = options.find((option) => String(option.id) === selectedId) || null;
+  const buttonLabel = selectedOption?.name || placeholder;
+  const filteredOptions = searchText.trim()
+    ? options.filter((option) => option.name?.toLowerCase().includes(searchText.trim().toLowerCase()))
+    : options;
+
+  return (
+    <div ref={containerRef} className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}>
+      <div className={styles.multiSelectButton}>
+        <input
+          type="text"
+          className={styles.multiSelectValue}
+          value={isOpen ? searchText : ""}
+          placeholder={buttonLabel}
+          onFocus={() => !disabled && setIsOpen(true)}
+          onChange={(event) => {
+            setSearchText(event.target.value);
+            if (!disabled) setIsOpen(true);
+          }}
+          disabled={disabled}
+        />
+        <span
+          className={styles.multiSelectChevron}
+          onClick={() => {
+            if (!disabled) setIsOpen((current) => !current);
+          }}
+        >
+          {isOpen ? "^" : "v"}
+        </span>
+      </div>
+
+      {isOpen ? (
+        <div className={styles.multiSelectMenu}>
+          {filteredOptions.length ? (
+            filteredOptions.map((option) => {
+              const optionId = String(option.id);
+              const isActive = optionId === selectedId;
+              return (
+                <button
+                  key={optionId}
+                  type="button"
+                  className={`${styles.singleSelectOption} ${isActive ? styles.singleSelectOptionActive : ""}`}
+                  onClick={() => {
+                    onChange?.(optionId);
+                    setIsOpen(false);
+                  }}
+                >
+                  {option.name}
+                </button>
+              );
+            })
+          ) : (
+            <div className={styles.multiSelectEmpty}>{emptyLabel}</div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// Shared PP timing is configured once above and applied to every notebook row.
+// Each row only chooses the department, sub-department, notebook, severity,
+// and L1 proposer.
 export default function PPNotebookThresholdPage({ standalone = true, editItem = null, onEditItemHandled } = {}) {
   const dispatch = useDispatch();
   const router = useRouter();
@@ -164,6 +268,7 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
   const users = useSelector((state) => state.users?.users || []);
   const canAccessPage = isFullAccessUser(user);
+  const { hasDepartmentAccess } = useRoleDepartmentAccess(users);
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -172,8 +277,10 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
   const [error, setError] = useState("");
   const [rules, setRules] = useState([createRule()]);
   const [editingId, setEditingId] = useState("");
+  const [sharedEntryWithinHours, setSharedEntryWithinHours] = useState("24");
+  const [sharedApprovalL4Ids, setSharedApprovalL4Ids] = useState([]);
+  const [sharedApproveWithinHours, setSharedApproveWithinHours] = useState("24");
 
-  const l1Options = useMemo(() => buildUserOptions(users, "L1"), [users]);
   const l4Options = useMemo(() => buildUserOptions(users, "L4"), [users]);
 
   const availableDepartments = departmentDirectory;
@@ -259,6 +366,9 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
   const resetForm = ({ preserveFeedback = false } = {}) => {
     setRules([createRule()]);
     setEditingId("");
+    setSharedEntryWithinHours("24");
+    setSharedApprovalL4Ids([]);
+    setSharedApproveWithinHours("24");
     if (!preserveFeedback) {
       setMessage("");
       setError("");
@@ -280,11 +390,12 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
       subDepartmentSlug: matchedSubDepartment?.slug || "",
       notebookLabel: item.notebook_label || "",
       severity: item.severity || "High",
-      approvalL1Ids: normalizeIdList(item.approval_l1_user_ids),
-      entryWithinHours: String(item.completion_threshold_hours ?? "24"),
-      approvalL4Ids: normalizeIdList(item.approval_l4_user_ids),
-      approveWithinHours: String(item.approve_within_hours ?? "24"),
+      approvalL1Id: normalizeIdList(item.approval_l1_user_ids)[0] || "",
+      approvalL4Ids: [],
     }]);
+    setSharedEntryWithinHours(String(item.completion_threshold_hours ?? "24"));
+    setSharedApprovalL4Ids(normalizeIdList(item.approval_l4_user_ids));
+    setSharedApproveWithinHours(String(item.approve_within_hours ?? "24"));
     setEditingId(String(item.id));
     setMessage("Edit mode loaded from Existing Thresholds.");
     setError("");
@@ -325,25 +436,15 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
           throw new Error("Threshold already exists, please modify in list of existing thresholds");
         }
 
-        const entryWithinHours = Number(rule.entryWithinHours);
-        if (!Number.isFinite(entryWithinHours) || entryWithinHours <= 0) {
-          throw new Error("Please enter Entry Within Hours greater than 0 for every row.");
-        }
-
-        const approveWithinHours = Number(rule.approveWithinHours);
-        if (!Number.isFinite(approveWithinHours) || approveWithinHours <= 0) {
-          throw new Error("Please enter Approve Within Hours greater than 0 for every row.");
-        }
-
         return {
           notebook_label: rule.notebookLabel,
           department: department.name,
           sub_department: subDepartment.name,
           severity: rule.severity,
-          completion_threshold_hours: entryWithinHours,
-          approval_l1_user_ids: rule.approvalL1Ids.map((id) => Number(id)),
-          approval_l4_user_ids: rule.approvalL4Ids.map((id) => Number(id)),
-          approve_within_hours: approveWithinHours,
+          completion_threshold_hours: Number(sharedEntryWithinHours),
+          approval_l1_user_ids: rule.approvalL1Id ? [Number(rule.approvalL1Id)] : [],
+          approval_l4_user_ids: (rule.approvalL4Ids.length ? rule.approvalL4Ids : sharedApprovalL4Ids).map((id) => Number(id)),
+          approve_within_hours: Number(sharedApproveWithinHours),
           is_active: true,
         };
       });
@@ -398,13 +499,59 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
       <form className={styles.stack} onSubmit={handleSave}>
         <section className={styles.sectionPlain}>
           <div className={styles.sectionHeader}>
-            <h2>Set the Process Parameter Threshold + Approval</h2>
+            <h2>Set the PP Threshold</h2>
+          </div>
+
+          <div className={styles.ruleCard} style={{ marginBottom: "16px" }}>
+            <div className={styles.ruleGrid}>
+              <label className={styles.field} style={{ gridColumn: "1 / 2", gridRow: "1" }}>
+                <span>Entry Within (Hours)</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={sharedEntryWithinHours}
+                  onChange={(event) => setSharedEntryWithinHours(event.target.value)}
+                />
+              </label>
+
+              <label className={styles.field} style={{ gridColumn: "2 / 3", gridRow: "1" }}>
+                <span>L4 Approver</span>
+                <MultiUserSelect
+                  value={sharedApprovalL4Ids}
+                  options={l4Options}
+                  onChange={(nextIds) => setSharedApprovalL4Ids(nextIds)}
+                  placeholder="Select L4 user"
+                  emptyLabel="No L4 users available"
+                />
+              </label>
+
+              <label className={styles.field} style={{ gridColumn: "3 / 4", gridRow: "1" }}>
+                <span>Approve Within (Hours)</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={sharedApproveWithinHours}
+                  onChange={(event) => setSharedApproveWithinHours(event.target.value)}
+                />
+              </label>
+            </div>
+            <p style={{ color: "#7b89a0", fontSize: "12px", marginTop: "12px" }}>
+              These shared PP timing fields will be applied to every notebook row you save on this screen.
+            </p>
           </div>
 
           <div className={styles.rulesTable}>
             {rules.map((rule, index) => {
               const availableSubDepartments = getAvailableSubDepartments(rule.departmentSlug);
               const availableNotebooks = getAvailableNotebooks(rule.departmentSlug, rule.subDepartmentSlug);
+              const rowSubDepartmentName =
+                availableSubDepartments.find((item) => item.slug === rule.subDepartmentSlug)?.name || "";
+              const rowL1Options = buildUserOptions(
+                users.filter((candidate) => hasDepartmentAccess(candidate, rowSubDepartmentName)),
+                "L1"
+              );
               return (
                 <div className={styles.ruleCard} key={rule.id}>
                   <div className={styles.ruleGrid}>
@@ -413,7 +560,11 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
                       <select value={rule.departmentSlug} onChange={(event) => updateRule(rule.id, "departmentSlug", event.target.value)}>
                         <option value="">Select Department</option>
                         {availableDepartments.map((department) => (
-                          <option key={department.slug} value={department.slug}>
+                          <option
+                            key={department.slug}
+                            value={department.slug}
+                            disabled={department.slug === "electrical" || department.slug === "mechanical"}
+                          >
                             {department.name}
                           </option>
                         ))}
@@ -453,7 +604,7 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
                     </label>
 
                     <label className={styles.field} style={{ gridColumn: "4 / 5", gridRow: "1" }}>
-                      <span>Severity</span>
+                      <span>Criticality</span>
                       <select value={rule.severity} onChange={(event) => updateRule(rule.id, "severity", event.target.value)}>
                         {SEVERITY_OPTIONS.map((option) => (
                           <option key={option} value={option}>
@@ -463,51 +614,18 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
                       </select>
                     </label>
 
-                    <label className={styles.field} style={{ gridColumn: "1 / 2", gridRow: "2" }}>
+                    <label className={styles.field} style={{ gridColumn: "5 / 6", gridRow: "1" }}>
                       <span>L1 Proposer</span>
-                      <MultiUserSelect
-                        value={rule.approvalL1Ids}
-                        options={l1Options}
-                        onChange={(nextIds) => updateRule(rule.id, "approvalL1Ids", nextIds)}
+                      <SingleUserSelect
+                        value={rule.approvalL1Id}
+                        options={rowL1Options}
+                        onChange={(nextId) => updateRule(rule.id, "approvalL1Id", nextId)}
                         placeholder="Select L1 user"
                         emptyLabel="No L1 users available"
                       />
                     </label>
 
-                    <label className={styles.field} style={{ gridColumn: "2 / 3", gridRow: "2" }}>
-                      <span>Entry Within (Hours)</span>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={rule.entryWithinHours}
-                        onChange={(event) => updateRule(rule.id, "entryWithinHours", event.target.value)}
-                      />
-                    </label>
-
-                    <label className={styles.field} style={{ gridColumn: "3 / 4", gridRow: "2" }}>
-                      <span>L4 Approver</span>
-                      <MultiUserSelect
-                        value={rule.approvalL4Ids}
-                        options={l4Options}
-                        onChange={(nextIds) => updateRule(rule.id, "approvalL4Ids", nextIds)}
-                        placeholder="Select L4 user"
-                        emptyLabel="No L4 users available"
-                      />
-                    </label>
-
-                    <label className={styles.field} style={{ gridColumn: "4 / 5", gridRow: "2" }}>
-                      <span>Approve Within (Hours)</span>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={rule.approveWithinHours}
-                        onChange={(event) => updateRule(rule.id, "approveWithinHours", event.target.value)}
-                      />
-                    </label>
-
-                    <div className={styles.ruleActions}>
+                    <div className={styles.ruleActions} style={{ gridColumn: "6 / 7", gridRow: "1" }}>
                       {index === rules.length - 1 ? (
                         <button type="button" className={styles.addIconButton} onClick={addRule} aria-label="Add PP threshold row">
                           <FiPlus />
@@ -529,13 +647,6 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
               );
             })}
           </div>
-
-          <p style={{ color: "#7b89a0", fontSize: "12px" }}>
-            L2 escalation is auto-resolved from each L1 Proposer&apos;s real reporting manager, not configured here.
-            L4 Approver applies to the overall PP Approval only when this notebook&apos;s department is the one that
-            completes the shared PP entry last; if no specific L4 user is selected, the approval task is raised on
-            every current L4 user.
-          </p>
 
           <div className={styles.formFooter}>
             <div className={styles.actionButtons}>
@@ -564,7 +675,7 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
       <div className={styles.shell}>
         <div className={styles.intro}>
           <h1>PP Threshold</h1>
-          <p>Set the completion (L1) and approval (L4) conditions for each PP notebook.</p>
+          <p>Set shared PP timing once, then map each notebook with its L1 proposer.</p>
         </div>
         {content}
       </div>

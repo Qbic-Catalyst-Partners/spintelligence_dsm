@@ -27,7 +27,8 @@ import styles from "@/styles/ticketCalendar.module.css";
 import { fetchOperatorTickets } from "@/store/slices/operatorSlice";
 import { fetchSupervisorTickets } from "@/store/slices/supervisorSlice";
 import { fetchUsers } from "@/store/slices/userSlice";
-import { applyStoredTicketStatuses } from "@/utils/ticketStatus";
+import { applyStoredTicketStatuses, applyTicketOverdueStatus } from "@/utils/ticketStatus";
+import { fetchTicketResolutionSlaAPI } from "@/apis/ticketResolutionSlaApi";
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
@@ -847,6 +848,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   const [inputField, setInputField] = useState("");
   const [submissionTickets, setSubmissionTickets] = useState([]);
   const [submissionError, setSubmissionError] = useState("");
+  const [resolutionSlaData, setResolutionSlaData] = useState([]);
   const [teamOptions, setTeamOptions] = useState({});
   const [performanceApiData, setPerformanceApiData] = useState({
     l1: null,
@@ -961,6 +963,9 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
 
     dispatch(fetchOperatorTickets());
     dispatch(fetchSupervisorTickets());
+    fetchTicketResolutionSlaAPI()
+      .then((rows) => setResolutionSlaData(Array.isArray(rows) ? rows : []))
+      .catch(() => setResolutionSlaData([]));
 
     let isMounted = true;
     getSubmissionTickets()
@@ -1276,10 +1281,11 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     let pending = 0;
 
     filteredModeTickets.forEach((t) => {
-      const status = normalizeStatus(t.status);
+      const overdueTicket = applyTicketOverdueStatus(t, resolutionSlaData, now);
+      const status = normalizeStatus(overdueTicket.status);
       const l2Status = normalizeL2Status(t.status);
-      const ticketName = String(t?.user_name || "").trim() || "-";
-      const ticketId = resolveTicketEmpId(t, userIdByName);
+      const ticketName = String(overdueTicket?.user_name || "").trim() || "-";
+      const ticketId = resolveTicketEmpId(overdueTicket, userIdByName);
       const key = ticketId ? `${ticketId}-${ticketName}` : ticketName;
       const entry = rowsMap.get(key) || {
         employee: key,
@@ -1295,9 +1301,9 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
       };
       entry.total += 1;
 
-      const createdAt = new Date(t.created_at).getTime();
+      const createdAt = new Date(overdueTicket.created_at).getTime();
       const ageHours = Number.isNaN(createdAt) ? 0 : Math.max(0, (now - createdAt) / (1000 * 60 * 60));
-      const isOverdue = ageHours > 24 && (mode === "L2" ? l2Status !== "Approved" : status !== "Completed");
+      const isOverdue = status === "Overdue" || (mode === "L2" ? l2Status !== "Approved" : status !== "Completed");
       if (mode === "L2" ? l2Status !== "Approved" : status !== "Completed") {
         entry.hours += ageHours;
         if (isOverdue) {

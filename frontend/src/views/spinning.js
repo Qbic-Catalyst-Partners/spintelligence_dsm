@@ -24,6 +24,7 @@ import { fetchEmployeeOptions, normalizeEmployeeOptions } from "@/apis/employeeM
 import { sanitizeIntegerInput, sanitizeNumericInput, sanitizeSpindleListInput, sanitizeSpindleNumberInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import styles from "../styles/spinning.module.css";
 
@@ -351,7 +352,7 @@ function SpinningDepartment() {
     const [submitting, setSubmitting] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
     const [confirmedEntryId, setConfirmedEntryId] = useState("");
-    // Which of Wheel Change's 4 sub-types (Type 1-4) is currently selected inside
+    // Which of Wheel Change's 3 sub-types (Type 1-3) is currently selected inside
     // WheelChange.jsx, reported up via onWheelChangeTypeChange so the entry-id
     // reservation below can scope itself to that sub-type's own table.
     const [wheelChangeSubType, setWheelChangeSubType] = useState("");
@@ -386,10 +387,10 @@ function SpinningDepartment() {
     const isBottomApronChecking = checkingType === "Bottom Apron Checking";
     const isLycraOutOfCentering = checkingType === "Lycra Out of Centering";
     const type2OptionsByType = {
-        "Bottom Apron Checking": ["Apron Damage", "Apron Position Not Center"],
-        "Lycra Out of Centering": ["Lycra out of center Running", "Lycra Out of Center"],
-        "RSM & Lycrasensor Checking Online": ["RSM Not Working", "RSM Working but Roving Run", "Cable Problem", "Lycrasensor Not Working"],
-        "RSM & Lycrasensor Checking Offline": ["RSM Not Working", "RSM Working but Roving Run", "Cable Problem", "Lycrasensor Not Working"],
+        "Bottom Apron Checking": [ "Nil", "Apron Damage", "Apron Position Not Center", "Apron Nil Idle", "Apron Nil Running"],
+        "Lycra Out of Centering": [ "Nil", "Both", "Lycra Out of Center", "Lycra Not Center"],
+        "RSM & Lycrasensor Checking Online": [ "Nil", "RSM Not Working", "RSM Half Open", "RSM Working but Roving Run", "Cable Problem", "Lycrasensor Not Working"],
+        "RSM & Lycrasensor Checking Offline": ["Nil", "RSM Not Working", "RSM Half Open", "RSM Working but Roving Run", "Cable Problem", "Lycrasensor Not Working"],
     };
     const showType2Field = isBottomApronChecking || isLycraOutOfCentering || isRsmChecking;
     const useArrayLhsRhs = showType2Field || isCotsChecking || checkingType === "Speed Checking";
@@ -1033,6 +1034,15 @@ function SpinningDepartment() {
                     total_cops_ac: totalCopsAc,
                     total_cops_rf: totalCopsRf,
                     total_cops: totalCopsGrandTotal,
+                    // Lycra Missing has no separate AC input on this form — it's entirely derived
+                    // from summing each row's lycra_missing field (RF side only), so lycra_missing_ac
+                    // has no source value and stays unset (backend/normalizeRingFrameSummary leaves
+                    // it null). lycra_missing/lycra_missing_rf were computed on screen (lycraMissingTotal)
+                    // but never previously included here, so the DB columns sat unused.
+                    lycra_missing: lycraMissingTotal,
+                    lycra_missing_rf: lycraMissingTotal,
+                    guide_roll_total: guideRollTotal,
+                    others_total: othersTotal,
                     comments: comments.trim(),
                 },
             };
@@ -1046,7 +1056,6 @@ function SpinningDepartment() {
             inspectiondate: new Date(date || getTodayDate()).toISOString(),
             machineno: machineNo,
             machine_name: selectedMachineLabel || undefined,
-            machine_no: isCotsChecking ? selectedMachine : undefined,
             lhs_value: useArrayLhsRhs ? undefined : parseDecimalPayloadValue(lhsValue) ?? 0,
             rhs_value: useArrayLhsRhs ? undefined : parseDecimalPayloadValue(rhsValue) ?? 0,
             lhs_values: useArrayLhsRhs ? parseArrayValues(lhsValuesText) : undefined,
@@ -1061,8 +1070,6 @@ function SpinningDepartment() {
             payload.display_speed = parseDecimalPayloadValue(displaySpeed);
             payload.spindle_speed = parseDecimalPayloadValue(spindleSpeed);
             payload.difference = calculatedDifferenceValue === null ? null : Number(calculatedDifferenceValue.toFixed(2));
-            payload.displaySpeed = parseDecimalPayloadValue(displaySpeed);
-            payload.spindleSpeed = parseDecimalPayloadValue(spindleSpeed);
         }
         if (showType2Field) {
             payload.type2 = type2Value;
@@ -1088,6 +1095,18 @@ function SpinningDepartment() {
                     previewItems,
                     user,
                 });
+                try {
+                    await createThresholdViolationTickets({
+                        department: "Quality Control",
+                        subDepartment: "Spinning",
+                        screenName: checkingType,
+                        machineName: checkingType,
+                        entryId,
+                        values: previewItems,
+                    });
+                } catch (ticketError) {
+                    console.error("Threshold ticket generation failed:", ticketError);
+                }
                 return;
             }
             const payload = buildPayload();
@@ -1115,6 +1134,18 @@ function SpinningDepartment() {
                         submitted_fields: payload,
                     },
                 });
+                try {
+                    await createThresholdViolationTickets({
+                        department: "Quality Control",
+                        subDepartment: "Spinning",
+                        screenName: checkingType,
+                        machineName: checkingType,
+                        entryId: realEntryId || entryId,
+                        values: previewItems,
+                    });
+                } catch (ticketError) {
+                    console.error("Threshold ticket generation failed:", ticketError);
+                }
             }
         } finally {
             submitInProgressRef.current = false;
@@ -1221,6 +1252,15 @@ function SpinningDepartment() {
                 { label: "Lycra Draft", value: lycraDraft || "-" },
                 { label: "No. of Readings", value: countReadingCount || "-" },
                 { label: "Generated Rows", value: countChangeRows.length },
+                // The actual measured averages - previously omitted here, so a
+                // Value Threshold rule configured on any of these (the fields
+                // that matter for this notebook) could never fire no matter
+                // how far out of range a reading was, since the ticketing
+                // helper only ever saw the metadata above.
+                { label: "Avg Reading", value: averageReadingValue || "-" },
+                { label: "Avg Count", value: averageCountValue || "-" },
+                { label: "Avg Strength", value: averageStrengthValue || "-" },
+                { label: "Overall CSP", value: overallAverageCsp || "-" },
             ]
             : isRingFrame
                 ? [

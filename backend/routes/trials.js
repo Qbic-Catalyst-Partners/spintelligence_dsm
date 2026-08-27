@@ -5,6 +5,9 @@ const sqlServer = require('../config/sqlserver');
 const { dedupeVarieties } = require('../utils/variety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 
+const getAuthenticatedOperatorName = (req) =>
+  String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null;
+
 const mapMachineRows = (rows = []) =>
   rows
     .map((r) => ({
@@ -171,26 +174,9 @@ const getEmployeeMasterDropdown = createEmployeeMasterDropdown(sqlServer, 'trial
 const toNumberOrNull = (value) =>
     value === '' || value === null || typeof value === 'undefined' ? null : value;
 
-let trialsEntryIdColumnReady = false;
-const ensureTrialsEntryIdColumn = async () => {
-    if (trialsEntryIdColumnReady) return;
-    await client.query(`
-        ALTER TABLE trials.trials
-            ADD COLUMN IF NOT EXISTS entry_id TEXT;
-    `);
-    await client.query(`
-        CREATE UNIQUE INDEX IF NOT EXISTS trials_trials_entry_id_uq
-        ON trials.trials (entry_id)
-        WHERE entry_id IS NOT NULL;
-    `);
-    trialsEntryIdColumnReady = true;
-};
-
 router.post('/', async (req, res) => {
 
     try {
-
-        await ensureTrialsEntryIdColumn();
 
         const data = req.body;
 
@@ -275,7 +261,8 @@ router.post('/', async (req, res) => {
                 smx_no,
                 spl_no,
                 roving_percent,
-                smx_cvim
+                smx_cvim,
+                operator
             )
             VALUES(
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
@@ -285,7 +272,7 @@ router.post('/', async (req, res) => {
                 $41,$42,$43,$44,$45,$46,$47,$48,$49,$50,
                 $51,$52,$53,$54,$55,$56,$57,$58,$59,$60,
                 $61,$62,$63,$64,$65,$66,$67,$68,$69,$70,
-                $71,$72,$73,$74,$75,$76
+                $71,$72,$73,$74,$75,$76,$77
             )
             RETURNING *`,
             [
@@ -364,7 +351,8 @@ router.post('/', async (req, res) => {
                 data.smx_no,
                 data.spl_no,
                 toNumberOrNull(data.roving_percent),
-                toNumberOrNull(data.smx_cvim)
+                toNumberOrNull(data.smx_cvim),
+                getAuthenticatedOperatorName(req)
             ]
         );
 
@@ -410,8 +398,6 @@ router.post('/', async (req, res) => {
 router.get('/', async (req, res) => {
 
     try {
-
-        await ensureTrialsEntryIdColumn();
 
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchUsers } from "@/store/slices/userSlice";
 import { FiMoreVertical, FiX } from "react-icons/fi";
@@ -36,6 +38,7 @@ import {
 import {
   fetchWheelChangeApprovalConfigListAPI,
   updateWheelChangeApprovalConfigStatusAPI,
+  deleteWheelChangeApprovalConfigAPI,
 } from "@/apis/wheelChangeApprovalConfigApi";
 
 import { departmentDirectory } from "@/views/departments/data";
@@ -59,27 +62,28 @@ const THRESHOLD_TYPE_COLUMNS = {
   value: [
     { key: "field", label: "Input Field" },
     { key: "l1", label: "L1" },
-    { key: "l2", label: "L2" },
     { key: "typicalValue", label: "Typical Value" },
     { key: "detail", label: "Plus (+) / Minus (-)" },
   ],
   submission: [
     { key: "l1", label: "L1" },
-    { key: "l2", label: "L2" },
-    { key: "detail", label: "Frequency" },
+    { key: "days", label: "Days" },
+    { key: "frequency", label: "Frequency" },
   ],
   pp: [
-    { key: "field", label: "Severity" },
+    { key: "field", label: "Criticality" },
     { key: "l1", label: "L1 Proposer" },
     { key: "l2", label: "L4 Approver" },
-    { key: "detail", label: "Entry / Approve Within" },
+    { key: "entryWithin", label: "Entry Within" },
+    { key: "approveWithin", label: "Approve Within" },
   ],
   acknowledgement: [
-    { key: "l2", label: "L4" },
+    { key: "field", label: "Criticality" },
+    { key: "l2", label: "L4 Approver" },
     { key: "detail", label: "Acknowledge Within" },
   ],
   "wheel-change-approval": [
-    { key: "field", label: "Severity" },
+    { key: "field", label: "Criticality" },
     { key: "l1", label: "L4 Approver" },
     { key: "detail", label: "Approve Within" },
   ],
@@ -117,24 +121,56 @@ const nameListToText = (value) => {
 
 const getRowId = (item) => item?.id || item?._id || item?.threshold_id || item?.thresholdId || "";
 
+// Builds the "Department > Sub Department > Notebook Type > Field Name"
+// breadcrumb shown in the delete-confirmation modal, using the same
+// normalized row shape (department/subDepartment/notebookType/field) every
+// threshold type already produces above.
+const getDeleteThresholdSummary = (row) =>
+  [row?.department, row?.subDepartment, row?.notebookType, row?.field]
+    .filter((part) => part && part !== "-")
+    .join(" > ");
+
+// The approver name shown on its own line below the breadcrumb, labeled
+// with whichever level ("L1"/"L1 Proposer"/"L4 Approver"/...) that type's
+// column config uses for the populated field.
+const getDeleteThresholdApprover = (row) => {
+  const columns = THRESHOLD_TYPE_COLUMNS[row?.type] || [];
+  const l1Column = columns.find((column) => column.key === "l1");
+  const l2Column = columns.find((column) => column.key === "l2");
+
+  if (row?.l1 && row.l1 !== "-") {
+    return `${row.l1} (${l1Column?.label || "L1"})`;
+  }
+  if (row?.l2 && row.l2 !== "-") {
+    return `${row.l2} (${l2Column?.label || "L4"})`;
+  }
+  return "";
+};
+
 // Normalizes each threshold type's row shape into one common display shape
 // so the merged "Existing Thresholds" tab can render every type in one table.
-const normalizeValueThresholdRow = (item) => ({
+const normalizeValueThresholdRow = (item, users) => {
+  const l1UserNames =
+    resolveUserNames(item?.approval_l1_user_ids, users) ||
+    resolveUserNames(item?.approval_l1_ids, users) ||
+    [];
+
+  return ({
   type: "value",
   typeLabel: "Value Threshold",
   id: getRowId(item),
   raw: item,
   department: item?.department || item?.management_field || "-",
   subDepartment: item?.sub_department || item?.erp_product_code || "-",
-  notebookType: item?.input_screen || item?.machine_name || "-",
-  field: item?.input_field || item?.parameter_name || "-",
-  l1: nameListToText(item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1),
-  l2: nameListToText(item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2),
-  typicalValue: item?.actual_value ?? "-",
-  detail: `${item?.plus_threshold ?? item?.positive_tolerance ?? "-"} / ${item?.minus_threshold ?? item?.negative_tolerance ?? "-"}`,
+  notebookType: item?.notebook || item?.input_screen || item?.machine_name || "-",
+  field: item?.field || item?.input_field || item?.parameter_name || "-",
+  l1: item?.l1_user_name || item?.approval_l1_name || item?.approval_l1_names || l1UserNames.join(", ") || item?.approval_l1 || item?.approval_l1_user_name || "-",
+  typicalValue: item?.typical_value ?? item?.actual_value ?? "-",
+  detail: `${item?.plus_value ?? item?.plus_threshold ?? item?.positive_tolerance ?? "-"} / ${item?.minus_value ?? item?.minus_threshold ?? item?.negative_tolerance ?? "-"}`,
   isActive: getActiveValue(item),
-  createdAt: item?.created_at || item?.createdAt,
-});
+  createdAt: item?.updated_at || item?.updatedAt || item?.created_at || item?.createdAt,
+  });
+};
 
 const normalizeSubmissionThresholdRow = (item) => ({
   type: "submission",
@@ -146,10 +182,11 @@ const normalizeSubmissionThresholdRow = (item) => ({
   notebookType: item?.screen_name || "-",
   field: "-",
   l1: nameListToText(item?.approval_l1_name || item?.approval_l1),
-  l2: nameListToText(item?.approval_l2_name || item?.approval_l2),
+  days: item?.range ?? "-",
+  frequency: item?.frequency ?? "-",
   detail: `Every ${item?.range ?? "-"}d x ${item?.frequency ?? "-"}`,
   isActive: getActiveValue(item),
-  createdAt: item?.created_at || item?.createdAt,
+  createdAt: item?.updated_at || item?.updatedAt || item?.created_at || item?.createdAt,
 });
 
 const resolveUserNames = (ids, users) =>
@@ -170,6 +207,8 @@ const normalizePpThresholdRow = (item, users) => ({
   field: item?.severity || "-",
   l1: nameListToText(resolveUserNames(item?.approval_l1_user_ids, users)),
   l2: nameListToText(resolveUserNames(item?.approval_l4_user_ids, users)) || "Any current L4 user",
+  entryWithin: item?.completion_threshold_hours ?? "-",
+  approveWithin: item?.approve_within_hours ?? "-",
   detail: `Entry ${item?.completion_threshold_hours ?? "-"}h / Approve ${item?.approve_within_hours ?? "-"}h`,
   isActive: getActiveValue(item),
   createdAt: item?.updated_at || item?.created_at || item?.createdAt,
@@ -183,12 +222,12 @@ const normalizeAcknowledgementThresholdRow = (item) => ({
   department: item?.department || item?.department_name || "-",
   subDepartment: item?.sub_department || item?.subDepartment || "-",
   notebookType: item?.screen_name || item?.notebook || item?.notebook_name || "-",
-  field: "-",
+  field: item?.criticality || "-",
   l1: "-",
-  l2: nameListToText(item?.approval_l4_name || item?.approval_l4 || item?.approval_l2_name || item?.approval_l2),
+  l2: nameListToText(item?.approval_l4_name || item?.approval_l4),
   detail: `${item?.acknowledge_within_hours ?? item?.acknowledgeWithinHours ?? "-"} Hrs`,
   isActive: getActiveValue(item),
-  createdAt: item?.created_at || item?.createdAt,
+  createdAt: item?.updated_at || item?.updatedAt || item?.created_at || item?.createdAt,
 });
 
 // Wheel Change Approval is one row per department (Spinning/Drawframe/
@@ -196,14 +235,15 @@ const normalizeAcknowledgementThresholdRow = (item) => ({
 // so each gets its own editable row here too.
 const normalizeWheelChangeApprovalRow = (item, users) => {
   const approverNames = resolveUserNames(item?.l4_user_ids, users);
+  const wheelChangeDepartment = item?.wheel_change_department || item?.config_key || item?.department || "-";
   return {
     type: "wheel-change-approval",
     typeLabel: "WC Threshold",
     id: item?.department,
     raw: item,
-    department: item?.department || "-",
+    department: "Quality Control",
     subDepartment: "-",
-    notebookType: item?.department || "All",
+    notebookType: wheelChangeDepartment || "All",
     field: item?.severity || "-",
     l1: approverNames.length ? nameListToText(approverNames) : "Any current L4 user",
     l2: "-",
@@ -214,9 +254,8 @@ const normalizeWheelChangeApprovalRow = (item, users) => {
 };
 
 // Each threshold type only supports the actions its backend API actually
-// exposes today: Value/Submission/Acknowledgement have full edit+delete+status
-// APIs. PP Threshold and Wheel Change Approval support edit (per-notebook /
-// per-department rows) but not delete/status. PP Approval is a single global
+// exposes today: Value/Submission/Acknowledgement/PP/Wheel Change Approval
+// all have full edit+delete+status APIs now. PP Approval is a single global
 // row, editable in place, no delete/status.
 const THRESHOLD_TYPE_LOADERS = {
   value: {
@@ -263,8 +302,16 @@ const THRESHOLD_TYPE_LOADERS = {
     normalize: normalizeWheelChangeApprovalRow,
     canEdit: true,
     canToggleStatus: true,
-    canDelete: false,
-    toggleStatus: (row, nextActive) => updateWheelChangeApprovalConfigStatusAPI(row.department, nextActive),
+    canDelete: true,
+    // row.department is hardcoded to "Quality Control" for display (this
+    // config has no real department/sub-department of its own the way other
+    // threshold types do) - the actual WC department key (Spinning/Drawframe/
+    // Carding/Simplex) that these APIs need lives on row.id instead (set to
+    // item.department in normalizeWheelChangeApprovalRow below). Using
+    // row.department here would send "Quality Control" as the department,
+    // which the backend rejects (not one of WHEEL_CHANGE_DEPARTMENTS).
+    toggleStatus: (row, nextActive) => updateWheelChangeApprovalConfigStatusAPI(row.id, nextActive),
+    remove: (row) => deleteWheelChangeApprovalConfigAPI(row.id),
   },
 };
 
@@ -276,35 +323,44 @@ const buildExistingFilters = () => ({
 });
 
 function RowActionsMenu({ row, loader, onEdit, onToggleStatus, onDelete, busy }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [dropUp, setDropUp] = useState(false);
+  const [menuPosition, setMenuPosition] = useState(null);
   const containerRef = useRef(null);
+  const isOpen = Boolean(menuPosition);
 
   useEffect(() => {
+    if (!isOpen) return undefined;
     const handleOutsideClick = (event) => {
-      if (!containerRef.current?.contains(event.target)) {
-        setIsOpen(false);
-      }
+      if (containerRef.current?.contains(event.target)) return;
+      if (event.target.closest?.(`.${styles.hubActionMenu}`)) return;
+      setMenuPosition(null);
     };
     document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, []);
+  }, [isOpen]);
 
   if (!loader?.canEdit && !loader?.canToggleStatus && !loader?.canDelete) {
     return null;
   }
 
-  const handleToggleOpen = () => {
-    if (!isOpen) {
-      // Estimate whether the menu would render below the visible viewport
-      // (e.g. the last row(s) of a long table) and open upward instead so
-      // it's never clipped/invisible below the fold.
-      const buttonRect = containerRef.current?.getBoundingClientRect();
-      const estimatedMenuHeight = 160;
-      const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-      setDropUp(Boolean(buttonRect) && buttonRect.bottom + estimatedMenuHeight > viewportHeight);
+  const handleToggleOpen = (event) => {
+    if (isOpen) {
+      setMenuPosition(null);
+      return;
     }
-    setIsOpen((current) => !current);
+    // Anchor the menu to the button with fixed positioning and render it via
+    // a portal to document.body so the table's scroll/overflow container can
+    // never clip it, regardless of where the row sits after the table loads.
+    // Opens just below the button by default, flipping above only when
+    // there isn't enough room below.
+    const rect = event.currentTarget.getBoundingClientRect();
+    const estimatedMenuHeight = 160;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const openUpward = rect.bottom + estimatedMenuHeight > viewportHeight;
+    setMenuPosition(
+      openUpward
+        ? { bottom: Math.max(12, viewportHeight - rect.top + 6), right: Math.max(12, window.innerWidth - rect.right) }
+        : { top: rect.bottom + 6, right: Math.max(12, window.innerWidth - rect.right) }
+    );
   };
 
   return (
@@ -317,49 +373,60 @@ function RowActionsMenu({ row, loader, onEdit, onToggleStatus, onDelete, busy })
       >
         <FiMoreVertical />
       </button>
-      {isOpen ? (
-        <div className={`${styles.hubActionMenu} ${dropUp ? styles.hubActionMenuUp : ""}`}>
-          {loader.canEdit ? (
-            <button
-              type="button"
-              className={styles.hubActionMenuItem}
-              disabled={busy}
-              onClick={() => {
-                setIsOpen(false);
-                onEdit(row);
+      {isOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className={styles.hubActionMenu}
+              style={{
+                position: "fixed",
+                top: menuPosition.top ?? "auto",
+                bottom: menuPosition.bottom ?? "auto",
+                right: menuPosition.right,
               }}
             >
-              Edit
-            </button>
-          ) : null}
-          {loader.canToggleStatus ? (
-            <button
-              type="button"
-              className={styles.hubActionMenuItem}
-              disabled={busy}
-              onClick={() => {
-                setIsOpen(false);
-                onToggleStatus(row);
-              }}
-            >
-              {row.isActive ? "Inactive" : "Active"}
-            </button>
-          ) : null}
-          {loader.canDelete ? (
-            <button
-              type="button"
-              className={`${styles.hubActionMenuItem} ${styles.hubActionMenuDelete}`}
-              disabled={busy}
-              onClick={() => {
-                setIsOpen(false);
-                onDelete(row);
-              }}
-            >
-              Delete
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+              {loader.canEdit ? (
+                <button
+                  type="button"
+                  className={styles.hubActionMenuItem}
+                  disabled={busy}
+                  onClick={() => {
+                    setMenuPosition(null);
+                    onEdit(row);
+                  }}
+                >
+                  Edit
+                </button>
+              ) : null}
+              {loader.canToggleStatus ? (
+                <button
+                  type="button"
+                  className={styles.hubActionMenuItem}
+                  disabled={busy}
+                  onClick={() => {
+                    setMenuPosition(null);
+                    onToggleStatus(row);
+                  }}
+                >
+                  {row.isActive ? "Inactive" : "Active"}
+                </button>
+              ) : null}
+              {loader.canDelete ? (
+                <button
+                  type="button"
+                  className={`${styles.hubActionMenuItem} ${styles.hubActionMenuDelete}`}
+                  disabled={busy}
+                  onClick={() => {
+                    setMenuPosition(null);
+                    onDelete(row);
+                  }}
+                >
+                  Delete
+                </button>
+              ) : null}
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
@@ -554,7 +621,11 @@ function ExistingThresholdsTab({ onEditRow }) {
           >
             <option value="">All Departments</option>
             {availableDepartments.map((department) => (
-              <option key={department.slug} value={department.slug}>
+              <option
+                key={department.slug}
+                value={department.slug}
+                disabled={department.slug === "electrical" || department.slug === "mechanical"}
+              >
                 {department.name}
               </option>
             ))}
@@ -582,7 +653,8 @@ function ExistingThresholdsTab({ onEditRow }) {
           <select
             value={filters.notebookType}
             onChange={(event) => handleFilterChange("notebookType", event.target.value)}
-            disabled={!thresholdType}
+            disabled={!thresholdType || thresholdType === "wheel-change-approval"}
+            className={thresholdType === "wheel-change-approval" ? styles.notebookTypeDisabledForWc : ""}
           >
             <option value="">All Notebook Types</option>
             {notebookTypeOptions.map((option) => (
@@ -635,7 +707,7 @@ function ExistingThresholdsTab({ onEditRow }) {
                     <th key={column.key}>{column.label}</th>
                   ))}
                   <th>Status</th>
-                  <th>Created At</th>
+                  <th>Updated At</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -702,7 +774,13 @@ function ExistingThresholdsTab({ onEditRow }) {
             <div className={warningStyles.message}>
               Are you sure you want to delete this threshold?
               <br />
-              <strong>{pendingDeleteRow.notebookType}</strong>
+              <strong>{getDeleteThresholdSummary(pendingDeleteRow)}</strong>
+              {getDeleteThresholdApprover(pendingDeleteRow) ? (
+                <>
+                  <br />
+                  <strong>User - {getDeleteThresholdApprover(pendingDeleteRow)}</strong>
+                </>
+              ) : null}
             </div>
 
             <div className={styles.hubConfirmActions}>
@@ -1044,7 +1122,11 @@ function ResolutionTimeTab({ onEditRow }) {
           >
             <option value="">All Departments</option>
             {availableDepartments.map((department) => (
-              <option key={department.slug} value={department.slug}>
+              <option
+                key={department.slug}
+                value={department.slug}
+                disabled={department.slug === "electrical" || department.slug === "mechanical"}
+              >
                 {department.name}
               </option>
             ))}
@@ -1230,7 +1312,13 @@ function ResolutionTimeTab({ onEditRow }) {
             <div className={warningStyles.message}>
               Are you sure you want to delete this threshold?
               <br />
-              <strong>{pendingDeleteRow.notebookType}</strong>
+              <strong>{getDeleteThresholdSummary(pendingDeleteRow)}</strong>
+              {getDeleteThresholdApprover(pendingDeleteRow) ? (
+                <>
+                  <br />
+                  <strong>User - {getDeleteThresholdApprover(pendingDeleteRow)}</strong>
+                </>
+              ) : null}
             </div>
 
             <div className={styles.hubConfirmActions}>
@@ -1261,11 +1349,19 @@ function ResolutionTimeTab({ onEditRow }) {
 }
 
 export default function ThresholdsHub() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("value");
   const [editItems, setEditItems] = useState({});
   const user = useSelector((state) => state.auth?.user);
   const canAccessAcknowledgement = isSubmittedNotebookManagerUser(user);
   const canAccessOthers = isFullAccessUser(user);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (String(router.query.tab || "").trim() === "existing") {
+      setActiveTab("existing");
+    }
+  }, [router.isReady, router.query.tab]);
 
   const handleEditRow = (type, rawItem) => {
     setEditItems((current) => ({ ...current, [type]: rawItem }));
@@ -1288,7 +1384,6 @@ export default function ThresholdsHub() {
     { value: "acknowledgement", label: "Acknowledgement Threshold" },
     { value: "wheel-change-approval", label: "WC Threshold" },
     { value: "existing", label: "Existing Thresholds" },
-    // { value: "resolutionTime", label: "Resolution Time" },
   ];
 
   return (
@@ -1349,7 +1444,6 @@ export default function ThresholdsHub() {
           />
         ) : null}
         {activeTab === "existing" ? <ExistingThresholdsTab onEditRow={handleEditRow} /> : null}
-        {activeTab === "resolutionTime" ? <ResolutionTimeTab onEditRow={handleEditRow} /> : null}
       </div>
     </div>
   );

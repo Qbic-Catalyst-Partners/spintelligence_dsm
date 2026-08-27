@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/router";
 import { useSelector } from "react-redux";
 
 import { FaCheckCircle, FaIdCard } from "react-icons/fa";
@@ -174,8 +175,22 @@ function ApprovalsQueueView({
   fetchPending,
   fetchApproved,
   fetchRejected,
+  // Opt-in 4th tab beyond the standard Pending/Approved/Rejected trio - only
+  // PP Approvals uses this today, for its separate "Inactive" (locked by a
+  // saved Wheel Change) status, which is a real lifecycle stage but not one
+  // that ever needs an Approve/Reject action.
+  extraTabKey,
+  extraTabLabel,
+  fetchExtraTab,
   approve,
   reject,
+  // Opt-in per-department Accept/Reject (PP Approvals only, see
+  // PpApprovals.jsx) - when provided, the modal's grouped sections each get
+  // their own Accept/Reject controls instead of the single whole-entry
+  // Approve/Reject pair, and a "Submit" button gated on every department
+  // having a decision replaces that pair.
+  departmentApprove,
+  departmentReject,
   resolveDepartmentLabel = defaultResolveDepartmentLabel,
   extractParameters = defaultExtractParameters,
   departmentSuffix = "Department",
@@ -190,6 +205,8 @@ function ApprovalsQueueView({
   operatorLabel = "Operator",
   pendingStatusLabel = "",
 }) {
+  const router = useRouter();
+  const handledOpenIdRef = useRef("");
   const user = useSelector((state) => state.auth?.user);
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
   const canApprove = canApproveCheck(user);
@@ -201,6 +218,7 @@ function ApprovalsQueueView({
     { key: "pending", label: mergedTabLabels.pending },
     { key: "approved", label: mergedTabLabels.approved },
     ...(fetchRejected ? [{ key: "rejected", label: mergedTabLabels.rejected }] : []),
+    ...(fetchExtraTab && extraTabKey ? [{ key: extraTabKey, label: extraTabLabel || extraTabKey }] : []),
   ];
   const [activeTab, setActiveTab] = useState("pending");
   const [approvals, setApprovals] = useState([]);
@@ -213,6 +231,11 @@ function ApprovalsQueueView({
   const [rejectReason, setRejectReason] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+  // Optimistic per-department decision overrides, applied on top of whatever
+  // decision/done the server sent with `selected` - keyed by department/group
+  // key. Cleared whenever a different entry is opened.
+  const [departmentOverrides, setDepartmentOverrides] = useState({});
+  const [departmentActionKey, setDepartmentActionKey] = useState("");
   const [filters, setFilters] = useState({
     department: "",
     countName: "",
@@ -244,6 +267,13 @@ function ApprovalsQueueView({
   const normalizeApprovalItem = useCallback(
     (item, index) => ({
       id: trimValue(item?.id ?? item?.approval_id ?? item?.entry_id ?? index),
+      // Kept separately from `id` above (which prefers the row's own numeric
+      // primary key when one exists, e.g. Carding/Draw Frame/Simplex Wheel
+      // Change rows - needed as-is for the approve/reject calls) so a
+      // ?openEntryId= deep link (built from a ticket's violation_details.
+      // entry_id, a human-readable id like "WHL-0004") can still find the
+      // right row even when it isn't what `id` resolved to.
+      entryId: trimValue(item?.entry_id ?? ""),
       department: trimValue(item?.department ?? item?.department_name ?? ""),
       departmentLabel: resolveDepartmentLabel(item),
       countName: extractFieldValue(item, countNameKeys),
@@ -311,18 +341,23 @@ function ApprovalsQueueView({
             ? await fetchApproved()
             : tab === "rejected"
               ? await fetchRejected()
-              : await fetchPending();
+              : extraTabKey && tab === extraTabKey
+                ? await fetchExtraTab()
+                : await fetchPending();
         setApprovals(extractApprovalRows(payload));
       } catch (err) {
         setError(
-          err?.message || `Unable to load ${tab === "approved" ? "existing" : tab === "rejected" ? "rejected" : "pending"} ${entityLabel}.`
+          err?.message ||
+            `Unable to load ${
+              tab === "approved" ? "existing" : tab === "rejected" ? "rejected" : extraTabKey && tab === extraTabKey ? (extraTabLabel || tab).toLowerCase() : "pending"
+            } ${entityLabel}.`
         );
         setApprovals([]);
       } finally {
         setLoading(false);
       }
     },
-    [entityLabel, extractApprovalRows, fetchApproved, fetchPending, fetchRejected]
+    [entityLabel, extraTabKey, extraTabLabel, extractApprovalRows, fetchApproved, fetchExtraTab, fetchPending, fetchRejected]
   );
 
   useEffect(() => {
@@ -330,11 +365,49 @@ function ApprovalsQueueView({
     loadApprovals(activeTab);
   }, [activeTab, canApprove, isHydrated, loadApprovals]);
 
+  // Deep-link from the PP Approval / Wheel Change Approval ticket detail
+  // views: they pass ?openEntryId= so the exact entry's detail modal opens
+  // here directly (matching the ?openNotebookId= pattern Acknowledgement
+  // tickets use for Submitted Notebooks) instead of dropping the reviewer on
+  // the bare queue to hunt for it themselves. Both a PP Approval ticket and
+  // an escalated Wheel Change Approval ticket only ever exist while their
+  // entry is still awaiting review, so the target is always on the
+  // "pending" tab (the default/initial tab) - this only needs to watch that
+  // tab's own loaded list for the match. Matches on either `id` (the row's
+  // real key, used for approve/reject) or `entryId` (its human-readable
+  // entry_id, e.g. "WHL-0004") since Wheel Change rows outside PP have both
+  // and the ticket only ever carries the entry_id.
+  useEffect(() => {
+    if (!router.isReady) return;
+    const openEntryId = String(router.query.openEntryId || "").trim();
+    if (!openEntryId || openEntryId === handledOpenIdRef.current) return;
+    if (activeTab !== "pending" || loading) return;
+
+    const match = approvals.find((item) => item.id === openEntryId || item.entryId === openEntryId);
+    if (!match) return;
+
+    handledOpenIdRef.current = openEntryId;
+    setSelected(match);
+
+    const { openEntryId: _omit, ...restQuery } = router.query;
+    router.replace({ pathname: router.pathname, query: restQuery }, undefined, { shallow: true });
+  }, [activeTab, approvals, loading, router]);
+
   const closeDetail = () => {
     setSelected(null);
     setShowRejectForm(false);
     setRejectReason("");
+    setDepartmentOverrides({});
+    setDepartmentActionKey("");
   };
+
+  // Selecting a different entry (row click, or the ?openEntryId= deep link)
+  // should start with a clean slate rather than carrying over the previous
+  // entry's optimistic department decisions.
+  useEffect(() => {
+    setDepartmentOverrides({});
+    setDepartmentActionKey("");
+  }, [selected?.id]);
 
   const handleApprove = async () => {
     if (!selected || approving || rejecting) return;
@@ -368,6 +441,100 @@ function ApprovalsQueueView({
     } finally {
       setRejecting(false);
     }
+  };
+
+  const handleDepartmentApprove = async (groupKey) => {
+    if (!selected || !departmentApprove || departmentActionKey) return;
+    setDepartmentActionKey(groupKey);
+    setError("");
+    try {
+      await departmentApprove(selected.id, groupKey);
+      setDepartmentOverrides((current) => ({ ...current, [groupKey]: { decision: "accepted" } }));
+    } catch (err) {
+      setError(err?.message || "Unable to approve this department.");
+    } finally {
+      setDepartmentActionKey("");
+    }
+  };
+
+  const handleDepartmentReject = async (groupKey) => {
+    if (!selected || !departmentReject || departmentActionKey) return;
+    setDepartmentActionKey(groupKey);
+    setError("");
+    try {
+      await departmentReject(selected.id, groupKey);
+      setDepartmentOverrides((current) => ({ ...current, [groupKey]: { decision: "rejected", done: false } }));
+    } catch (err) {
+      setError(err?.message || "Unable to reject this department.");
+    } finally {
+      setDepartmentActionKey("");
+    }
+  };
+
+  // Grouped-section layout (PP Approvals' per-department sections) parsed
+  // once here so both the section rendering below and the Submit-button
+  // gating can share it, instead of recomputing it separately in each place.
+  const groupInfo = useMemo(() => {
+    const flatRows = [];
+    const groupOrder = [];
+    const groupRows = new Map();
+    const groupHeaders = new Map();
+    (selected?.parameters || []).forEach((row) => {
+      if (!row.group) {
+        flatRows.push(row);
+        return;
+      }
+      if (!groupRows.has(row.group)) {
+        groupRows.set(row.group, []);
+        groupOrder.push(row.group);
+      }
+      if (row.isSectionHeader) {
+        groupHeaders.set(row.group, row);
+      } else {
+        groupRows.get(row.group).push(row);
+      }
+    });
+    return { flatRows, groupOrder, groupRows, groupHeaders };
+  }, [selected]);
+
+  const isPerDepartmentApproval = Boolean(departmentApprove && departmentReject && groupInfo.groupOrder.length);
+
+  const getDepartmentDecision = useCallback(
+    (groupKey) => {
+      const header = groupInfo.groupHeaders.get(groupKey);
+      const override = departmentOverrides[groupKey];
+      return {
+        decision: override?.decision ?? header?.decision ?? null,
+        done: override && "done" in override ? override.done : Boolean(header?.done),
+        reason: header?.decisionReason || null,
+      };
+    },
+    [groupInfo, departmentOverrides]
+  );
+
+  const allDepartmentsDecided =
+    isPerDepartmentApproval &&
+    groupInfo.groupOrder.every((groupKey) => Boolean(getDepartmentDecision(groupKey).decision));
+  const anyDepartmentRejected =
+    isPerDepartmentApproval &&
+    groupInfo.groupOrder.some((groupKey) => getDepartmentDecision(groupKey).decision === "rejected");
+
+  const handleSubmitAllDepartments = async () => {
+    if (!allDepartmentsDecided) return;
+    if (anyDepartmentRejected) {
+      // Every rejected department already deleted its own data and flipped
+      // the whole PP id to 'rejected' server-side (see departmentReject) -
+      // there's nothing left to submit, just leave the queue.
+      setApprovals((current) => current.filter((item) => item.id !== selected.id));
+      closeDetail();
+      setSuccessMessage(`${successEntityName} sent back for correction`);
+      setShowSuccess(true);
+      return;
+    }
+    // Every department was accepted - this is the one case that still needs
+    // the real whole-entry approve call, to flip process_parameters.master
+    // to 'active'.
+    await handleApprove();
   };
 
   const departmentOptions = useMemo(() => {
@@ -767,7 +934,13 @@ function ApprovalsQueueView({
               {hasActiveFilters && approvals.length
                 ? `No ${entityLabel} match the current filters.`
                 : `No ${entityLabel} are ${
-                    activeTab === "approved" ? "approved yet" : activeTab === "rejected" ? "rejected" : "waiting for approval"
+                    activeTab === "approved"
+                      ? "approved yet"
+                      : activeTab === "rejected"
+                        ? "rejected"
+                        : extraTabKey && activeTab === extraTabKey
+                          ? (extraTabLabel || activeTab).toLowerCase()
+                          : "waiting for approval"
                   }.`}
             </div>
           )}
@@ -819,67 +992,82 @@ function ApprovalsQueueView({
 
             {selected.parameters.some((row) => row.group) ? (
               <div className={combinedStyles.sections}>
-                {(() => {
-                  const flatRows = selected.parameters.filter((row) => !row.group);
-                  const groupOrder = [];
-                  const groupRows = new Map();
-                  const groupHeaders = new Map();
-                  selected.parameters.forEach((row) => {
-                    if (!row.group) return;
-                    if (!groupRows.has(row.group)) {
-                      groupRows.set(row.group, []);
-                      groupOrder.push(row.group);
-                    }
-                    if (row.isSectionHeader) {
-                      groupHeaders.set(row.group, row);
-                    } else {
-                      groupRows.get(row.group).push(row);
-                    }
-                  });
-
+                {groupInfo.flatRows.length ? (
+                  <div className={combinedStyles.fieldGrid}>
+                    {groupInfo.flatRows.map((row) => (
+                      <div key={row.key} className={combinedStyles.fieldTile}>
+                        <div className={combinedStyles.fieldLabel}>{row.label}</div>
+                        <div className={combinedStyles.fieldValue}>{row.value || "-"}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {groupInfo.groupOrder.map((groupKey) => {
+                  const header = groupInfo.groupHeaders.get(groupKey);
+                  const rows = groupInfo.groupRows.get(groupKey) || [];
+                  const { decision, done, reason } = isPerDepartmentApproval
+                    ? getDepartmentDecision(groupKey)
+                    : { decision: null, done: header?.done, reason: null };
+                  const showDepartmentActions =
+                    isPerDepartmentApproval && activeTab === "pending" && done && !decision;
                   return (
-                    <>
-                      {flatRows.length ? (
+                    <div key={groupKey} className={combinedStyles.section}>
+                      <div className={combinedStyles.sectionHeader}>
+                        <span className={combinedStyles.sectionTitle}>{header?.groupLabel || groupKey}</span>
+                        {decision === "rejected" ? (
+                          <span className={combinedStyles.rejectedIcon} title="Rejected - reopened for correction">
+                            ✕
+                          </span>
+                        ) : done ? (
+                          <FaCheckCircle className={combinedStyles.doneIcon} />
+                        ) : (
+                          <span className={combinedStyles.pendingIcon} />
+                        )}
+                      </div>
+                      {decision === "rejected" ? (
+                        <div className={combinedStyles.loadingRow}>
+                          Sent back for correction - reopened for the operator to edit and resubmit
+                          {reason ? `: ${reason}` : "."}
+                        </div>
+                      ) : rows.length ? (
                         <div className={combinedStyles.fieldGrid}>
-                          {flatRows.map((row) => (
+                          {rows.map((row) => (
                             <div key={row.key} className={combinedStyles.fieldTile}>
                               <div className={combinedStyles.fieldLabel}>{row.label}</div>
-                              <div className={combinedStyles.fieldValue}>{row.value || "-"}</div>
+                              <div className={combinedStyles.fieldValue}>{row.value || "0"}</div>
                             </div>
                           ))}
                         </div>
+                      ) : (
+                        <div className={combinedStyles.loadingRow}>Not submitted yet</div>
+                      )}
+                      {showDepartmentActions ? (
+                        <div className={combinedStyles.sectionActions}>
+                          <button
+                            type="button"
+                            className={styles.rejectButton}
+                            disabled={Boolean(departmentActionKey)}
+                            onClick={() => handleDepartmentReject(groupKey)}
+                          >
+                            {departmentActionKey === groupKey ? "Rejecting..." : "Reject"}
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.approveButton}
+                            disabled={Boolean(departmentActionKey)}
+                            onClick={() => handleDepartmentApprove(groupKey)}
+                          >
+                            {departmentActionKey === groupKey ? "Approving..." : "Approve"}
+                          </button>
+                        </div>
+                      ) : decision === "accepted" ? (
+                        <div className={combinedStyles.sectionActions}>
+                          <span className={combinedStyles.acceptedTag}>Approved</span>
+                        </div>
                       ) : null}
-                      {groupOrder.map((groupKey) => {
-                        const header = groupHeaders.get(groupKey);
-                        const rows = groupRows.get(groupKey) || [];
-                        return (
-                          <div key={groupKey} className={combinedStyles.section}>
-                            <div className={combinedStyles.sectionHeader}>
-                              <span className={combinedStyles.sectionTitle}>{header?.groupLabel || groupKey}</span>
-                              {header?.done ? (
-                                <FaCheckCircle className={combinedStyles.doneIcon} />
-                              ) : (
-                                <span className={combinedStyles.pendingIcon} />
-                              )}
-                            </div>
-                            {rows.length ? (
-                              <div className={combinedStyles.fieldGrid}>
-                                {rows.map((row) => (
-                                  <div key={row.key} className={combinedStyles.fieldTile}>
-                                    <div className={combinedStyles.fieldLabel}>{row.label}</div>
-                                    <div className={combinedStyles.fieldValue}>{row.value || "0"}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className={combinedStyles.loadingRow}>Not submitted yet</div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </>
+                    </div>
                   );
-                })()}
+                })}
               </div>
             ) : (
               <div className={styles.fieldGrid}>
@@ -911,7 +1099,23 @@ function ApprovalsQueueView({
               ) : null}
             </div>
 
-            {activeTab === "pending" ? (
+            {activeTab === "pending" && isPerDepartmentApproval ? (
+              <div className={styles.actions}>
+                <button type="button" className={styles.cancelButton} onClick={closeDetail}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.approveButton}
+                  disabled={!allDepartmentsDecided || approving}
+                  onClick={handleSubmitAllDepartments}
+                >
+                  {approving ? "Submitting..." : "Submit"}
+                </button>
+              </div>
+            ) : null}
+
+            {activeTab === "pending" && !isPerDepartmentApproval ? (
               <>
                 {showRejectForm ? (
                   <div className={styles.rejectForm}>

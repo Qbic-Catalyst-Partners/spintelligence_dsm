@@ -314,6 +314,11 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
         </div>
 
         <div className={styles.field}>
+          <label>Lycra Draft</label>
+          <input value={lycraDraft} onChange={(e) => setLycraDraft(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }))} style={errorStyle(errors.lycraDraft)} />
+        </div>
+
+        <div className={styles.field}>
           <label>Count Name (From)</label>
           <SearchableSelect
             value={countName}
@@ -326,11 +331,6 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
             className={styles.select}
             placeholder="Select count name"
           />
-        </div>
-
-        <div className={styles.field}>
-          <label>Lycra Draft</label>
-          <input value={lycraDraft} onChange={(e) => setLycraDraft(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }))} style={errorStyle(errors.lycraDraft)} />
         </div>
 
         <div className={styles.field}>

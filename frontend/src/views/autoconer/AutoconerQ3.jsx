@@ -14,6 +14,7 @@ import {
 } from "@/data/processParameterMasterOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import {
+  isDuplicateEntryIdError,
   normalizeProcessParameterId,
   reserveGlobalProcessParameterId,
   resolveProcessParameterDisplayId,
@@ -398,9 +399,16 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
     }
   };
 
+  // Was `[]` (mount-only) - see AutoconerQ2.jsx's identical fix: without
+  // this, switching which PP id this component instance is editing (entryId
+  // prop changes without a remount) left the version list stale, so
+  // submit() below wrongly thought no row existed yet and attempted a
+  // create, failing with "Duplicate entry_id" against the row that already
+  // existed.
   useEffect(() => {
     loadVersions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryId]);
 
   useEffect(() => {
     if (entryId) return;
@@ -490,7 +498,10 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
       if (field === "countName" && !entryId && !current.versionId) {
         const match = findLatestVersionByCountName(nextValue);
         if (match) {
-          return { ...match.data, countName: nextValue, versionId: "", paramId: current.paramId, type: selectedType };
+          // paramId forced blank (not carried over from `current`) so save
+          // always reserves a brand new PP id instead of colliding with the
+          // matched historical entry's id ("Duplicate entry_id").
+          return { ...match.data, countName: nextValue, versionId: "", paramId: "", type: selectedType };
         }
       }
 
@@ -566,9 +577,29 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
           )
         : null;
       const targetVersionId = form.versionId || existingVersion?.id;
-      const response = targetVersionId
-        ? await updateAutoconerQ3Entry(targetVersionId, payload)
-        : await submitAutoconerQ3Entry(payload);
+      let response;
+      if (targetVersionId) {
+        response = await updateAutoconerQ3Entry(targetVersionId, payload);
+      } else {
+        try {
+          response = await submitAutoconerQ3Entry(payload);
+        } catch (submitError) {
+          // A "duplicate entry_id" here means Q3 already has a row for this
+          // PP id - almost always the zero-filled placeholder another
+          // Autoconer screen (Q2/Q4) auto-created on its own submit. Update
+          // that row with the values actually entered here instead of
+          // blocking this real submission on it.
+          if (!isDuplicateEntryIdError(submitError)) throw submitError;
+          const existingRows = await fetchAutoconerQ3Entries({ page: 1, limit: 200 });
+          const existingRow = (Array.isArray(existingRows?.data) ? existingRows.data : []).find(
+            (row) =>
+              normalizeProcessParameterId(row?.entry_id || row?.ins_code || "") ===
+              normalizeProcessParameterId(payload.entry_id)
+          );
+          if (!existingRow) throw submitError;
+          response = await updateAutoconerQ3Entry(existingRow.id, payload);
+        }
+      }
 
       const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId);
       setForm((current) => ({ ...current, paramId: nextParamId }));
@@ -619,9 +650,13 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
         })
       );
     } catch (error) {
-      // Sibling auto-submit is best-effort; don't block the Q3 save on it, but
-      // log so a silent failure here doesn't look identical to "nothing to do."
-      console.error("Sibling Q2 auto-submit failed:", error);
+      // Sibling auto-submit is best-effort; don't block the Q3 save on it. A
+      // "duplicate entry_id" here just means Q2 already has a row for this PP
+      // id - that's the desired end state already, not a failure, so it's
+      // not logged as one. Anything else is unexpected and worth surfacing.
+      if (!isDuplicateEntryIdError(error)) {
+        console.error("Sibling Q2 auto-submit failed:", error);
+      }
     }
   };
 
@@ -646,7 +681,9 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
         })
       );
     } catch (error) {
-      console.error("Sibling Q4 auto-submit failed:", error);
+      if (!isDuplicateEntryIdError(error)) {
+        console.error("Sibling Q4 auto-submit failed:", error);
+      }
     }
   };
 

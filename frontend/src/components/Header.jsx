@@ -19,11 +19,9 @@ import {
     FiLogOut,
     FiMoon,
     FiSettings,
-    FiShield,
     FiSliders,
     FiSun,
     FiTrash2,
-    FiUsers,
 } from "react-icons/fi";
 import { fetchUsersAPI } from "@/apis/userApi";
 import { logout, setAuthUser } from "../store/slices/authSlice";
@@ -56,17 +54,35 @@ import styles from "../styles/header.module.css";
 
 const defaultNavLinks = [];
 
+// Notification link_url values are written by the backend as
+// /operator-tickets/<id> or /supervisor-tickets/<id>, but no such Next.js
+// pages exist - clicking them 404s. Map those to the real ticket detail
+// pages (/operatordetail for L1, /supervisordetails for L2+), matching the
+// ?ticketId= shape handleTicketClick uses elsewhere. Any other link_url
+// (already a valid app route) is passed through untouched.
+const resolveNotificationTarget = (linkUrl, user) => {
+    const raw = String(linkUrl || "").trim();
+    if (!raw) return "/activity-log";
+
+    const match = raw.match(/^\/(?:operator|supervisor)-tickets\/(.+)$/);
+    if (!match) return raw;
+
+    const ticketId = decodeURIComponent(match[1]);
+    const normalizedId = ticketId.startsWith("#") ? ticketId : `#${ticketId}`;
+    const level = String(user?.level ?? user?.user_details?.level ?? "").trim().toUpperCase();
+    const detailRoute = level === "L1" ? "/operatordetail" : "/supervisordetails";
+    return `${detailRoute}?ticketId=${encodeURIComponent(normalizedId)}&ticketType=Value`;
+};
+
 const sidebarLinks = [
     { href: "/", label: "Dashboard", icon: FiHome },
     { href: "/departments", label: "Department", icon: FiGrid },
     { href: "/departments/quality-control", label: "Sub-department", icon: FiGrid, section: "departments" },
     { href: "/process-parameter", label: "Process Parameter", icon: FiClipboard },
-    { href: "/usermanagement", label: "User Management", icon: FiUsers, admin: true },
-    { href: "/rolespermission", label: "Roles & Permissions", icon: FiShield, admin: true },
     { href: "/statistics-analysis", label: "Analytics Hub", icon: FiCalendar, section: "calendars" },
     { href: "/operator", label: "Ticketing System", icon: FiHeadphones, section: "tickets" },
     { href: "/submitted-notebooks", label: "Management Hub", icon: FiBriefcase, section: "management" },
-    { href: "/reports", label: "Reports", icon: FiFileText, section: "reports" },
+    { href: "/reports/custom", label: "Reports", icon: FiFileText },
     { href: "/threshold-values", label: "Threshold", icon: FiSliders, admin: true },
     { href: "/settings", label: "Settings", icon: FiSettings, admin: true, section: "settings" },
 ];
@@ -86,6 +102,11 @@ const departmentLinks = [
 
 const settingsLinks = [
     { href: "/settings", label: "Dash Builder" },
+    { href: "/ticket-resolution-sla", label: "Ticket Resolution SLA" },
+    { href: "/usermanagement", label: "User Management" },
+    { href: "/rolespermission", label: "Roles & Permissions" },
+    { href: "/new-field-creation", label: "New Field Creation", submittedNotebookManager: true },
+    { href: "/activity-log", label: "Activity Log", submittedNotebookManager: true },
 ];
 const ticketingLinks = [
     { href: "__ticketingHome__", label: "Ticket System" },
@@ -95,8 +116,6 @@ const ticketingLinks = [
 ];
 const managementHubLinks = [
     { href: "/submitted-notebooks", label: "Submitted Notebooks", submittedNotebookView: true },
-    { href: "/new-field-creation", label: "New Field Creation" },
-    { href: "/activity-log", label: "Activity Log" },
     {
         label: "WC Approvals",
         wheelChangeApproval: true,
@@ -119,10 +138,6 @@ const analyticsHubLinks = [
         ],
     },
 ];
-const reportLinks = [
-    { href: "/reports/general", label: "General Report" },
-    { href: "/reports/custom", label: "Custom Report" },
-];
 
 const Header = ({ navLinks = defaultNavLinks }) => {
     const router = useRouter();
@@ -134,7 +149,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [isTicketsMenuOpen, setIsTicketsMenuOpen] = useState(false);
     const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
     const [isManagementHubOpen, setIsManagementHubOpen] = useState(false);
-    const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
     const [isAnalyticsHubOpen, setIsAnalyticsHubOpen] = useState(false);
     const [isTeamPerformanceOpen, setIsTeamPerformanceOpen] = useState(false);
     const [isWheelChangeApprovalsOpen, setIsWheelChangeApprovalsOpen] = useState(false);
@@ -154,8 +168,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     // Broader than hasSubmittedNotebookAccess above: the Submitted Notebooks
     // link itself is open to every L1-L5 hierarchy account (each sees a
     // different server-scoped subset of rows), while the other Management
-    // Hub entries (New Field Creation, Activity Log, threshold config) stay
-    // limited to admin/supervisor.
+    // Hub entries (threshold config) stay limited to admin/supervisor.
     const hasSubmittedNotebookViewAccess = isSubmittedNotebookViewerUser(user);
     const hasWheelChangeApprovalAccess = isWheelChangeApproverUser(user);
     const hasManagementHubAccess = hasSubmittedNotebookAccess || hasSubmittedNotebookViewAccess || hasWheelChangeApprovalAccess;
@@ -212,14 +225,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         }
 
         if (link.section === "settings") {
-            return hasFullAccess;
+            return hasFullAccess || hasSubmittedNotebookAccess;
         }
 
         if (link.section === "thresholds") {
             return hasFullAccess;
         }
 
-        if (link.section === "reports") {
+        if (link.href === "/reports/custom") {
             return hasReportAccess(accessByDepartment, user) || visibleHrefSet.has("/reports");
         }
 
@@ -242,6 +255,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             if (link.submittedNotebookView) return hasSubmittedNotebookViewAccess;
             return hasSubmittedNotebookAccess;
         });
+    const visibleSettingsLinks = hasFullAccess
+        ? settingsLinks
+        : settingsLinks.filter((link) => link.submittedNotebookManager && hasSubmittedNotebookAccess);
     const currentPath = router.asPath?.split("?")[0] || router.pathname;
     const backTarget = null;
 
@@ -341,6 +357,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             return currentPath === "/settings" || currentPath.startsWith("/settings/");
         }
 
+        if (href === "/ticket-resolution-sla") {
+            return currentPath === "/ticket-resolution-sla";
+        }
+
         return currentPath === href || currentPath.startsWith(`${href}/`);
     };
 
@@ -380,15 +400,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                 : "/wheel-change-approvals";
             if (nextIsOpen && router.asPath?.split("?")[0] !== defaultManagementRoute) {
                 router.push(defaultManagementRoute);
-            }
-            return nextIsOpen;
-        });
-    };
-    const handleReportsClick = () => {
-        setIsReportsMenuOpen((isOpen) => {
-            const nextIsOpen = !isOpen;
-            if (nextIsOpen && !router.asPath?.split("?")[0]?.startsWith("/reports")) {
-                router.push("/reports/custom");
             }
             return nextIsOpen;
         });
@@ -468,7 +479,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
 
     const handleMarkNotificationRead = async (notification) => {
         if (!notification?.id || !notification?.source) return;
-        const targetUrl = notification?.link_url || "/activity-log";
+        const targetUrl = resolveNotificationTarget(notification?.link_url, user);
         try {
             await markNotificationReadApi({ source: notification.source, id: notification.id });
             setNotifications((current) =>
@@ -539,8 +550,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         );
         setIsManagementHubOpen(
             currentPath === "/submitted-notebooks" ||
-            currentPath === "/new-field-creation" ||
-            currentPath === "/activity-log" ||
             currentPath === "/wheel-change-approvals" ||
             currentPath === "/drawframe-wheel-change-approvals" ||
             currentPath === "/carding-change-control-approvals" ||
@@ -555,8 +564,20 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath === "/l1-analysis" ||
             currentPath === "/l2-analysis"
         );
-        setIsSettingsMenuOpen(currentPath === "/settings" || currentPath.startsWith("/settings/"));
-        setIsReportsMenuOpen(currentPath === "/reports" || currentPath.startsWith("/reports/"));
+        setIsSettingsMenuOpen(
+            currentPath === "/settings" ||
+            currentPath.startsWith("/settings/") ||
+            currentPath === "/ticket-resolution-sla" ||
+            currentPath === "/usermanagement" ||
+            currentPath.startsWith("/umadduser") ||
+            currentPath.startsWith("/umedit") ||
+            currentPath.startsWith("/umchangepassword") ||
+            currentPath === "/rolespermission" ||
+            currentPath.startsWith("/Createrole") ||
+            currentPath.startsWith("/editrole") ||
+            currentPath === "/new-field-creation" ||
+            currentPath === "/activity-log"
+        );
     }, [router.asPath, router.pathname]);
 
     return (
@@ -606,8 +627,8 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                         const currentPath = router.asPath?.split("?")[0] || router.pathname;
                         const isTicketingGroup = link.section === "tickets";
                         const isManagementGroup = link.section === "management";
-                        const isReportsGroup = link.section === "reports";
                         const isAnalyticsHubGroup = link.section === "calendars";
+                        const isSettingsGroup = link.section === "settings";
                         const isTicketingGroupActive = isTicketingGroup && (
                             currentPath === "/operator" ||
                             currentPath.startsWith("/operator/") ||
@@ -623,7 +644,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                         );
                         const isManagementGroupActive = isManagementGroup && (
                             currentPath === "/submitted-notebooks" ||
-                            currentPath === "/activity-log" ||
                             currentPath === "/wheel-change-approvals" ||
                             currentPath === "/drawframe-wheel-change-approvals" ||
                             currentPath === "/carding-change-control-approvals" ||
@@ -634,9 +654,19 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             currentPath === "/l1-analysis" ||
                             currentPath === "/l2-analysis"
                         );
-                        const isReportsGroupActive = isReportsGroup && (
-                            currentPath === "/reports" ||
-                            currentPath.startsWith("/reports/")
+                        const isSettingsGroupActive = isSettingsGroup && (
+                            currentPath === "/settings" ||
+                            currentPath.startsWith("/settings/") ||
+                            currentPath === "/ticket-resolution-sla" ||
+                            currentPath === "/usermanagement" ||
+                            currentPath.startsWith("/umadduser") ||
+                            currentPath.startsWith("/umedit") ||
+                            currentPath.startsWith("/umchangepassword") ||
+                            currentPath === "/rolespermission" ||
+                            currentPath.startsWith("/Createrole") ||
+                            currentPath.startsWith("/editrole") ||
+                            currentPath === "/new-field-creation" ||
+                            currentPath === "/activity-log"
                         );
                         const linkClassName = `${styles["side-nav-link"]} ${
                             (isTicketingGroup
@@ -645,8 +675,8 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                     ? isManagementGroupActive
                                     : isAnalyticsHubGroup
                                         ? isAnalyticsHubGroupActive
-                                        : isReportsGroup
-                                            ? isReportsGroupActive
+                                        : isSettingsGroup
+                                            ? isSettingsGroupActive
                                             : isActiveLink(link.href))
                                 ? styles["side-nav-active"]
                                 : ""
@@ -694,41 +724,13 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                         <FiChevronDown className={`${styles["department-chevron"]} ${isSettingsMenuOpen ? styles["department-chevron-open"] : ""}`} />
                                     </button>
                                     <div className={`${styles["side-subnav"]} ${isSettingsMenuOpen ? styles["side-subnav-open"] : ""}`}>
-                                        {settingsLinks.map((settingsLink) => (
+                                        {visibleSettingsLinks.map((settingsLink) => (
                                             <Link
                                                 key={settingsLink.href}
                                                 href={settingsLink.href}
                                                 className={`${styles["side-subnav-link"]} ${isActiveLink(settingsLink.href) ? styles["side-subnav-active"] : ""}`}
                                             >
                                                 {settingsLink.label}
-                                            </Link>
-                                        ))}
-                                    </div>
-                                </div>
-                            );
-                        }
-
-                        if (link.section === "reports") {
-                            return (
-                                <div key={link.href} className={styles["side-nav-group"]}>
-                                    <button
-                                        type="button"
-                                        className={`${linkClassName} ${styles["side-nav-button"]}`}
-                                        aria-expanded={isReportsMenuOpen}
-                                        title={isSidebarCollapsed ? link.label : undefined}
-                                        onClick={handleReportsClick}
-                                    >
-                                        {content}
-                                        <FiChevronDown className={`${styles["department-chevron"]} ${isReportsMenuOpen ? styles["department-chevron-open"] : ""}`} />
-                                    </button>
-                                    <div className={`${styles["side-subnav"]} ${isReportsMenuOpen ? styles["side-subnav-open"] : ""}`}>
-                                        {reportLinks.map((reportLink) => (
-                                            <Link
-                                                key={reportLink.href}
-                                                href={reportLink.href}
-                                                className={`${styles["side-subnav-link"]} ${isActiveLink(reportLink.href) ? styles["side-subnav-active"] : ""}`}
-                                            >
-                                                {reportLink.label}
                                             </Link>
                                         ))}
                                     </div>
@@ -898,11 +900,11 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                     })}
                 </nav>
 
-                <div className={styles["sidebar-version"]} title="Version 2.1.1">
+                <div className={styles["sidebar-version"]} title="Version 2.2.1">
                     <span className={styles["sidebar-version-badge"]}>
                         <span className={styles["sidebar-version-dot"]} />
                         <span className={styles["sidebar-version-label"]}>Version</span>
-                        <span className={styles["sidebar-version-number"]}>2.1.1</span>
+                        <span className={styles["sidebar-version-number"]}>2.2.1</span>
                     </span>
                 </div>
             </aside>

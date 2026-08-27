@@ -108,7 +108,17 @@ export default function TicketDetails() {
 
       setIsPopupOpen(false);
       setComment("");
-      emitGlobalSuccessModal({ message: "Data Submitted" });
+      // PP Batch, PP Approval, Wheel Change Approval, and Acknowledgement
+      // tickets have no L2/L3 configured - they escalate straight to L4 on
+      // submit (see operatorTickets.routes.js's isPpBatchTicket handling).
+      // Every other ticket type goes to L2 first as usual.
+      const escalatesToL4 = [
+        TICKET_KIND.PP_BATCH,
+        TICKET_KIND.PP_APPROVAL,
+        TICKET_KIND.WHEEL_CHANGE,
+        TICKET_KIND.NOTEBOOK_ACK,
+      ].includes(getTicketKind(resolvedTicket));
+      emitGlobalSuccessModal({ message: `Submitted for ${escalatesToL4 ? "L4" : "L2"} approval` });
       dispatch(fetchOperatorTicketById(submitTicketId));
     } catch (error) {
       const errorMessage =
@@ -244,7 +254,7 @@ export default function TicketDetails() {
     const summary = [
       `Ticket: ${displayTicketId}`,
       `Status: ${getOperatorStatusLabel(resolvedTicket?.status)}`,
-      `Severity: ${resolvedTicket?.severity || "-"}`,
+      `Criticality: ${resolvedTicket?.severity || "-"}`,
       `Machine: ${resolvedTicket?.machine_name || resolvedTicket?.notebook || "-"}`,
       `Created At: ${formatCompactDateTime(resolvedTicket?.created_at || resolvedTicket?.rawCreatedAt)}`,
     ].join("\n");
@@ -337,7 +347,7 @@ export default function TicketDetails() {
               )}
             </div>
             <span className={`${styles["severity-badge"]} ${severityClassName}`}>
-              Severity: {resolvedTicket.severity}
+              Criticality: {resolvedTicket.severity}
             </span>
           </div>
 
@@ -439,44 +449,111 @@ export default function TicketDetails() {
                 onClick={() => setIsPopupOpen(true)}
               >
                 <img src={fixImgSrc} alt="" aria-hidden="true" />
-                Fix & Resubmit
+                Fix & Submit
               </button>
             </div>
           </div>
 
           <div className={styles["table-shell"]}>
-            <div className={styles["table-head"]}>
-              <span>Notebook Type</span>
-              <span>Parameter</span>
-              <span>{isSubmissionTicket ? "Frequency" : "Idle Value"}</span>
-              <span>{isSubmissionTicket ? "Occurrences" : "Standard Value"}</span>
-              <span>{isSubmissionTicket ? "Status" : "Threshold Value"}</span>
-              <span>Created At</span>
-            </div>
+            {isPpBatchTicket ? (
+              // PP Batch tickets name every still-missing department for one PP entry, not a
+              // single parameter/actual/standard/threshold set - the generic columns below
+              // dumped the whole missing-screens list into one "Idle Value" cell. Same shape
+              // as the purpose-built layout in SupervisorDetails.js.
+              (() => {
+                const details = resolvedTicket?.violation_details || {};
+                // missing_screens is every department not yet submitted for
+                // this PP entry; overdue_screens is only the subset whose OWN
+                // completion threshold has already elapsed (used to decide
+                // when to raise/escalate the ticket, not to describe what's
+                // actually missing). Showing overdue_screens here understated
+                // the real gap - e.g. only Carding submitted but Mixing and
+                // Blowroom happened to have shorter thresholds, so Draw
+                // Frame/Simplex/Spinning/Autoconer etc. (still missing, just
+                // not yet overdue) silently dropped off the list.
+                const missingDepartments = Array.isArray(details.missing_screens) && details.missing_screens.length
+                  ? details.missing_screens
+                  : Array.isArray(details.overdue_screens) && details.overdue_screens.length
+                    ? details.overdue_screens
+                    : details.missing_screen
+                      ? [details.missing_screen]
+                      : [];
+                const completedScreens = Array.isArray(details.completed_screens) ? details.completed_screens : [];
+                const threshold = details.screen_thresholds && typeof details.screen_thresholds === "object"
+                  ? Object.values(details.screen_thresholds)[0]
+                  : details.completion_threshold_hours;
+                const assignedTo = resolvedTicket.assigned_user_names || resolvedTicket.assignedUserNames || "Unassigned";
+                const ppGridStyle = { gridTemplateColumns: "repeat(7, minmax(0, 1fr))" };
 
-            {visibleRows.map((item, index) => (
-              <div className={styles["table-row"]} key={`${item.name}-${index}`}>
-                <span className={styles["value-strong"]}>{resolvedTicket.machine_name || resolvedTicket.notebook || "-"}</span>
-                <span className={styles["value-strong"]}>{item.name}</span>
-                <span className={`${styles["value-strong"]} ${styles.danger}`}>{isSubmissionTicket ? submissionFrequency : item.actual}</span>
-                <span className={styles["value-strong"]}>{isSubmissionTicket ? submissionOccurrences : item.standard}</span>
-                <span className={styles["value-strong"]}>{isSubmissionTicket ? getOperatorStatusLabel(resolvedTicket.status) : item.threshold}</span>
-                <span className={styles["value-strong"]}>
-                  {formatCompactDateTime(resolvedTicket.created_at || resolvedTicket.rawCreatedAt)}
-                </span>
-              </div>
-            ))}
+                return (
+                  <>
+                    <div className={styles["table-head"]} style={ppGridStyle}>
+                      <span>Entry ID</span>
+                      <span>Missing Departments</span>
+                      <span>Completed</span>
+                      <span>Completion Threshold</span>
+                      <span>Status</span>
+                      <span>First Submitted</span>
+                      <span>Assigned To</span>
+                    </div>
+                    <div className={styles["table-row"]} style={ppGridStyle}>
+                      <span className={styles["value-strong"]}>{details.entry_id || resolvedTicket.notebook || resolvedTicket.machine_name || "-"}</span>
+                      <span className={`${styles["value-strong"]} ${styles.danger}`}>
+                        {missingDepartments.length ? missingDepartments.join(", ") : "-"}
+                      </span>
+                      <span className={styles["value-strong"]}>
+                        {completedScreens.length ? `${completedScreens.length} dept(s): ${completedScreens.join(", ")}` : "-"}
+                      </span>
+                      <span className={styles["value-strong"]}>{threshold ? `${threshold} Hrs` : "-"}</span>
+                      <span className={styles["value-strong"]}>{getOperatorStatusLabel(resolvedTicket.status)}</span>
+                      <span className={styles["value-strong"]}>
+                        {formatCompactDateTime(details.first_created_at || resolvedTicket.created_at)}
+                      </span>
+                      <span className={styles["value-strong"]}>{assignedTo}</span>
+                    </div>
+                  </>
+                );
+              })()
+            ) : (
+              <>
+                <div className={styles["table-head"]}>
+                  <span>Notebook Type</span>
+                  <span>Entry ID</span>
+                  <span>Parameter</span>
+                  <span>{isSubmissionTicket ? "Frequency" : "Idle Value"}</span>
+                  <span>{isSubmissionTicket ? "Occurrences" : "Standard Value"}</span>
+                  <span>{isSubmissionTicket ? "Status" : "Threshold Value"}</span>
+                  <span>Created At</span>
+                </div>
 
-            {parameterMap.length > 1 && (
-              <button
-                type="button"
-                className={styles["expand-dots"]}
-                onClick={() => setExpanded((value) => !value)}
-                aria-label={expanded ? "Collapse parameter details" : "Expand all parameter details"}
-                title={expanded ? "Show less" : "Show all"}
-              >
-                <BsThreeDots />
-              </button>
+                {visibleRows.map((item, index) => (
+                  <div className={styles["table-row"]} key={`${item.name}-${index}`}>
+                    <span className={styles["value-strong"]}>{resolvedTicket.machine_name || resolvedTicket.notebook || "-"}</span>
+                    <span className={styles["value-strong"]}>
+                      {resolvedTicket.entry_id || resolvedTicket.violation_details?.entry_id || "-"}
+                    </span>
+                    <span className={styles["value-strong"]}>{item.name}</span>
+                    <span className={`${styles["value-strong"]} ${styles.danger}`}>{isSubmissionTicket ? submissionFrequency : item.actual}</span>
+                    <span className={styles["value-strong"]}>{isSubmissionTicket ? submissionOccurrences : item.standard}</span>
+                    <span className={styles["value-strong"]}>{isSubmissionTicket ? getOperatorStatusLabel(resolvedTicket.status) : item.threshold}</span>
+                    <span className={styles["value-strong"]}>
+                      {formatCompactDateTime(resolvedTicket.created_at || resolvedTicket.rawCreatedAt)}
+                    </span>
+                  </div>
+                ))}
+
+                {parameterMap.length > 1 && (
+                  <button
+                    type="button"
+                    className={styles["expand-dots"]}
+                    onClick={() => setExpanded((value) => !value)}
+                    aria-label={expanded ? "Collapse parameter details" : "Expand all parameter details"}
+                    title={expanded ? "Show less" : "Show all"}
+                  >
+                    <BsThreeDots />
+                  </button>
+                )}
+              </>
             )}
           </div>
         </section>
@@ -526,7 +603,7 @@ export default function TicketDetails() {
           onClick={() => setIsPopupOpen(true)}
         >
           <img src={fixImgSrc} alt="" aria-hidden="true" />
-          Fix & Resubmit
+          Fix & Submit
         </button>
       </div>
 
@@ -536,7 +613,7 @@ export default function TicketDetails() {
             <div className={styles["popup-head"]}>
               <h2>
                 <FaRegCommentAlt className={styles["popup-head-icon-svg"]} />
-                <span>Fix & Resubmit</span>
+                <span>Fix & Submit</span>
               </h2>
               <button
                 type="button"
