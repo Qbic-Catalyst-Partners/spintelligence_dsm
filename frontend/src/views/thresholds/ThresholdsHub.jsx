@@ -38,6 +38,7 @@ import {
 import {
   fetchWheelChangeApprovalConfigListAPI,
   updateWheelChangeApprovalConfigStatusAPI,
+  deleteWheelChangeApprovalConfigAPI,
 } from "@/apis/wheelChangeApprovalConfigApi";
 
 import { departmentDirectory } from "@/views/departments/data";
@@ -253,9 +254,8 @@ const normalizeWheelChangeApprovalRow = (item, users) => {
 };
 
 // Each threshold type only supports the actions its backend API actually
-// exposes today: Value/Submission/Acknowledgement have full edit+delete+status
-// APIs. PP Threshold and Wheel Change Approval support edit (per-notebook /
-// per-department rows) but not delete/status. PP Approval is a single global
+// exposes today: Value/Submission/Acknowledgement/PP/Wheel Change Approval
+// all have full edit+delete+status APIs now. PP Approval is a single global
 // row, editable in place, no delete/status.
 const THRESHOLD_TYPE_LOADERS = {
   value: {
@@ -302,8 +302,16 @@ const THRESHOLD_TYPE_LOADERS = {
     normalize: normalizeWheelChangeApprovalRow,
     canEdit: true,
     canToggleStatus: true,
-    canDelete: false,
-    toggleStatus: (row, nextActive) => updateWheelChangeApprovalConfigStatusAPI(row.department, nextActive),
+    canDelete: true,
+    // row.department is hardcoded to "Quality Control" for display (this
+    // config has no real department/sub-department of its own the way other
+    // threshold types do) - the actual WC department key (Spinning/Drawframe/
+    // Carding/Simplex) that these APIs need lives on row.id instead (set to
+    // item.department in normalizeWheelChangeApprovalRow below). Using
+    // row.department here would send "Quality Control" as the department,
+    // which the backend rejects (not one of WHEEL_CHANGE_DEPARTMENTS).
+    toggleStatus: (row, nextActive) => updateWheelChangeApprovalConfigStatusAPI(row.id, nextActive),
+    remove: (row) => deleteWheelChangeApprovalConfigAPI(row.id),
   },
 };
 

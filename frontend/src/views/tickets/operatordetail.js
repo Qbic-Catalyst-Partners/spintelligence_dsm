@@ -108,7 +108,17 @@ export default function TicketDetails() {
 
       setIsPopupOpen(false);
       setComment("");
-      emitGlobalSuccessModal({ message: "Submitted for L2 approval" });
+      // PP Batch, PP Approval, Wheel Change Approval, and Acknowledgement
+      // tickets have no L2/L3 configured - they escalate straight to L4 on
+      // submit (see operatorTickets.routes.js's isPpBatchTicket handling).
+      // Every other ticket type goes to L2 first as usual.
+      const escalatesToL4 = [
+        TICKET_KIND.PP_BATCH,
+        TICKET_KIND.PP_APPROVAL,
+        TICKET_KIND.WHEEL_CHANGE,
+        TICKET_KIND.NOTEBOOK_ACK,
+      ].includes(getTicketKind(resolvedTicket));
+      emitGlobalSuccessModal({ message: `Submitted for ${escalatesToL4 ? "L4" : "L2"} approval` });
       dispatch(fetchOperatorTicketById(submitTicketId));
     } catch (error) {
       const errorMessage =

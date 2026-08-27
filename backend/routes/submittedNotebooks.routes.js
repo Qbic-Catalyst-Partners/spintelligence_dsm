@@ -232,6 +232,32 @@ const PP_BATCH_LABEL_TO_SUB_DEPARTMENT = PP_BATCH_NOTEBOOKS.reduce((map, noteboo
   return map;
 }, {});
 
+// Live completed/missing screen breakdown for a single PP entry_id, straight
+// from each department's own table - used to refresh a PP_BATCH_INCOMPLETE
+// ticket's violation_details on submit, since the snapshot taken when the
+// ticket was first raised (generatePpNotebookBatchIncompleteTickets below)
+// never otherwise updates even after the operator fixes and saves the
+// missing department's entry.
+const getPpBatchCompletionForEntryId = async (entryId) => {
+  const allLabels = PP_BATCH_NOTEBOOKS.map((notebookConfig) => notebookConfig.label);
+  if (!entryId) return { completedScreens: [], missingScreens: allLabels };
+
+  const unionSelects = PP_BATCH_NOTEBOOKS.map(
+    (notebookConfig, index) =>
+      `SELECT '${notebookConfig.label.replace(/'/g, "''")}' AS notebook_label
+       FROM ${notebookConfig.schema}.${notebookConfig.table}
+       WHERE entry_id = $1 ${notebookConfig.extraWhere || ''}`
+  ).join('\nUNION ALL\n');
+
+  const result = await client.query(
+    `SELECT DISTINCT notebook_label FROM (${unionSelects}) all_pp_entries`,
+    [entryId]
+  );
+  const completedScreens = result.rows.map((row) => row.notebook_label);
+  const missingScreens = allLabels.filter((label) => !completedScreens.includes(label));
+  return { completedScreens, missingScreens };
+};
+
 // PP notebook settings: shared timing plus per-notebook responsibility.
 // When a notebook row exists, it overrides the broader fallback config.
 const getPpNotebookThresholds = async () => {
@@ -331,7 +357,20 @@ const getL1UserIdsByDepartment = async () => {
 // and files one consolidated PP_BATCH_INCOMPLETE ticket per entry_id (PP ID)
 // naming every overdue screen, then expires any already-open
 // PP_BATCH_INCOMPLETE ticket whose L2 TAT has elapsed.
+// Backstops this function's own check-then-insert dedup (SELECT for an
+// existing open ticket, then INSERT, with nothing stopping two
+// near-simultaneous calls from both passing that check) - same reasoning as
+// the PP Approval/Wheel Change Approval unique indexes.
+const ensurePpBatchTicketUniqueIndex = async () => {
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_pp_batch_open_uq
+    ON ticketing_system.operator_tickets ((violation_details->>'entry_id'))
+    WHERE ticket_type = 'PP_BATCH_INCOMPLETE' AND status <> 'Closed'
+  `);
+};
+
 const runPpBatchCompletionCheck = async () => {
+  await ensurePpBatchTicketUniqueIndex();
   const config = await getPpBatchConfig();
 
   if (config.is_active === false) {
@@ -456,32 +495,39 @@ const runPpBatchCompletionCheck = async () => {
     const l1TatDueAt = l2TatHours ? new Date(Date.now() + l2TatHours * 60 * 60 * 1000).toISOString() : null;
 
     const ticketId = await generateTicketId(client);
-    const ticket = await client.query(
-      `INSERT INTO ticketing_system.operator_tickets
-       (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
-        severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
-        violation_details, approval_l1_user_ids, tat_current_level, l1_tat_due_at)
-       VALUES (
-         $1,
-         $2, $3::jsonb, $4::jsonb, $5::jsonb,
-         $8, 'Open', NOW(), 'MISSING_VALUE', 'PP_BATCH_INCOMPLETE', 'pp_batch',
-         $6::jsonb, $7::int[], 'L1', $9
-       )
-       RETURNING *`,
-      [
-        ticketId,
-        row.entry_id,
-        toJson(overdueScreens, []),
-        toJson(completedScreens, []),
-        toJson({ screen_thresholds: screenThresholds }, {}),
-        toJson(violationDetails, {}),
-        approvalL1UserIds,
-        ticketSeverity,
-        l1TatDueAt
-      ]
-    );
-
-    const inserted = ticket.rows[0];
+    let inserted;
+    try {
+      const ticket = await client.query(
+        `INSERT INTO ticketing_system.operator_tickets
+         (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+          severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
+          violation_details, approval_l1_user_ids, tat_current_level, l1_tat_due_at)
+         VALUES (
+           $1,
+           $2, $3::jsonb, $4::jsonb, $5::jsonb,
+           $8, 'Open', NOW(), 'MISSING_VALUE', 'PP_BATCH_INCOMPLETE', 'pp_batch',
+           $6::jsonb, $7::int[], 'L1', $9
+         )
+         RETURNING *`,
+        [
+          ticketId,
+          row.entry_id,
+          toJson(overdueScreens, []),
+          toJson(completedScreens, []),
+          toJson({ screen_thresholds: screenThresholds }, {}),
+          toJson(violationDetails, {}),
+          approvalL1UserIds,
+          ticketSeverity,
+          l1TatDueAt
+        ]
+      );
+      inserted = ticket.rows[0];
+    } catch (error) {
+      // 23505 = operator_tickets_pp_batch_open_uq - another run already
+      // raised this entry_id's ticket first.
+      if (error?.code !== '23505') throw error;
+      continue; // eslint-disable-line no-continue
+    }
     created.push(inserted);
 
     await createNotificationsForUsers(approvalL1UserIds, {
@@ -896,6 +942,32 @@ const generateOverdueNotebookTickets = async () => {
 
   const created = [];
   for (const submission of due.rows) {
+    // eslint-disable-next-line no-await-in-loop
+    try {
+      await processOverdueNotebookSubmission(submission, created);
+    } catch (error) {
+      // 23505 = unique_violation on operator_tickets_ack_notebook_submission_uq -
+      // two overlapping runs of this same check-then-insert (e.g. two backend
+      // instances briefly running at once) both passed the "does a ticket
+      // already exist?" check before either committed its INSERT; the DB
+      // constraint is what actually stopped the duplicate. Log and move on to
+      // the rest of the batch instead of letting one collision here abort
+      // every other still-due notebook in this run - they'll just be picked
+      // up again, deduped by the existingTicket check above, next cycle.
+      if (error?.code === '23505') {
+        console.warn(`[notebook-ack] overdue ticket for submission ${submission.id} already exists (raced with another run) - skipping`);
+        continue; // eslint-disable-line no-continue
+      }
+      throw error;
+    }
+  }
+
+  // Acknowledgement Threshold is a flat, L4-only ticket - it does not
+  // escalate further.
+  return { created, escalated: [] };
+};
+
+const processOverdueNotebookSubmission = async (submission, created) => {
     const existingTicket = await client.query(
       `SELECT ticket_id
        FROM ticketing_system.operator_tickets
@@ -921,10 +993,21 @@ const generateOverdueNotebookTickets = async () => {
            AND overdue_ticket_id IS NULL`,
         [existingTicket.rows[0].ticket_id, submission.id]
       );
-      continue;
+      return;
     }
 
     const acknowledgementThreshold = await getAcknowledgementThresholdForNotebook(submission);
+    // Every submission gets a submitted_notebooks row with a default 24-hour
+    // ack_due_at regardless of whether this screen has Acknowledgement
+    // configured at all (that default only exists so recordPpNotebookSubmission
+    // has something to write - see its own comment). Without requiring an
+    // actual active threshold row here, the chain fallback below would still
+    // find SOME L4 via the submitter's real reporting hierarchy for almost
+    // any notebook, and a ticket got raised anyway - "random" Acknowledgement
+    // tickets for screens nobody ever configured Acknowledgement for. An
+    // active, matching notebook_acknowledgement_threshold row is now a hard
+    // requirement for a ticket to exist at all, not just for who receives it.
+    if (!acknowledgementThreshold) return;
 
     // Acknowledgement Threshold is L4-only: once the notebook is submitted,
     // the L4 timer starts, and if it is not acknowledged by the due time we
@@ -937,11 +1020,11 @@ const generateOverdueNotebookTickets = async () => {
           .filter((value) => Number.isInteger(value) && value > 0)
       : [];
     const l4ApproverIds = manualL4Ids.length ? manualL4Ids : resolvedChain.l4;
-    // No Acknowledgement Threshold configured for this notebook (no manual
-    // L4 approver) and no L4 resolvable from the submitter's real reporting
-    // chain either - nobody is actually assigned to receive this, so no
-    // ticket should be raised blindly notifying every L4 user system-wide.
-    if (!l4ApproverIds.length) continue;
+    // Threshold exists and is active, but no manual L4 was set on it and none
+    // resolves from the submitter's real reporting chain either - nobody is
+    // actually assigned to receive this, so no ticket should be raised
+    // blindly notifying every L4 user system-wide.
+    if (!l4ApproverIds.length) return;
     const violationDetails = {
       category: 'MISSED_FREQUENCY',
       ticket_type: 'NOTEBOOK_ACK_OVERDUE',
@@ -1021,11 +1104,6 @@ const generateOverdueNotebookTickets = async () => {
     }
 
     created.push(inserted);
-  }
-
-  // Acknowledgement Threshold is a flat, L4-only ticket - it does not
-  // escalate further.
-  return { created, escalated: [] };
 };
 
 router.use(auth);
@@ -1230,6 +1308,23 @@ router.delete('/acknowledgement-thresholds/:id', async (req, res, next) => {
       return res.status(404).json({ message: 'Acknowledgement threshold not found' });
     }
 
+    // Deleting the threshold that raised a ticket shouldn't leave that
+    // ticket open forever with nothing behind it anymore - matches
+    // processOverdueNotebookSubmission's own "no active threshold, no
+    // ticket" rule. Tickets don't carry this config's id, only the screen
+    // name (machine_name) they were raised for, so match on that.
+    const deletedScreenName = result.rows[0]?.screen_name;
+    if (deletedScreenName) {
+      await client.query(
+        `UPDATE ticketing_system.operator_tickets
+         SET status = 'Closed'
+         WHERE (violation_details->>'ticket_type') = 'NOTEBOOK_ACK_OVERDUE'
+           AND status <> 'Closed'
+           AND LOWER(TRIM(machine_name)) = LOWER(TRIM($1))`,
+        [deletedScreenName]
+      );
+    }
+
     res.status(200).json({
       message: 'Acknowledgement threshold deleted successfully'
     });
@@ -1366,11 +1461,27 @@ router.post('/pp-notebook-threshold', async (req, res, next) => {
 router.delete('/pp-notebook-threshold/:id', async (req, res, next) => {
   try {
     const result = await client.query(
-      `DELETE FROM ticketing_system.pp_notebook_threshold WHERE id = $1 RETURNING id`,
+      `DELETE FROM ticketing_system.pp_notebook_threshold WHERE id = $1 RETURNING id, notebook_label`,
       [req.params.id]
     );
     if (!result.rowCount) {
       return res.status(404).json({ message: 'PP notebook threshold not found' });
+    }
+    // Same reasoning as the Acknowledgement/Submission threshold deletes -
+    // don't leave a PP_APPROVAL ticket open forever referencing a notebook
+    // config that no longer exists. This only closes the reminder ticket
+    // itself; the PP id's own review still happens through the real PP
+    // Approvals queue regardless of whether a ticket exists for it.
+    const deletedNotebookLabel = result.rows[0]?.notebook_label;
+    if (deletedNotebookLabel) {
+      await client.query(
+        `UPDATE ticketing_system.operator_tickets
+         SET status = 'Closed'
+         WHERE ticket_type = 'PP_APPROVAL'
+           AND status <> 'Closed'
+           AND (violation_details->>'notebook_label') = $1`,
+        [deletedNotebookLabel]
+      );
     }
     return res.status(200).json({ message: 'PP notebook threshold deleted successfully' });
   } catch (error) {
@@ -1773,6 +1884,23 @@ router.get('/', async (req, res, next) => {
     const allUsersResult = await client.query(`SELECT id, employee_id, full_name FROM users.user_details`);
     const allUsers = allUsersResult.rows;
 
+    // ticketing_system.submitted_notebooks.status defaults to 'PENDING_ACK'
+    // for EVERY submission (recordPpNotebookSubmission never overrides it) -
+    // that column only ever meant "hasn't been acknowledged yet", not
+    // "acknowledgement is actually required for this screen". Without this,
+    // every single submitted notebook showed up in the Pending tab as
+    // needing acknowledgement, even ones with no Acknowledgement Threshold
+    // configured at all (generateOverdueNotebookTickets already gets this
+    // right - it silently skips raising a ticket when no threshold/L4
+        // resolves - this list just never matched that same rule).
+
+    const activeThresholdsResult = await client.query(
+      `SELECT screen_name FROM ticketing_system.notebook_acknowledgement_threshold WHERE is_active = true`
+    );
+    const acknowledgeableScreenNames = new Set(
+      activeThresholdsResult.rows.map((row) => normalizeLookupText(row.screen_name)).filter(Boolean)
+    );
+
     const enriched = rowsResult.rows.map((row) => {
       const withAssignments = {
         ...row,
@@ -1781,6 +1909,9 @@ router.get('/', async (req, res, next) => {
         assigned_l4_users: (row.l4_approver_user_ids || []).map((id) => assignedById.get(Number(id))).filter(Boolean),
         assigned_l5_users: (row.l5_approver_user_ids || []).map((id) => assignedById.get(Number(id))).filter(Boolean),
       };
+      const requiresAcknowledgement = acknowledgeableScreenNames.has(
+        normalizeLookupText(row.input_screen || row.notebook)
+      );
 
       return {
         ...withAssignments,
@@ -1790,7 +1921,8 @@ router.get('/', async (req, res, next) => {
         operator: getNotebookOperatorNameText(row, allUsers),
         supervisor: getNotebookSupervisorNameText(withAssignments),
         createdAt: getNotebookCreatedAt(row),
-        isPending: isNotebookPendingAcknowledgementRow(row),
+        requiresAcknowledgement,
+        isPending: requiresAcknowledgement && isNotebookPendingAcknowledgementRow(row),
       };
     });
 
@@ -1853,11 +1985,17 @@ router.get('/:id', async (req, res, next) => {
     if (!result.rows.length) return res.status(404).json({ message: 'Submitted notebook not found' });
     const row = result.rows[0];
     if (!(await canViewSubmission(req, row))) return res.status(403).json({ message: 'You are not authorized to view this submitted notebook' });
+    // Same "does this screen even have acknowledgement configured" gate as
+    // GET / (the list endpoint) - without it, this single-record fetch (used
+    // by the ?openNotebookId= deep link) still fell back to the raw
+    // PENDING_ACK-by-default status and treated every notebook as pending.
+    const acknowledgementThreshold = await getAcknowledgementThresholdForNotebook(row);
     return res.status(200).json({
       submitted_notebook: {
         ...row,
         assigned_l2_users: await getAssignedL2Users(row.l2_approver_user_ids),
-        assigned_l3_users: await getAssignedL2Users(row.l3_approver_user_ids)
+        assigned_l3_users: await getAssignedL2Users(row.l3_approver_user_ids),
+        requiresAcknowledgement: Boolean(acknowledgementThreshold)
       }
     });
   } catch (error) {
@@ -1927,5 +2065,6 @@ module.exports = {
   runPpBatchCompletionCheck,
   runPpBatchTatCheck,
   getPpBatchSubDepartmentThresholds,
-  getPpNotebookThresholds
+  getPpNotebookThresholds,
+  getPpBatchCompletionForEntryId
 };

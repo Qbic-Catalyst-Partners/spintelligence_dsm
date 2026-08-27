@@ -1982,7 +1982,7 @@ router.post('/process_parameter', async (req, res, next) => {
         break_draft, total_draft, creel_draft,
         false_twist_grooves, spacer,
         top_arm_pressure, back_pressure, middle_pressure, front_pressure,
-        coil_inch, lifter_combination_wheel, lifter_wheel, tension_wheel, operator
+        coil_inch, lifter_combination_wheel, lifter_wheel, tension_wheel
       )
       VALUES (
         $1,$2,$3,$4,$5,
@@ -1992,7 +1992,7 @@ router.post('/process_parameter', async (req, res, next) => {
         $13,$14,$15,
         $16,$17,
         $18,$19,$20,$21,
-        $22,$23,$24,$25,$26
+        $22,$23,$24,$25
       )
       RETURNING *`,
       [
@@ -2020,8 +2020,7 @@ router.post('/process_parameter', async (req, res, next) => {
         data.coil_inch,
         data.lifter_combination_wheel,
         data.lifter_wheel,
-        data.tension_wheel,
-        data.user_name || null
+        data.tension_wheel
       ]
     );
 
@@ -2146,9 +2145,8 @@ router.put('/process_parameter/:id', async (req, res, next) => {
            lifter_combination_wheel=$22,
            lifter_wheel=$23,
            tension_wheel=$24,
-           operator = COALESCE($25, operator),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id=$26
+       WHERE id=$25
        RETURNING *`,
       [
         data.type || 'Process Parameter',
@@ -2175,7 +2173,6 @@ router.put('/process_parameter/:id', async (req, res, next) => {
         data.lifter_combination_wheel,
         data.lifter_wheel,
         data.tension_wheel,
-        data.user_name || null,
         id
       ]
     );

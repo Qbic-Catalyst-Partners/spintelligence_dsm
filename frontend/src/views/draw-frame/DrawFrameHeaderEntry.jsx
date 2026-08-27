@@ -420,9 +420,17 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
     }
   };
 
+  // Was missing entryId - see autoconer/AutoconerQ2.jsx's identical fix:
+  // without it, switching which PP id this component instance is editing
+  // (entryId prop changes without a remount, e.g. clicking a different
+  // matrix cell without also changing Breaker/Finisher type) left the
+  // entries list stale, so submit() below wrongly thought no row existed
+  // yet and attempted a create, failing with "Duplicate entry_id" against
+  // the row that already existed.
   useEffect(() => {
     loadEntries(activeType);
-  }, [activeType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeType, entryId]);
 
   useEffect(() => {
     if (!lockedCountName) return;
@@ -522,7 +530,10 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
       if (field === "countName" && !entryId && !current.versionId) {
         const match = findLatestEntryByCountName(nextValue);
         if (match) {
-          return { ...match.data, countName: nextValue, versionId: "", paramId: current.paramId };
+          // paramId forced blank (not carried over from `current`) so save
+          // always reserves a brand new PP id instead of colliding with the
+          // matched historical entry's id ("Duplicate entry_id").
+          return { ...match.data, countName: nextValue, versionId: "", paramId: "" };
         }
       }
 

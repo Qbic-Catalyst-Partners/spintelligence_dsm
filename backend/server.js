@@ -601,8 +601,27 @@ app.use((err, req, res, next) => {
 
 const PORT = Number(process.env.PORT) || 4000;
 
-app.listen(PORT, '0.0.0.0', () => {
+// A second `node server.js` started alongside an already-running one (e.g.
+// forgotten from a previous session, or started manually while another copy
+// is already up) doesn't reliably fail loudly on every platform - both can
+// end up bound and both polling/writing the same DB, silently racing each
+// other (this is exactly how the PP Approval and Wheel Change Approval
+// "duplicate ticket" bugs kept reappearing - two background workers on two
+// live instances both passing the same "does a ticket already exist?" check
+// before either had committed its insert). Failing fast and loud here beats
+// a second instance quietly coexisting.
+const httpServer = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+});
+httpServer.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      `Port ${PORT} is already in use - another instance of this backend is already running. ` +
+      'Stop that instance before starting a new one (two copies running at once will race each other against the same database).'
+    );
+    process.exit(1);
+  }
+  throw err;
 });
 
 startReportScheduleWorker();

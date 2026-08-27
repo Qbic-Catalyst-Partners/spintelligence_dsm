@@ -1361,6 +1361,7 @@ router.get('/speed-checking', async (req, res, next) => {
         encode(LHS_Audio, 'base64') AS LHS_Audio,
         RHS_TextRemarks,
         encode(RHS_Audio, 'base64') AS RHS_Audio,
+        operator,
         CreatedAt
       FROM spinning.speed_checking
       ORDER BY CreatedAt DESC;
@@ -1545,6 +1546,7 @@ router.get('/cots-checking', async (req, res, next) => {
         encode(LHS_Audio, 'base64') as LHS_Audio,
         RHS_TextRemarks,
         encode(RHS_Audio, 'base64') as RHS_Audio,
+        operator,
         CreatedAt
       FROM spinning.cots_checking
       ORDER BY CreatedAt DESC;
@@ -1850,6 +1852,7 @@ router.get('/bottom-apron-checking', async (req, res, next) => {
         encode(h.LHS_Audio, 'base64') as LHS_Audio,
         h.RHS_TextRemarks,
         encode(h.RHS_Audio, 'base64') as RHS_Audio,
+        h.operator,
         h.CreatedAt
       FROM spinning.bottom_apron_checking h
       LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = 'bottom_apron_checking' AND t2.entry_id = h.entry_id
@@ -2013,6 +2016,7 @@ router.get('/lycra-centering', async (req, res, next) => {
         encode(h.LHS_Audio, 'base64') as LHS_Audio,
         h.RHS_TextRemarks,
         encode(h.RHS_Audio, 'base64') as RHS_Audio,
+        h.operator,
         h.CreatedAt
       FROM spinning.lycra_centering h
       LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = 'lycra_centering' AND t2.entry_id = h.entry_id
@@ -2176,6 +2180,7 @@ router.get('/rsm-lycra-online', async (req, res, next) => {
         encode(h.LHS_Audio, 'base64') as LHS_Audio,
         h.RHS_TextRemarks,
         encode(h.RHS_Audio, 'base64') as RHS_Audio,
+        h.operator,
         h.CreatedAt
       FROM spinning.RSM_and_lycrasensor_cheking_online h
       LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = 'rsm_lycra_online' AND t2.entry_id = h.entry_id
@@ -2339,6 +2344,7 @@ router.get('/rsm-lycra-offline', async (req, res, next) => {
         encode(h.LHS_Audio, 'base64') as LHS_Audio,
         h.RHS_TextRemarks,
         encode(h.RHS_Audio, 'base64') as RHS_Audio,
+        h.operator,
         h.CreatedAt
       FROM spinning.RSM_and_lycrasensor_cheking_offline h
       LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = 'rsm_lycra_offline' AND t2.entry_id = h.entry_id
@@ -3130,7 +3136,7 @@ router.post('/qc', async (req, res, next) => {
         thickness_min,
         thickness_max,
         ramp,
-        offset,
+        "offset",
         created_by_user_id,
         operator
       )
@@ -3399,7 +3405,7 @@ router.put('/qc/:qc_id', async (req, res, next) => {
            thickness_min = $24,
            thickness_max = $25,
            ramp = $26,
-           offset = $27,
+           "offset" = $27,
            operator = COALESCE($28, operator),
            approval_status = 'pending',
            reviewed_by = NULL,
@@ -4395,6 +4401,39 @@ router.patch('/wheel-change/approval-config/:department/status', async (req, res
   }
 });
 
+router.delete('/wheel-change/approval-config/:department', async (req, res, next) => {
+  try {
+    const department = WHEEL_CHANGE_DEPARTMENTS.includes(req.params.department) ? req.params.department : null;
+    if (!department) {
+      return res.status(400).json({ message: `department must be one of ${WHEEL_CHANGE_DEPARTMENTS.join(', ')}` });
+    }
+
+    const result = await client.query(
+      `DELETE FROM ticketing_system.wheel_change_approval_config WHERE config_key = $1 RETURNING config_key`,
+      [department]
+    );
+    if (!result.rowCount) {
+      return res.status(404).json({ message: `No Wheel Change Approval configuration found for ${department}` });
+    }
+
+    // Same reasoning as the Acknowledgement/Submission/PP threshold deletes -
+    // don't leave a WHEEL_CHANGE_APPROVAL ticket open forever referencing a
+    // department config that no longer exists.
+    await client.query(
+      `UPDATE ticketing_system.operator_tickets
+       SET status = 'Closed'
+       WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL'
+         AND status <> 'Closed'
+         AND (violation_details->>'department') = $1`,
+      [department]
+    );
+
+    return res.status(200).json({ message: `Wheel Change Approval configuration for ${department} deleted successfully` });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/wheel-change/approvals', async (req, res, next) => {
   try {
     const status = String(req.query.status ?? '').trim();
@@ -4584,6 +4623,40 @@ const getAllWheelChangeApprovalConfigs = async () => {
   }));
 };
 
+// Defensive schema guard for the Wheel Change Approval-specific columns on
+// ticketing_system.operator_tickets - mirrors processParameters.js's
+// ensureApprovalTicketSchema (same shared table, same columns), which was
+// itself added after being called-but-never-defined silently broke every PP
+// Approval TAT ticket. This one was the same bug for Wheel Change Approval:
+// called at every one of createWheelChangeApprovalTicket/
+// runWheelChangeApprovalOverdueCheck/runWheelChangeApprovalTatCheck below but
+// never actually defined anywhere, so every call threw a ReferenceError,
+// caught by server.js's try/catch and logged as "[wheel-change-approval]
+// overdue/TAT worker skipped: ensureWheelChangeApprovalTicketSchema is not
+// defined" - meaning no Wheel Change Approval ticket (initial or escalation)
+// was ever actually being raised.
+const ensureWheelChangeApprovalTicketSchema = async () => {
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+      ADD COLUMN IF NOT EXISTS ticket_kind TEXT,
+      ADD COLUMN IF NOT EXISTS tat_current_level TEXT,
+      ADD COLUMN IF NOT EXISTS approval_l4_user_ids INTEGER[],
+      ADD COLUMN IF NOT EXISTS l4_tat_due_at TIMESTAMPTZ
+  `);
+  // Backstops createWheelChangeApprovalTicket's/runWheelChangeApprovalTatCheck's
+  // own check-then-insert dedup, same reasoning as PP Approval's matching
+  // index (processParameters.js) - COALESCE(...->>'escalation_of', '') lets
+  // the one original ticket and its one reminder-per-original coexist.
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_wc_approval_open_uq
+    ON ticketing_system.operator_tickets (
+      (violation_details->>'wheel_change_row_key'),
+      (COALESCE(violation_details->>'escalation_of', ''))
+    )
+    WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL' AND status <> 'Closed'
+  `);
+};
+
 // wheelChangeRowKey uniquely identifies the WC row this ticket is for
 // (table name + row id), since ticket_id-style composite ids
 // ("type1:123") aren't stable identifiers to search violation_details by.
@@ -4626,21 +4699,35 @@ const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId, entr
   };
 
   const ticketId = await generateTicketId(client);
-  const ticket = await client.query(
-    `INSERT INTO ticketing_system.operator_tickets
-     (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
-      severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
-      violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
-     VALUES (
-       $1,
-       $2, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
-       $6, 'Open', NOW(), 'MISSING_VALUE', 'WHEEL_CHANGE_APPROVAL', 'wheel_change_approval',
-       $3::jsonb, $4::int[], 'L4', $5
-     )
-     RETURNING ticket_id`,
-    [ticketId, wheelChangeRowKey, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity]
-  );
-  const insertedTicketId = ticket.rows[0]?.ticket_id || null;
+  let insertedTicketId;
+  try {
+    const ticket = await client.query(
+      `INSERT INTO ticketing_system.operator_tickets
+       (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+        severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
+        violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
+       VALUES (
+         $1,
+         $2, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+         $6, 'Open', NOW(), 'MISSING_VALUE', 'WHEEL_CHANGE_APPROVAL', 'wheel_change_approval',
+         $3::jsonb, $4::int[], 'L4', $5
+       )
+       RETURNING ticket_id`,
+      [ticketId, wheelChangeRowKey, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity]
+    );
+    insertedTicketId = ticket.rows[0]?.ticket_id || null;
+  } catch (error) {
+    // 23505 = operator_tickets_wc_approval_open_uq - lost a race with another
+    // call that inserted the same row's ticket first; that one wins.
+    if (error?.code !== '23505') throw error;
+    const winner = await client.query(
+      `SELECT ticket_id FROM ticketing_system.operator_tickets
+       WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL' AND (violation_details->>'wheel_change_row_key') = $1 AND status <> 'Closed'
+       LIMIT 1`,
+      [wheelChangeRowKey]
+    );
+    return winner.rows[0]?.ticket_id || null;
+  }
 
   if (insertedTicketId && l4UserIds.length) {
     await createNotificationsForUsers(l4UserIds, {
@@ -4759,47 +4846,31 @@ const runWheelChangeApprovalTatCheck = async () => {
     const wheelChangeRowKey = ticket.violation_details?.wheel_change_row_key;
     if (!wheelChangeRowKey) continue; // eslint-disable-line no-continue
 
+    // Was: raised a brand-new ticket row ('escalation_of' the original) once
+    // overdue, leaving TWO open tickets for the same Wheel Change row - the
+    // duplicate the user is asking to eliminate. Now updates the SAME ticket
+    // in place instead (matching Submission Frequency/Value Threshold, which
+    // already escalate this way), guarded by the OVERDUE_REMINDER_RAISED log
+    // entry so it only ever re-notifies once, never re-inserts a ticket.
     // eslint-disable-next-line no-await-in-loop
-    const existingReminder = await client.query(
-      `SELECT ticket_id FROM ticketing_system.operator_tickets
-       WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL'
-         AND (violation_details->>'wheel_change_row_key') = $1
-         AND (violation_details->>'escalation_of') = $2
-         AND status <> 'Closed'
-       LIMIT 1`,
-      [wheelChangeRowKey, ticket.ticket_id]
+    const alreadyReminded = await client.query(
+      `SELECT 1 FROM ticketing_system.ticket_logs WHERE ticket_id = $1 AND action = 'OVERDUE_REMINDER_RAISED' LIMIT 1`,
+      [ticket.ticket_id]
     );
-    if (existingReminder.rows[0]?.ticket_id) continue; // eslint-disable-line no-continue
+    if (alreadyReminded.rows.length) continue; // eslint-disable-line no-continue
 
     const l4UserIds = Array.isArray(ticket.approval_l4_user_ids) ? ticket.approval_l4_user_ids : [];
-    const department = ticket.violation_details?.department || null;
-    const violationDetails = {
-      category: 'MISSED_FREQUENCY',
-      ticket_type: 'WHEEL_CHANGE_APPROVAL',
-      wheel_change_row_key: wheelChangeRowKey,
-      escalation_of: ticket.ticket_id,
-      department,
-      entry_id: ticket.violation_details?.entry_id || null,
-      message: `A Wheel Change proposal was not approved by L4 within the configured time and is now overdue.`
-    };
+    const overdueMessage = 'A Wheel Change proposal was not approved by L4 within the configured time and is now overdue.';
 
     // eslint-disable-next-line no-await-in-loop
-    const reminder = await client.query(
-      `INSERT INTO ticketing_system.operator_tickets
-       (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
-        severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
-        violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
-       VALUES (
-         'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-         $1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
-         'High', 'Open', NOW(), 'MISSING_VALUE', 'WHEEL_CHANGE_APPROVAL', 'wheel_change_approval',
-         $2::jsonb, $3::int[], 'L4', NULL
-       )
-       RETURNING ticket_id`,
-      [ticket.machine_name, JSON.stringify(violationDetails), l4UserIds]
+    await client.query(
+      `UPDATE ticketing_system.operator_tickets
+       SET severity = 'High',
+           violation_details = violation_details || jsonb_build_object('overdue', true, 'message', $2::text)
+       WHERE ticket_id = $1`,
+      [ticket.ticket_id, overdueMessage]
     );
-    const reminderTicketId = reminder.rows[0]?.ticket_id;
-    if (reminderTicketId) created.push(reminderTicketId);
+    created.push(ticket.ticket_id);
 
     // eslint-disable-next-line no-await-in-loop
     await client.query(
@@ -4809,18 +4880,17 @@ const runWheelChangeApprovalTatCheck = async () => {
       [ticket.ticket_id]
     );
 
-    if (reminderTicketId && l4UserIds.length) {
+    if (l4UserIds.length) {
       // eslint-disable-next-line no-await-in-loop
       await createNotificationsForUsers(l4UserIds, {
-        ticketId: reminderTicketId,
+        ticketId: ticket.ticket_id,
         type: 'WHEEL_CHANGE_APPROVAL',
         category: 'Tickets',
         priority: 'High',
         title: (user) => `Hi ${user.full_name || 'there'} (L4), a Wheel Change approval is overdue`,
-        body: (user) =>
-          `${user.full_name || 'You'} (L4) - a Wheel Change proposal was not approved in time (ticket ${ticket.ticket_id}) and is now overdue.`,
-        linkUrl: `/supervisor-tickets/${reminderTicketId}`,
-        payload: { ticket_id: reminderTicketId, wheel_change_row_key: wheelChangeRowKey }
+        body: (user) => `${user.full_name || 'You'} (L4) - ${overdueMessage}`,
+        linkUrl: `/supervisor-tickets/${ticket.ticket_id}`,
+        payload: { ticket_id: ticket.ticket_id, wheel_change_row_key: wheelChangeRowKey }
       });
     }
   }

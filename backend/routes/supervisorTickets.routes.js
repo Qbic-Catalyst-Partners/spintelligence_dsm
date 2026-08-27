@@ -83,6 +83,22 @@ const canApproveOrRejectTicket = async (req, ticket) => {
   const requesterId = parsePositiveInt(req.user?.id);
   if (!requesterId) return false;
 
+  // PP Approval tickets are owned by L4 as a whole (see the matching OR
+  // branch in GET /tickets above) - any L4/L5 reviewer can open and act on
+  // one, not just the specific person configured as that notebook's L4
+  // approver. PP_BATCH_INCOMPLETE ('pp_batch') is the same: its L4 approver
+  // list is resolved per-notebook from PP Thresholds and can come out empty,
+  // which without this would 403 every L4 trying to open a ticket they can
+  // now see in the list (see the matching 'pp_batch' addition above).
+  const requesterLevel = String(req.user?.level || '').trim().toUpperCase();
+  if (
+    ['pp_approval', 'pp_batch'].includes(ticket?.ticket_kind) &&
+    (requesterLevel === 'L4' || requesterLevel === 'L5') &&
+    ['L4', 'L5'].includes(String(ticket?.tat_current_level || '').trim().toUpperCase())
+  ) {
+    return true;
+  }
+
   const allReviewerIds = REVIEW_LEVELS.flatMap((level) => {
     const ids = ticket[`approval_${level.toLowerCase()}_user_ids`];
     return Array.isArray(ids) ? ids : [];
@@ -162,6 +178,30 @@ const getReviewerLevel = async (req) => {
   );
   const level = String(result.rows[0]?.level || '').trim().toUpperCase();
   return isReviewLevel(level) ? level : null;
+};
+
+// ticket_id has been stored two different ways across this app's history -
+// older tickets as plain "TK-0338", newer ones (generateTicketId, utils/
+// ticketId.js) with a leading "#" as "#TK-0346" - while the frontend's
+// formatTicketId always strips any leading "#" before sending an id to the
+// API. Net effect: every lookup/action here received the bare form
+// ("TK-0346") which matched the older un-prefixed tickets fine but silently
+// 404'd ("Ticket not found") against any newer "#"-prefixed one, including
+// every PP Approval/Wheel Change Approval/PP Batch ticket. Resolving to
+// whichever form is actually stored - once, right after the id is read off
+// the request - lets every existing `WHERE ticket_id = $1` query below keep
+// working unchanged for both formats.
+const resolveStoredTicketId = async (rawTicketId) => {
+  const trimmed = String(rawTicketId || '').trim();
+  if (!trimmed) return trimmed;
+  const bare = trimmed.replace(/^#/, '');
+  const result = await client.query(
+    `SELECT ticket_id FROM ticketing_system.operator_tickets
+     WHERE ticket_id = $1 OR ticket_id = $2
+     LIMIT 1`,
+    [bare, `#${bare}`]
+  );
+  return result.rows[0]?.ticket_id || trimmed;
 };
 
 const getTicketIdFromRequest = (req) =>
@@ -356,12 +396,19 @@ router.get('/tickets', async (req, res, next) => {
       where.push(stageFilter !== 'L1'
         ? `(${acknowledgementTicketWhere} OR COALESCE(ot.tat_current_level, 'L1') = $${values.length})`
         : `COALESCE(ot.tat_current_level, 'L1') = $${values.length}`);
-      if (stageFilter === 'L1') {
-        where.push(`NOT (
-          ot.ticket_reason = 'MISSING_VALUE'
-          AND (ot.violation_details->>'category') = 'MISSED_FREQUENCY'
-        )`);
-      }
+      // A second, broader exclusion used to run here for the L1 stage only,
+      // stripping out ANY ticket with category='MISSED_FREQUENCY' regardless
+      // of ticket_type - not just Acknowledgement ones. That was fine back
+      // when Acknowledgement was the only ticket type using that category,
+      // but PP_BATCH_INCOMPLETE and SUBMISSION_FREQUENCY (missed-frequency
+      // variant) both use the exact same category too, and both are meant to
+      // show up at L1 (that's the whole point of "L1 fixes it, then it goes
+      // to L2/L4 for review") - this was silently hiding them from the L1
+      // tab entirely. The `where.push` above already applies the correctly
+      // *ticket_type*-scoped `nonAcknowledgementTicketWhere` exclusion (only
+      // real Acknowledgement tickets) for every non-canViewAll request,
+      // including this L1 stage, so this extra broad exclusion was both
+      // redundant and wrong - removed.
     }
 
     if (statusFilter && statusFilter.toLowerCase() !== 'all') {
@@ -425,6 +472,23 @@ router.get('/tickets', async (req, res, next) => {
       // paths. Without this, an L2 whose reportees' tickets never had their
       // approval_l2_user_ids filled (e.g. Open/In Progress tickets) sees
       // nothing at all.
+      // PP Approval tickets are owned by L4 as a whole, not by whichever
+      // specific person happens to be named in that notebook's threshold
+      // config (the separate PP Approvals queue page - canActOnPpApproval in
+      // processParameters.js - already lets any L4/L5/Admin act on a PP id,
+      // regardless of who's configured) - so any L4/L5 reviewer should see
+      // and act on a PP_APPROVAL ticket here too, not just its configured
+      // approver.
+      // PP_BATCH_INCOMPLETE (ticket_kind 'pp_batch') tickets are the same
+      // situation once they escalate to L4 (see /submit/:id in
+      // operatorTickets.routes.js): the L4 approver list there is resolved
+      // per-notebook from PP Thresholds and can easily come out empty (no L4
+      // configured for that specific overdue screen), which without this
+      // carve-out made the ticket invisible to every L4 - L1 clicks Fix &
+      // Submit, it visibly escalates, and then nobody at L4 could ever see it.
+      const anyL4SeesPpApproval = (reviewerLevel === 'L4' || reviewerLevel === 'L5')
+        ? `OR (ot.ticket_kind IN ('pp_approval', 'pp_batch') AND COALESCE(ot.tat_current_level, 'L1') IN ('L4', 'L5'))`
+        : '';
       where.push(`(
         (${REVIEW_LEVELS.map((level) => `$${requesterParam} = ANY(COALESCE(ot.approval_${level.toLowerCase()}_user_ids, ARRAY[]::int[]))`).join(' OR ')})
         OR ot.user_id IN (
@@ -437,6 +501,7 @@ router.get('/tickets', async (req, res, next) => {
           SELECT id FROM reportees
         )
         OR ${requesterIsDelegateExpr}
+        ${anyL4SeesPpApproval}
       )`);
     }
 
@@ -649,7 +714,7 @@ router.get('/tickets', async (req, res, next) => {
 router.get('/tickets/:id/l2-preview', async (req, res, next) => {
   try {
 
-    const ticketId = String(req.params.id || '').trim();
+    const ticketId = await resolveStoredTicketId(String(req.params.id || '').trim());
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
 
     const result = await client.query(
@@ -822,12 +887,19 @@ router.get('/tickets/timeline/graph', async (req, res, next) => {
       where.push(stageFilter !== 'L1'
         ? `(${acknowledgementTicketWhere} OR COALESCE(ot.tat_current_level, 'L1') = $${values.length})`
         : `COALESCE(ot.tat_current_level, 'L1') = $${values.length}`);
-      if (stageFilter === 'L1') {
-        where.push(`NOT (
-          ot.ticket_reason = 'MISSING_VALUE'
-          AND (ot.violation_details->>'category') = 'MISSED_FREQUENCY'
-        )`);
-      }
+      // A second, broader exclusion used to run here for the L1 stage only,
+      // stripping out ANY ticket with category='MISSED_FREQUENCY' regardless
+      // of ticket_type - not just Acknowledgement ones. That was fine back
+      // when Acknowledgement was the only ticket type using that category,
+      // but PP_BATCH_INCOMPLETE and SUBMISSION_FREQUENCY (missed-frequency
+      // variant) both use the exact same category too, and both are meant to
+      // show up at L1 (that's the whole point of "L1 fixes it, then it goes
+      // to L2/L4 for review") - this was silently hiding them from the L1
+      // tab entirely. The `where.push` above already applies the correctly
+      // *ticket_type*-scoped `nonAcknowledgementTicketWhere` exclusion (only
+      // real Acknowledgement tickets) for every non-canViewAll request,
+      // including this L1 stage, so this extra broad exclusion was both
+      // redundant and wrong - removed.
     }
 
     if (startDate) {
@@ -888,7 +960,7 @@ router.get('/tickets/timeline/graph', async (req, res, next) => {
 router.get('/tickets/:id', async (req, res, next) => {
   try {
 
-    const ticketId = String(req.params.id || '').trim();
+    const ticketId = await resolveStoredTicketId(String(req.params.id || '').trim());
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
 
     const result = await client.query(
@@ -979,6 +1051,20 @@ router.get('/tickets/:id', async (req, res, next) => {
       return res.status(403).json({ message: 'You are not authorized to view this ticket' });
     }
 
+    // Live, not the frozen-at-creation snapshot - so a reviewer (L4 etc.)
+    // sees which departments are ACTUALLY still missing right now, including
+    // any the operator already fixed and saved since this ticket was raised
+    // or last submitted.
+    if (ticket.ticket_kind === 'pp_batch' || ticket.ticket_type === 'PP_BATCH_INCOMPLETE') {
+      const { getPpBatchCompletionForEntryId } = require('./submittedNotebooks.routes');
+      const { completedScreens, missingScreens } = await getPpBatchCompletionForEntryId(ticket.violation_details?.entry_id);
+      ticket.violation_details = {
+        ...(ticket.violation_details || {}),
+        completed_screens: completedScreens,
+        missing_screens: missingScreens,
+      };
+    }
+
     return res.status(200).json({ ticket: addTicketValueAliases(ticket) });
   } catch (error) {
     next(error);
@@ -987,7 +1073,7 @@ router.get('/tickets/:id', async (req, res, next) => {
 
 router.get('/tickets/:id/timeline', async (req, res, next) => {
   try {
-    const ticketId = String(req.params.id || '').trim();
+    const ticketId = await resolveStoredTicketId(String(req.params.id || '').trim());
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
 
     const ticketRes = await client.query(
@@ -1098,7 +1184,7 @@ router.get('/tickets/:id/timeline', async (req, res, next) => {
 router.patch('/tickets/acknowledge/mark-submit', async (req, res, next) => {
   try {
     const canViewAll = await getPrivilegedSupervisorAccess(req);
-    const ticketId = getTicketIdFromRequest(req);
+    const ticketId = await resolveStoredTicketId(getTicketIdFromRequest(req));
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
 
     const ticketRes = await client.query(
@@ -1128,7 +1214,7 @@ router.patch('/tickets/acknowledge/mark-submit', async (req, res, next) => {
 router.patch('/tickets/acknowledge', async (req, res, next) => {
   try {
     const canViewAll = await getPrivilegedSupervisorAccess(req);
-    const ticketId = getTicketIdFromRequest(req);
+    const ticketId = await resolveStoredTicketId(getTicketIdFromRequest(req));
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
 
     const ticketRes = await client.query(
@@ -1193,7 +1279,7 @@ router.patch('/tickets/acknowledge', async (req, res, next) => {
 const updateSupervisorTicketStatusHandler = async (req, res, next) => {
   try {
     const canViewAll = await getPrivilegedSupervisorAccess(req);
-    const ticketId = getTicketIdFromRequest(req);
+    const ticketId = await resolveStoredTicketId(getTicketIdFromRequest(req));
     const status = normalizeTicketStatusInput(req.body?.status || req.body?.ticket_status || req.body?.ticketStatus);
 
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
@@ -1446,7 +1532,7 @@ const runL4SelfResolveReconciliationCheck = async () => {
 router.patch('/tickets/approve', async (req, res, next) => {
   try {
     const canViewAll = await getPrivilegedSupervisorAccess(req);
-    const ticketId = getTicketIdFromRequest(req);
+    const ticketId = await resolveStoredTicketId(getTicketIdFromRequest(req));
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
 
     const ticketRes = await client.query(
@@ -1541,7 +1627,7 @@ router.patch('/tickets/approve', async (req, res, next) => {
 router.patch('/tickets/reject', async (req, res, next) => {
   try {
     const canViewAll = await getPrivilegedSupervisorAccess(req);
-    const ticketId = getTicketIdFromRequest(req);
+    const ticketId = await resolveStoredTicketId(getTicketIdFromRequest(req));
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
 
     const ticketRes = await client.query(

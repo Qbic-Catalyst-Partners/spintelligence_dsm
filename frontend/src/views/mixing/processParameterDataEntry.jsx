@@ -415,9 +415,16 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     setIsMounted(true);
   }, []);
 
+  // Was `[]` (mount-only) - see autoconer/AutoconerQ2.jsx's identical fix:
+  // without this, switching which PP id this component instance is editing
+  // (entryId prop changes without a remount) left the version list stale,
+  // so submit() below wrongly thought no row existed yet and attempted a
+  // create, failing with "Duplicate entry_id" against the row that already
+  // existed.
   useEffect(() => {
     loadVersions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryId]);
 
   useEffect(() => {
     if (entryId) {
@@ -499,11 +506,18 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
       if (field === "countName" && !entryId && !current.versionId) {
         const match = findLatestVersionByCountName(value);
         if (match) {
+          // Autofill values from the matched historical entry (same count
+          // name reused for a genuinely new batch) but never its PP id -
+          // versionId/paramId are forced blank here (not carried over from
+          // `current`, which itself could already be non-blank in some
+          // interleavings) so save always reserves and uses a brand new PP
+          // id, rather than colliding with the old entry's ("Duplicate
+          // entry_id").
           return {
             ...cloneForm(match.data),
             countName: value,
-            versionId: current.versionId,
-            paramId: current.paramId,
+            versionId: "",
+            paramId: "",
           };
         }
       }
