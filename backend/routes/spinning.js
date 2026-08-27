@@ -1361,6 +1361,7 @@ router.get('/speed-checking', async (req, res, next) => {
         encode(LHS_Audio, 'base64') AS LHS_Audio,
         RHS_TextRemarks,
         encode(RHS_Audio, 'base64') AS RHS_Audio,
+        operator,
         CreatedAt
       FROM spinning.speed_checking
       ORDER BY CreatedAt DESC;
@@ -1545,6 +1546,7 @@ router.get('/cots-checking', async (req, res, next) => {
         encode(LHS_Audio, 'base64') as LHS_Audio,
         RHS_TextRemarks,
         encode(RHS_Audio, 'base64') as RHS_Audio,
+        operator,
         CreatedAt
       FROM spinning.cots_checking
       ORDER BY CreatedAt DESC;
@@ -1850,6 +1852,7 @@ router.get('/bottom-apron-checking', async (req, res, next) => {
         encode(h.LHS_Audio, 'base64') as LHS_Audio,
         h.RHS_TextRemarks,
         encode(h.RHS_Audio, 'base64') as RHS_Audio,
+        h.operator,
         h.CreatedAt
       FROM spinning.bottom_apron_checking h
       LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = 'bottom_apron_checking' AND t2.entry_id = h.entry_id
@@ -2013,6 +2016,7 @@ router.get('/lycra-centering', async (req, res, next) => {
         encode(h.LHS_Audio, 'base64') as LHS_Audio,
         h.RHS_TextRemarks,
         encode(h.RHS_Audio, 'base64') as RHS_Audio,
+        h.operator,
         h.CreatedAt
       FROM spinning.lycra_centering h
       LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = 'lycra_centering' AND t2.entry_id = h.entry_id
@@ -2176,6 +2180,7 @@ router.get('/rsm-lycra-online', async (req, res, next) => {
         encode(h.LHS_Audio, 'base64') as LHS_Audio,
         h.RHS_TextRemarks,
         encode(h.RHS_Audio, 'base64') as RHS_Audio,
+        h.operator,
         h.CreatedAt
       FROM spinning.RSM_and_lycrasensor_cheking_online h
       LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = 'rsm_lycra_online' AND t2.entry_id = h.entry_id
@@ -2339,6 +2344,7 @@ router.get('/rsm-lycra-offline', async (req, res, next) => {
         encode(h.LHS_Audio, 'base64') as LHS_Audio,
         h.RHS_TextRemarks,
         encode(h.RHS_Audio, 'base64') as RHS_Audio,
+        h.operator,
         h.CreatedAt
       FROM spinning.RSM_and_lycrasensor_cheking_offline h
       LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = 'rsm_lycra_offline' AND t2.entry_id = h.entry_id

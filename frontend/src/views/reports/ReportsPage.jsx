@@ -5602,8 +5602,9 @@ function ReportsPage() {
 
   const buildCsv = () => {
     const lines = exportSections.flatMap((section) => {
+      const sortedRows = getSortedSectionRows(section);
       const header = section.fields.map((field) => `"${String(field.label).replace(/"/g, '""')}"`).join(",");
-      const body = section.rows.map((row) =>
+      const body = sortedRows.map((row) =>
         section.fields
           .map((field) => `"${getCellValue(row, field, operatorByEntryKey, { subDepartment, reportType: section.typeName }).replace(/"/g, '""')}"`)
           .join(",")
@@ -5671,8 +5672,9 @@ function ReportsPage() {
         ]);
         sheet.addRow([]);
         sheet.addRow(fields.map((field) => field.label));
-        if (section.rows.length && section.fields.length) {
-          section.rows.forEach((row) => {
+        const sortedRows = getSortedSectionRows(section);
+        if (sortedRows.length && section.fields.length) {
+          sortedRows.forEach((row) => {
             sheet.addRow(fields.map((field) => getCellValue(row, field, operatorByEntryKey, { subDepartment, reportType: section.typeName })));
           });
         } else {
@@ -5718,6 +5720,74 @@ function ReportsPage() {
       second: "2-digit",
       hour12: true,
     }).format(new Date());
+
+    // Print/export must reflect whatever sort order is active on screen - the on-screen table
+    // already sorts via getSortedSectionRows, but every export function used the raw
+    // (submission-order) section.rows instead, so a sorted column on screen came out unsorted
+    // in the generated report.
+    const sectionsForExport = exportSections.map((section) => ({
+      ...section,
+      rows: getSortedSectionRows(section),
+    }));
+
+    // COTS/Speed/Bottom Apron/Lycra Out of Centering/RSM Online/RSM Offline (Spinning) each carry
+    // a "Count of LHS Spindle"/"Count of RHS Spindle" reading per row (lhs_spindle_count /
+    // rhs_spindle_count) - the printed report needs the totals across all rows shown up top and
+    // again at the foot of the table, alongside the combined LHS+RHS grand total.
+    const spindleCountSections = subDepartment === "Spinning"
+      ? sectionsForExport
+          .filter((section) => SPINNING_LHS_RHS_SPINDLE_LIST_REPORT_TYPES.has(section.typeName))
+          .map((section) => {
+            const totals = section.rows.reduce(
+              (acc, row) => {
+                const lhs = Number(row?.lhs_spindle_count);
+                const rhs = Number(row?.rhs_spindle_count);
+                return {
+                  lhs: acc.lhs + (Number.isFinite(lhs) ? lhs : 0),
+                  rhs: acc.rhs + (Number.isFinite(rhs) ? rhs : 0),
+                };
+              },
+              { lhs: 0, rhs: 0 }
+            );
+            return { typeName: section.typeName, ...totals };
+          })
+      : [];
+
+    const spindleSummaryHtml = spindleCountSections.length
+      ? `<section class="spindle-summary">${spindleCountSections
+          .map(
+            ({ typeName, lhs, rhs }) => `
+            <div class="spindle-summary-block">
+              ${isAllTypeSelected ? `<strong>${escapeHtmlText(typeName)}</strong>` : ""}
+              <div>Total Count of LHS: <strong>${lhs}</strong></div>
+              <div>Total Count of RHS: <strong>${rhs}</strong></div>
+              <div>Overall Total (LHS + RHS): <strong>${lhs + rhs}</strong></div>
+            </div>`
+          )
+          .join("")}</section>`
+      : "";
+
+    const buildSpindleTotalsRow = (fields, totals) => {
+      const hasLhsColumn = fields.some((field) => (field.label || field.key) === "Count of LHS Spindle");
+      const hasRhsColumn = fields.some((field) => (field.label || field.key) === "Count of RHS Spindle");
+      if (!hasLhsColumn && !hasRhsColumn) return "";
+      const cells = fields.map((field) => {
+        const label = field.label || field.key;
+        if (label === "Count of LHS Spindle") return `<td><strong>${totals.lhs}</strong></td>`;
+        if (label === "Count of RHS Spindle") return `<td><strong>${totals.rhs}</strong></td>`;
+        return "<td></td>";
+      });
+      const firstLabel = fields[0] && (fields[0].label || fields[0].key);
+      if (firstLabel !== "Count of LHS Spindle" && firstLabel !== "Count of RHS Spindle") {
+        cells[0] = "<td><strong>Total</strong></td>";
+      }
+      const overallRow = `<tr class="totals-row"><td colspan="${Math.max(
+        fields.length,
+        1
+      )}">Overall Total (LHS + RHS): <strong>${totals.lhs + totals.rhs}</strong></td></tr>`;
+      return `<tr class="totals-row">${cells.join("")}</tr>${overallRow}`;
+    };
+
     popup.document.write(`
       <html>
         <head>
@@ -5743,6 +5813,22 @@ function ReportsPage() {
               align-content: start;
             }
             .meta strong { color: #101828; }
+            .spindle-summary {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 18px;
+              margin-bottom: 14px;
+              font-size: 11px;
+              color: #344054;
+            }
+            .spindle-summary-block {
+              display: grid;
+              gap: 3px;
+              border: 1px solid #d7dee9;
+              border-radius: 4px;
+              padding: 8px 12px;
+            }
+            .totals-row td { background: #f6f8fb; }
             table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
             th, td {
               border: 1px solid #d7dee9;
@@ -5777,7 +5863,8 @@ function ReportsPage() {
               <div><strong>Current Time:</strong> ${escapeHtmlText(currentTimeLabel)}</div>
             </div>
           </section>
-          ${exportSections
+          ${spindleSummaryHtml}
+          ${sectionsForExport
             .map((section) => {
               const headerCells = section.fields.map((field) => `<th>${escapeHtmlText(field.label)}</th>`).join("");
               const bodyRows = section.rows.length
@@ -5788,8 +5875,13 @@ function ReportsPage() {
                     )
                     .join("")
                 : `<tr><td colspan="${Math.max(section.fields.length, 1)}">No report details found.</td></tr>`;
+              const sectionSpindleTotals = spindleCountSections.find((entry) => entry.typeName === section.typeName);
+              const totalsRow =
+                section.rows.length && sectionSpindleTotals
+                  ? buildSpindleTotalsRow(section.fields, sectionSpindleTotals)
+                  : "";
               const sectionHeading = isAllTypeSelected ? `<h2>${escapeHtmlText(section.typeName)}</h2>` : "";
-              return `${sectionHeading}<table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>`;
+              return `${sectionHeading}<table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}${totalsRow}</tbody></table>`;
             })
             .join("")}
         </body>
