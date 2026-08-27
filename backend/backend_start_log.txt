@@ -546,3 +546,12 @@ URL: /notifications?page=1&limit=20
 Origin: http://localhost:3000
 Method: GET
 URL: /notifications?page=1&limit=20
+Origin: http://localhost:3000
+Method: OPTIONS
+URL: /notifications?page=1&limit=20
+Origin: http://localhost:3000
+Method: GET
+URL: /notifications?page=1&limit=20
+Origin: http://localhost:3000
+Method: GET
+URL: /notifications?page=1&limit=20
