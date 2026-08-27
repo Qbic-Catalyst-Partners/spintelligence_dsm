@@ -2038,7 +2038,6 @@ router.post('/openness', async (req, res, next) => {
     const {
       entry_id,
       inspection_date,
-      mixing,
       br_line,
       actual_specific_volume_target,
       no_of_entries,
@@ -2062,13 +2061,12 @@ router.post('/openness', async (req, res, next) => {
     // Custom Report's Operator resolution (which checks the row's own operator column first) works.
     const inspectionResult = await client.query(
       `INSERT INTO mixing.openness_inspection
-      (entry_id, inspection_date, mixing, br_line, actual_specific_volume_target, no_of_entries, operator, overall_openness_percent)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      (entry_id, inspection_date, br_line, actual_specific_volume_target, no_of_entries, operator, overall_openness_percent)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
       RETURNING id, entry_id`,
       [
         entry_id,
         inspection_date,
-        mixing,
         br_line || null,
         actual_specific_volume_target,
         no_of_entries,
