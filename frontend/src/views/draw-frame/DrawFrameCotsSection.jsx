@@ -125,7 +125,7 @@ function DrawFrameCotsSection({
                 {form.processType === "Finisher" ? (
                   <>
                     <div className={styles.field}>
-                      <label className={styles.label}>Mass Thick Place</label>
+                      <label className={styles.label}>Thick Place</label>
                       <input
                         value={machine.thickPlace}
                         onChange={(e) => handleMachineChange(index, "thickPlace", e.target.value)}

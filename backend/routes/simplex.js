@@ -330,94 +330,6 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
   }
 });
 
-const saveSimplexNotebook = async (req, res, next) => {
-  try {
-
-    const payload = req.body || {};
-    const parameterRows = normalizeParameterRows(payload.parameter_rows ?? payload.rows ?? payload.parameters);
-    const entryDate = parseNotebookDate(payload.entry_date ?? payload.date ?? payload.Date);
-    const entryId = String(payload.entry_id ?? payload.entryId ?? '').trim();
-
-    if (!entryId) {
-      return res.status(400).json({ message: 'entry_id is required and must be unique' });
-    }
-
-    const result = await client.query(
-      `INSERT INTO simplex.simplex_notebook (
-        entry_id, notebook_type, entry_date, sap_no, proposed_sap_no, parameter_rows, notes
-      )
-      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)
-      RETURNING *`,
-      [
-        entryId,
-        String(payload.notebook_type ?? payload.type ?? 'Simplex Notebook').trim(),
-        entryDate,
-        String(payload.sap_no ?? payload.sapNo ?? payload.sap_number ?? '').trim() || null,
-        String(payload.proposed_sap_no ?? payload.proposedSapNo ?? payload.proposed_sap_number ?? '').trim() || null,
-        JSON.stringify(parameterRows),
-        JSON.stringify(payload.notes ?? payload.meta ?? {})
-      ]
-    );
-
-    return res.status(201).json({
-      message: 'Simplex notebook data saved successfully',
-      data: result.rows[0]
-    });
-  } catch (error) {
-    if (isUniqueViolation(error)) {
-      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
-    }
-    next(error);
-  }
-};
-
-const getSimplexNotebook = async (req, res, next) => {
-  try {
-
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 50));
-    const offset = (page - 1) * limit;
-    const notebookType = String(req.query.notebook_type || req.query.type || '').trim();
-
-    const filters = [];
-    const values = [];
-
-    if (notebookType) {
-      values.push(notebookType);
-      filters.push(`notebook_type = $${values.length}`);
-    }
-
-    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
-    const limitParam = values.length + 1;
-    const offsetParam = values.length + 2;
-
-    const result = await client.query(
-      `SELECT *
-       FROM simplex.simplex_notebook
-       ${whereClause}
-       ORDER BY COALESCE(entry_date, created_at::date) DESC, id DESC
-       LIMIT $${limitParam} OFFSET $${offsetParam}`,
-      [...values, limit, offset]
-    );
-
-    const countResult = await client.query(
-      `SELECT COUNT(*)
-       FROM simplex.simplex_notebook
-       ${whereClause}`,
-      values
-    );
-
-    return res.status(200).json({
-      page,
-      limit,
-      total: parseInt(countResult.rows[0].count, 10),
-      data: result.rows
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 const saveWrappingSimplexNotebook = async (req, res, next) => {
   try {
 
@@ -545,12 +457,6 @@ router.post('/wrapping/simplex-notebook', saveWrappingSimplexNotebook);
 router.get('/wrapping/simplex-notebook', getWrappingSimplexNotebook);
 router.post('/simplex-notebook/wrapping', saveWrappingSimplexNotebook);
 router.get('/simplex-notebook/wrapping', getWrappingSimplexNotebook);
-router.post('/notebook', saveSimplexNotebook);
-router.get('/notebook', getSimplexNotebook);
-router.post('/simplex-notebook', saveSimplexNotebook);
-router.get('/simplex-notebook', getSimplexNotebook);
-router.post('/notebook/simplex', saveSimplexNotebook);
-router.get('/notebook/simplex', getSimplexNotebook);
 
 const fetchCdgTotalSpdlFromDb = async (machineName) => {
   const machine = String(machineName || '').trim();
@@ -990,13 +896,12 @@ const saveSimplexCotsChange = async (req, res) => {
     for (const item of items) {
       await client.query(
         `INSERT INTO simplex.simplex_inspection_details
-         (inspection_id, item_name, status_value, remarks)
-         VALUES ($1,$2,$3,$4)`,
+         (inspection_id, item_name, status_value)
+         VALUES ($1,$2,$3)`,
         [
           inspection_id,
           item.item_name,
-          item.status_value,
-          item.remarks
+          item.status_value
         ]
       );
     }
@@ -1087,8 +992,7 @@ const getSimplexCotsChange = async (req, res) => {
        LEFT JOIN LATERAL (
           SELECT json_agg(json_build_object(
               'item_name', d.item_name,
-              'status_value', d.status_value,
-              'remarks', d.remarks
+              'status_value', d.status_value
           )) AS items
           FROM simplex.simplex_inspection_details d
           WHERE d.inspection_id = si.id
@@ -1134,25 +1038,25 @@ const getStudyMachineNamesFromSpxCots = async (req, res, next) => {
     const prefix = String(req.query.prefix || '').trim();
     const likeToken = `%${prefix}%`;
 
+    // simplex.simplex_inspections has no s_no column - the SMX Cots Checking form
+    // (the only writer of this table) never collected a serial number, so this
+    // used to filter on a column that was always empty and fall straight through
+    // to DEFAULT_SIMPLEX_NUMBERS below every time. Machine name is the only real
+    // signal this table can offer.
     const result = await client.query(
       `SELECT DISTINCT
-          TRIM(s_no) AS s_no,
           TRIM(machine_name) AS machine_name
        FROM simplex.simplex_inspections
-       WHERE COALESCE(TRIM(s_no), '') <> ''
-         AND (
-           $1::text = ''
-           OR TRIM(s_no) ILIKE $2
-           OR TRIM(machine_name) ILIKE $2
-         )
-       ORDER BY TRIM(s_no) ASC`,
+       WHERE TRIM(machine_name) <> ''
+         AND ($1::text = '' OR TRIM(machine_name) ILIKE $2)
+       ORDER BY TRIM(machine_name) ASC`,
       [prefix, likeToken]
     );
 
     const normalized = result.rows
       .map((r) => ({
-        simplex_no: formatSimplexNo(r.s_no),
-        s_no: String(r.s_no || '').trim(),
+        simplex_no: formatSimplexNo(r.machine_name),
+        s_no: '',
         machine_name: String(r.machine_name || '').trim()
       }))
       .filter((r) => r.simplex_no);

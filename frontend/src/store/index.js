@@ -12,6 +12,7 @@ import supervisorReducer from "./slices/supervisorSlice";
 import drawFrameReducer from "./slices/draw-frame";
 import simplexReducer from "./slices/simplex";
 import autoconerReducer from "./slices/autoconer";
+import blowroomReducer from "./slices/blowroomSlice";
 
 export const store = configureStore({
   reducer: {
@@ -25,9 +26,9 @@ export const store = configureStore({
     spinning: spinningReducer,
     users: userReducer,
     supervisor: supervisorReducer,
-    drawFrame: drawFrameReducer,
     simplex: simplexReducer,
     autoconer: autoconerReducer,
+    blowroom: blowroomReducer,
 
   },
   middleware: (getDefaultMiddleware) =>

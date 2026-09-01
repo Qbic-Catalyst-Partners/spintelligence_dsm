@@ -91,18 +91,12 @@ const fetchCountMaster = async (prefix = '') => {
     .filter((row) => row.cntcode && row.cntname);
 };
 
-const fetchPostgresCountMaster = async () => {
-  const result = await client.query(
-    `SELECT count_name
-     FROM autoconer.count_master
-     WHERE count_name IS NOT NULL AND BTRIM(count_name) <> ''
-     ORDER BY count_name`
-  );
-  return result.rows
-    .map((row) => (row.count_name ? String(row.count_name).trim() : null))
-    .filter(Boolean)
-    .map((cntname) => ({ cntcode: cntname, cntname }));
-};
+// autoconer.count_master (the Postgres fallback used when MSSQL env vars
+// aren't configured) was dropped - always empty, never written to, and
+// superseded by the live ERP lookup (dbo.Depot_CountMaster) that every
+// deployment of this app actually has configured. Fall back to an empty
+// list instead of querying a table that no longer exists.
+const fetchPostgresCountMaster = async () => [];
 
 const getCountMasterDropdown = async (req, res, next) => {
   try {
@@ -125,7 +119,7 @@ const getCountMasterDropdown = async (req, res, next) => {
 
     return res.status(200).json({
       source: sqlServer.hasSqlServerEnv() ? 'sqlserver' : 'postgres',
-      table: sqlServer.hasSqlServerEnv() ? 'Depot_CountMaster' : 'autoconer.count_master',
+      table: sqlServer.hasSqlServerEnv() ? 'Depot_CountMaster' : null,
       count_options: countOptions,
       count_names: countOptions.map((row) => row.cntname),
       names: countOptions.map((row) => row.cntname),
@@ -1443,13 +1437,6 @@ const fetchAutoconerMasterData = async (query = {}) => {
     };
   }
 
-  const countNameQuery = `
-    SELECT count_name
-    FROM autoconer.count_master
-    WHERE count_name IS NOT NULL AND BTRIM(count_name) <> ''
-    ORDER BY count_name
-  `;
-
   const autoconerNoQuery = `
     SELECT DISTINCT machine_no AS autoconer_no
     FROM autoconer.autoconer_process_parameter
@@ -1457,18 +1444,16 @@ const fetchAutoconerMasterData = async (query = {}) => {
     ORDER BY autoconer_no
   `;
 
-  const [countNameResult, autoconerNoResult, consigneeOptions] = await Promise.all([
-    client.query(countNameQuery),
+  const [autoconerNoResult, consigneeOptions] = await Promise.all([
     client.query(autoconerNoQuery),
     fetchAutoconerConsigneeOptions()
   ]);
 
-  const countOptions = countNameResult.rows
-    .map((row) => {
-      const cntname = row.count_name ? String(row.count_name).trim() : null;
-      return cntname ? { cntcode: cntname, cntname } : null;
-    })
-    .filter(Boolean);
+  // autoconer.count_master (the Postgres fallback used when MSSQL env vars
+  // aren't configured) was dropped - always empty, never written to, and
+  // superseded by the live ERP lookup (dbo.Depot_CountMaster) that every
+  // deployment of this app actually has configured.
+  const countOptions = [];
 
   const autoconerOptions = autoconerNoResult.rows
     .map((row) => {
