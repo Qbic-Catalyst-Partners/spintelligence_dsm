@@ -1039,7 +1039,10 @@ router.post('/:entry_id/approve', async (req, res, next) => {
       return res.status(403).json({ message: 'Only L4, L5, or Admin can approve a PP id' });
     }
     const entry_id = normalizeProcessParameterEntryId(req.params.entry_id);
-    const reviewedBy = String(req.body?.department ?? req.body?.reviewed_by ?? req.user?.employee_id ?? '').trim() || null;
+    // req.body.department is the entry's department/category (e.g. "Process Parameter"),
+    // not the approving user - it used to be checked first here, so reviewed_by ended up
+    // storing that label instead of who actually approved/rejected the entry.
+    const reviewedBy = String(req.body?.reviewed_by ?? req.user?.full_name ?? req.user?.employee_id ?? '').trim() || null;
 
     const result = await client.query(
       `UPDATE process_parameters.master
@@ -1069,7 +1072,10 @@ router.post('/:entry_id/reject', async (req, res, next) => {
       return res.status(403).json({ message: 'Only L4, L5, or Admin can reject a PP id' });
     }
     const entry_id = normalizeProcessParameterEntryId(req.params.entry_id);
-    const reviewedBy = String(req.body?.department ?? req.body?.reviewed_by ?? req.user?.employee_id ?? '').trim() || null;
+    // req.body.department is the entry's department/category (e.g. "Process Parameter"),
+    // not the approving user - it used to be checked first here, so reviewed_by ended up
+    // storing that label instead of who actually approved/rejected the entry.
+    const reviewedBy = String(req.body?.reviewed_by ?? req.user?.full_name ?? req.user?.employee_id ?? '').trim() || null;
     const reason = String(req.body?.reason ?? '').trim() || null;
 
     // Rejected is its own visible stage (distinct from in_progress) so a

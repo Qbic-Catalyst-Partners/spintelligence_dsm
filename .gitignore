@@ -2,3 +2,9 @@ backend/.venv/
 __pycache__/
 *.pyc
 *.pyo
+
+# root-level tooling (Supabase CLI devDependency)
+node_modules/
+
+# stray local data exports (e.g. psql/Supabase table dumps)
+*.csv

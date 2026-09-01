@@ -226,47 +226,9 @@ const fetchFirstSimplexMasterPayload = async (endpoints, params) => {
   throw lastError;
 };
 
-const SIMPLEX_NOTEBOOK_ENDPOINTS = [
-  "/simplex/notebook",
-  "/simplex/simplex-notebook",
-  "/simplex/notebook/simplex",
-];
-
-const fetchFirstNotebookPayload = async (params = {}) => {
-  let lastError;
-
-  for (const endpoint of SIMPLEX_NOTEBOOK_ENDPOINTS) {
-    try {
-      const response = await apiConfig.get(endpoint, params, { skipGlobalErrorModal: true });
-      return response?.data || {};
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError;
-};
-
-export const fetchSimplexWheelChangeNotebookEntries = async (params = {}) => {
-  try {
-    return await fetchFirstNotebookPayload(params);
-  } catch (error) {
-    throw new Error(extractErrorMessage(error, "Unable to fetch simplex notebook entries."));
-  }
-};
-
-export const submitSimplexWheelChangeNotebookEntry = async (payload) => {
-  try {
-    const response = await apiConfig.post("/simplex/notebook", payload);
-    return response.data;
-  } catch (error) {
-    throw new Error(extractErrorMessage(error, "Unable to submit simplex notebook entry."));
-  }
-};
-
 /*
- * Dedicated simplex.wheel_change table (separate from the generic
- * /simplex/notebook catch-all above). JSONB parameters/rows blob, keyed by
+ * Dedicated simplex.wheel_change table.
+ * JSONB parameters/rows blob, keyed by
  * machine_no for existing-value carry-forward and pending/rejected
  * supersede-on-resubmit, mirroring spinning/carding/drawframe.
  *

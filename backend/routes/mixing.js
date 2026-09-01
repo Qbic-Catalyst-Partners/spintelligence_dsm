@@ -1663,7 +1663,7 @@ const AFIS6_MMF_NUMERIC_FIELDS = [
 router.post('/afis6-mmf', async (req, res, next) => {
   try {
     const {
-      entry_id, inspection_date, machine_name, comment, material_class,
+      entry_id, inspection_date, machine_name,
       lot_no, variety, invoice_date, mc_name, blow_room, carding,
       breaker_drawing, finisher_drawing, comber,
       user_name
@@ -1689,7 +1689,7 @@ router.post('/afis6-mmf', async (req, res, next) => {
     }
 
     const afis6MmfValues = [
-      entry_id, toDateOnly(inspection_date), machine_name, comment || null, material_class || null,
+      entry_id, toDateOnly(inspection_date), machine_name,
       lot_no || null, variety || null, toDateOnly(invoice_date), mc_name || null, blow_room || null, carding || null,
       breaker_drawing || null, finisher_drawing || null, comber || null,
       n.total_nep_count_g, n.total_nep_mean_size_um,
@@ -1709,7 +1709,7 @@ router.post('/afis6-mmf', async (req, res, next) => {
 
     const result = await client.query(
       `INSERT INTO mixing.afis6_mmf_data_entry (
-        entry_id, inspection_date, machine_name, comment, material_class,
+        entry_id, inspection_date, machine_name,
         lot_no, variety, invoice_date, mc_name, blow_room, carding,
         breaker_drawing, finisher_drawing, comber,
         total_nep_count_g, total_nep_mean_size_um,
@@ -1723,8 +1723,8 @@ router.post('/afis6-mmf', async (req, res, next) => {
         long_fiber_gt_46_80_percent, long_fiber_count_gt_46_80, operator
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+        $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36
       )
       RETURNING *`,
       afis6MmfValues
