@@ -733,6 +733,15 @@
   overflow: visible;
   width: 100%;
   max-width: 100%;
+  /* .stack (the grid parent) never shrinks a grid item below its content's
+     natural width by default - without this, the table's max-content width
+     (driven by all its columns, Action included) pushed this card past its
+     grid track instead of respecting overflow-x:auto below, so the table
+     just overflowed invisibly until something several levels up finally
+     clipped it with no scrollbar at all. min-width: 0 lets this card actually
+     shrink to the track width, which is what makes .tableWrap's own
+     overflow-x: auto kick in and show a real horizontal scrollbar. */
+  min-width: 0;
   justify-self: stretch;
   box-sizing: border-box;
 }

@@ -194,6 +194,20 @@ export const isPpBatchCompletionTicketRecord = (ticket) => {
   const hasMissingScreens =
     Array.isArray(violationDetails?.missing_screens) && violationDetails.missing_screens.length > 0;
 
+  // Submission Frequency's own "missed required occurrences" ticket (see
+  // runSubmissionFrequencyCheck in operatorTickets.routes.js) reuses this exact
+  // category="MISSED_FREQUENCY" string, but stamps its own
+  // violation_details.ticket_type="SUBMISSION_FREQUENCY" - checking that first
+  // stops every Submission ticket from being swallowed here as a false-positive
+  // PP Batch match (category.includes("missed_frequency") alone can't tell them
+  // apart), which was silently dropping them out of every dashboard's ticket
+  // list entirely (isPpBatchCompletionTicketRecord runs before
+  // isSubmissionTicketRecord in getTicketTypeLabel/getTicketKind, and a "PP"
+  // label with no real PP data gets filtered out as a duplicate).
+  if (ticketType.includes("submission")) {
+    return false;
+  }
+
   return (
     hasMissingScreens ||
     category.includes("missed_frequency") ||

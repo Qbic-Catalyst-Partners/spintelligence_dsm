@@ -374,9 +374,35 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     });
   };
 
+  // Maps payload field names (used for the missing-field message, via
+  // getMissingFieldLabel) to the UI state keys the JSX below actually reads
+  // via errors[field] for red-highlighting each input.
+  const topLevelFieldKeyMap = {
+    type: "type",
+    count_name: "countNameFrom",
+    actual_count: "actualCount",
+    auto_coner_no: "autoConerNo",
+    cone_tip: "coneTip",
+    no_of_cuts: "noOfCuts",
+    break_per_million_meter: "breakPerLakhMeter",
+  };
+
+  // Row-level fields are validated against readingRows directly (not the
+  // filtered/reindexed payload.readings) so the error key's row index always
+  // matches the index the table below renders with.
+  const rowFieldChecks = [
+    ["drumNo", "drum_no"],
+    ["noOfCones", "no_of_cones"],
+    ["shortName", "fault_name"],
+    ["shortCut", "no_of_faults"],
+    ["weight", "weight"],
+    ["breakPerMeter", "length_meters"],
+  ];
+
   const validate = () => {
     const payload = buildPayload();
     const nextErrors = {};
+    const missingFields = [];
 
     const requiredTopLevel = [
       "entry_id",
@@ -398,30 +424,27 @@ const RewindingStudy = forwardRef(function RewindingStudy(
         value === undefined ||
         value === "" ||
         (Array.isArray(value) && value.length === 0);
-      if (missing) nextErrors[field] = true;
+      if (missing) {
+        missingFields.push(field);
+        const uiKey = topLevelFieldKeyMap[field];
+        if (uiKey) nextErrors[uiKey] = true;
+      }
     });
 
-    (payload.readings || []).forEach((row, index) => {
-      const rowRequired = [
-        "drum_no",
-        "no_of_cones",
-        "fault_name",
-        "no_of_faults",
-        "percent_fault",
-        "weight",
-        "length_meters",
-      ];
-      rowRequired.forEach((field) => {
-        const value = row[field];
-        const missing = value === null || value === undefined || value === "";
-        if (missing) nextErrors[`readings[${index}].${field}`] = true;
+    readingRows.forEach((row, index) => {
+      if (isBlankReadingRow(row)) return;
+      rowFieldChecks.forEach(([uiField, payloadField]) => {
+        if (!String(row[uiField] ?? "").trim()) {
+          nextErrors[`row-${index}-${uiField}`] = true;
+          missingFields.push(`readings[${index}].${payloadField}`);
+        }
       });
     });
 
     setErrors(nextErrors);
     return {
-      valid: Object.keys(nextErrors).length === 0,
-      missingField: Object.keys(nextErrors)[0] || "",
+      valid: missingFields.length === 0,
+      missingField: missingFields[0] || "",
       payload,
     };
   };

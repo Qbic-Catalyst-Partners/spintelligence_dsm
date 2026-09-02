@@ -118,8 +118,11 @@ export default function UmChangePassword() {
   }, [actionSuccess, dispatch, router]);
 
   useEffect(() => {
-    if (error) alert(error);
-  }, [error]);
+    if (error) {
+      emitGlobalFailureModal({ message: error });
+      dispatch(clearActionState());
+    }
+  }, [error, dispatch]);
 
   if (!isHydrated || !canAccessPage) {
     return null;
@@ -164,7 +167,7 @@ export default function UmChangePassword() {
                   }
                   value={password}
                   onChange={(e) => {
-                    setPassword(e.target.value);
+                    setPassword(e.target.value.replace(/\s/g, ""));
                     if (fieldErrors.password) {
                       setFieldErrors((prev) => ({ ...prev, password: false }));
                     }
@@ -209,7 +212,7 @@ export default function UmChangePassword() {
                     confirmPassword
                   }
                   onChange={(e) => {
-                    setConfirmPassword(e.target.value);
+                    setConfirmPassword(e.target.value.replace(/\s/g, ""));
                     if (fieldErrors.confirmPassword) {
                       setFieldErrors((prev) => ({ ...prev, confirmPassword: false }));
                     }

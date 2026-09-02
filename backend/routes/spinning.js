@@ -150,7 +150,7 @@ const withFieldAliases = (payload, aliasMap) => {
 };
 
 const normalizeRingFrameRow = (row = {}) => ({
-  mc_no: row.mc_no ?? row.mcNo ?? row.machine_no ?? row['Mc No'] ?? null,
+  mc_no: formatRingFrameMcNo(row.mc_no ?? row.mcNo ?? row.machine_no ?? row['Mc No']),
   lycra: row.lycra ?? row.Lycra ?? row.txtLycra ?? null,
   bobbin_color: row.bobbin_color ?? row.bobbinColor ?? row['Bobbin Color'] ?? null,
   spindle_1: row.spindle_1 ?? row.position_1 ?? row.d1 ?? row['1'] ?? null,
@@ -492,16 +492,79 @@ const formatRfMachineName = (value) => {
 
 const getRfMachineValue = (row = {}) => formatRfMachineName(row.rf_name || row.rf_no || '');
 
+// Ring Frame Log Book's Mc.No used to be free-typed 1-2 digit numbers, stored as-is in a native
+// integer column - "3", "4", etc, with no "R/F" prefix at all, even though these are the same
+// physical R/F machines Count Change's own RF No dropdown already names "R/F NO 03"/"R/F NO 04".
+// formatRfMachineName only reformats text that already contains "R"/"F" (from a real dropdown
+// pick); this also wraps a bare number the same way, so every stored value - whether picked from
+// the machine-master dropdown or typed into the fallback plain input when that list is empty -
+// ends up as the same "R/F NO XX" format. (ring_frame_rows.mc_no was an integer column and has
+// been migrated to varchar to allow this.)
+const formatRingFrameMcNo = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const rfFormatted = formatRfMachineName(text);
+  if (rfFormatted !== text) return rfFormatted;
+  const digitMatch = text.match(/^0*(\d{1,3})$/);
+  if (digitMatch) return `R/F NO ${String(Number(digitMatch[1])).padStart(2, '0')}`;
+  return rfFormatted;
+};
+
 const getSpinningLycraMachineNumbers = async (req, res, next) => {
   try {
-    if (!sqlServer.hasSqlServerEnv()) {
-      return res.status(503).json({ message: 'SQL Server is not configured on backend' });
-    }
-
     const prefix = String(req.query.prefix || req.query.machine_prefix || '').trim();
     const deptCode = String(req.query.dept_code || '').trim();
     const deptName = String(req.query.dept_name || req.query.department || 'Spinning').trim() || 'Spinning';
     const likeToken = `%${prefix}%`;
+
+    // Every screen wired to this (Lycra Missing/Centering, RSM Online/Offline, Ring Frame Log
+    // Book's Mc.No) used to hard-503 whenever SQL Server wasn't configured, with no fallback -
+    // unlike getSpinningMachines just above, which already has a working Postgres path. Mirror
+    // that same fallback here, scoped by the real deptname column (not a name-substring hack),
+    // so these machine dropdowns work in a Postgres-only environment too.
+    if (!sqlServer.hasSqlServerEnv()) {
+      const fallback = await client.query(
+        `SELECT mccode, mcname, deptcode, deptname
+         FROM ticketing_system.mc_master
+         WHERE ($1::text = '' OR mccode::text ILIKE $2 OR mcname ILIKE $2)
+           AND ($3::text = '' OR deptcode::text = $3)
+           AND ($4::text = '' OR deptname ILIKE $5)
+         ORDER BY deptname, CASE WHEN mccode::text ~ '^\\d+$' THEN mccode::int ELSE 2147483647 END, mcname`,
+        [prefix, likeToken, deptCode, deptName, `%${deptName}%`]
+      );
+
+      const data = fallback.rows.map((r) => ({
+        mc_no: String(r.mccode || '').trim(),
+        mc_name: String(r.mcname || '').trim(),
+        machine_no: String(r.mccode || '').trim(),
+        machine_number: String(r.mccode || '').trim(),
+        label: String(r.mcname || r.mccode || '').trim(),
+        text: String(r.mcname || r.mccode || '').trim(),
+        value: String(r.mccode || r.mcname || '').trim()
+      })).filter((row) => row.value);
+
+      const options = [
+        { text: '-- Select MC No --', label: '-- Select MC No --', value: '' },
+        ...data.map((row) => ({
+          text: row.text,
+          label: row.label,
+          value: row.value,
+          mc_no: row.mc_no,
+          mc_name: row.mc_name
+        }))
+      ];
+
+      return res.status(200).json({
+        source: 'postgres-fallback',
+        data,
+        machine_numbers: data.map((row) => row.value),
+        machine_nos: data.map((row) => row.value),
+        mc_nos: data.map((row) => row.value),
+        names: data.map((row) => row.label),
+        values: data.map((row) => row.value),
+        options
+      });
+    }
 
     const result = await sqlServer.query(
       `SELECT
@@ -2440,6 +2503,11 @@ router.post('/ring-frame', async (req, res) => {
     if (rows && rows.length > 0) {
       for (const row of rows) {
         const normalizedRow = normalizeRingFrameRow(row);
+        // The frontend now only ever sends rows the user actually picked a machine for (the Ring
+        // Frame Log Book form moved from 24 always-required rows to add/delete rows with a
+        // machine dropdown), but guard here too so a blank/malformed row from any other caller
+        // can't insert a nameless entry no report could ever attribute to a machine.
+        if (!normalizedRow.mc_no) continue;
         await client.query(`
           INSERT INTO spinning.ring_frame_rows
           (inspection_id, mc_no, lycra, bobbin_color,

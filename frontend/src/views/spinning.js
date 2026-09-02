@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { AiOutlineAudio } from "react-icons/ai";
+import { FiPlus, FiTrash2 } from "react-icons/fi";
 import Image from "next/image";
 
 import Footer from "../components/Footer";
@@ -64,7 +65,6 @@ const SPINNING_CHECKING_OPTIONS = [
 export const SPINNING_INPUT_SCREEN_COUNT = SPINNING_CHECKING_OPTIONS.length;
 const DECIMAL_10_2_CONFIG = { precision: 10, scale: 2 };
 const DECIMAL_5_2_CONFIG = { precision: 5, scale: 2 };
-const RING_FRAME_RF_TOTAL = 24;
 const COTS_SIDE_MAX = 650;
 const RING_FRAME_TOTAL_FIELDS = [
     "position_1",
@@ -230,21 +230,26 @@ const normalizeMachineOptions = (payload) => {
         });
 };
 
-const createRingFrameRows = () =>
-    Array.from({ length: RING_FRAME_RF_TOTAL }, (_, index) => ({
-        machine_no: String(index + 1),
-        lycra: "",
-        bobbin_color: "",
-        position_1: "",
-        position_2: "",
-        position_3: "",
-        position_4: "",
-        position_5: "",
-        position_6: "",
-        guide_roll_lapping: "",
-        lycra_missing: "",
-        others: "",
-    }));
+let ringFrameRowIdCounter = 0;
+// Used to require picking/filling all 24 machines up front - a single row is enough to start,
+// with +/delete buttons (same pattern as Card DFK Data/SMX Breaks Study) so only the machines
+// actually checked get filled in, sent, and stored.
+const createRingFrameRow = () => ({
+    id: `ring-frame-row-${Date.now()}-${ringFrameRowIdCounter++}`,
+    machine_no: "",
+    lycra: "",
+    bobbin_color: "",
+    position_1: "",
+    position_2: "",
+    position_3: "",
+    position_4: "",
+    position_5: "",
+    position_6: "",
+    guide_roll_lapping: "",
+    lycra_missing: "",
+    others: "",
+});
+const createRingFrameRows = () => [createRingFrameRow()];
 
 const InspectionEntryIcon = () => (
     <svg
@@ -369,6 +374,7 @@ function SpinningDepartment() {
     );
     const [ringFrameCheckerOptions, setRingFrameCheckerOptions] = useState([]);
     const [ringFrameShiftOptions, setRingFrameShiftOptions] = useState(SHIFT_OPTIONS);
+    const [ringFrameMachineOptions, setRingFrameMachineOptions] = useState([]);
     const [checkerName, setCheckerName] = useState("");
     const successHandledRef = useRef(false);
 
@@ -416,6 +422,13 @@ function SpinningDepartment() {
     const countChangeCountNameToSelectOptions = countChangeCountNameToOptions;
     const ringFrameCheckerSelectOptions = ringFrameCheckerOptions;
     const ringFrameShiftSelectOptions = ringFrameShiftOptions;
+    const ringFrameMachineSelectOptions = ringFrameMachineOptions;
+    // Same reasoning as Card DFK Data's dropdown exclusion - a machine already picked in one
+    // row shouldn't be offered again in another row's dropdown.
+    const usedRingFrameMachines = useMemo(
+        () => new Set(ringFrameRows.map((row) => row.machine_no).filter(Boolean)),
+        [ringFrameRows]
+    );
     const machineFieldLabel = isCotsChecking ? "Machine No." : "Machine";
     const machineFieldPlaceholder = isCotsChecking ? "Select Machine No." : "Select Machine";
     // The Machine field stores the raw option value (a numeric ERP machine code) — resolve it
@@ -591,7 +604,15 @@ function SpinningDepartment() {
         Promise.allSettled([
             fetchEmployeeOptions({ module: "spinning" }),
             fetchSpinningRingFrameShifts(),
-        ]).then(([checkerResult, shiftResult]) => {
+            // Mc.No used to be a free-typed 1-2 digit number with no link to the actual machine
+            // master. Ring Frame's own machines are the same physical "R/F" machines Count
+            // Change's RF No dropdown already sources and formats as "R/F NO 03" (via
+            // getCountChangeRfNos/formatRfMachineName on the backend) - reuse that same
+            // RF-scoped fetcher here instead of the generic Spinning machine list, so Mc.No
+            // shows/saves the same "R/F NO XX" values, not just any Spinning machine name.
+            // department is passed explicitly since getCountChangeRfNos doesn't default it.
+            fetchSpinningCountChangeRfNos({ department: "Spinning" }),
+        ]).then(([checkerResult, shiftResult, machineResult]) => {
             if (!isMounted) return;
 
             if (checkerResult.status === "fulfilled") {
@@ -602,6 +623,12 @@ function SpinningDepartment() {
             }
 
             setRingFrameShiftOptions(SHIFT_OPTIONS);
+
+            if (machineResult.status === "fulfilled") {
+                setRingFrameMachineOptions(normalizeMachineOptions(machineResult.value).filter((option) => option.value));
+            } else {
+                setRingFrameMachineOptions([]);
+            }
         });
 
         return () => {
@@ -1009,7 +1036,9 @@ function SpinningDepartment() {
                 entry_date: date || getTodayDate(),
                 checker_name: checkerName.trim(),
                 shift,
-                rows: ringFrameRows.map((row) => ({
+                // Only rows with a machine picked are real entries - only those get sent/stored,
+                // same reasoning as Card DFK Data/SMX Breaks Study Report.
+                rows: ringFrameRows.filter((row) => hasTextValue(row.machine_no)).map((row) => ({
                     mc_no: String(row.machine_no ?? "").trim(),
                     lycra: String(row.lycra ?? "").trim(),
                     bobbin_color: String(row.bobbin_color ?? "").trim(),
@@ -1209,6 +1238,19 @@ function SpinningDepartment() {
     };
     const handleRingFrameMachineNoChange = (rowIndex) => (event) => {
         handleRingFrameChange(rowIndex, "machine_no", sanitizeIntegerInput(event.target.value).slice(0, 2));
+    };
+    // Mc.No is now a dropdown sourced from the machine master (see the Ring Frame effect above) -
+    // the value already IS a valid machine number/name from that list, so it needs no sanitizing
+    // the way the old free-typed input did.
+    const handleRingFrameMachineSelect = (rowIndex) => (event) => {
+        handleRingFrameChange(rowIndex, "machine_no", event.target.value);
+    };
+    const addRingFrameRow = () => {
+        if (ringFrameMachineSelectOptions.length && ringFrameRows.length >= ringFrameMachineSelectOptions.length) return;
+        setRingFrameRows((current) => [...current, createRingFrameRow()]);
+    };
+    const removeRingFrameRow = (rowIndex) => {
+        setRingFrameRows((current) => (current.length > 1 ? current.filter((_, index) => index !== rowIndex) : current));
     };
 
     const getRingFrameRowTotal = (row) => {
@@ -1581,20 +1623,38 @@ function SpinningDepartment() {
                         <th>Lycra Missing</th>
                         <th>Others</th>
                         <th>Total</th>
+                        <th aria-hidden="true" />
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {ringFrameRows.map((row, rowIndex) => (
-                                                <tr key={rowIndex}>
+                                                <tr key={row.id}>
                                                     <td className={styles.ringFrameMachineCell}>
-                                                        <input
-                                                            type="text"
-                                                            inputMode="numeric"
-                                                            maxLength={2}
-                                                            value={String(row.machine_no ?? "")}
-                                                            onChange={handleRingFrameMachineNoChange(rowIndex)}
-                                                            className={`${styles.ringFrameInput} ${styles.ringFrameMachineInput} ${errors.ringFrameRows?.[rowIndex]?.machine_no ? styles["input-error"] : ""}`}
-                                                        />
+                                                        {ringFrameMachineSelectOptions.length ? (
+                                                            <select
+                                                                value={String(row.machine_no ?? "")}
+                                                                onChange={handleRingFrameMachineSelect(rowIndex)}
+                                                                className={`${styles.ringFrameInput} ${styles.ringFrameMachineInput} ${errors.ringFrameRows?.[rowIndex]?.machine_no ? styles["input-error"] : ""}`}
+                                                            >
+                                                                <option value="">Select</option>
+                                                                {ringFrameMachineSelectOptions
+                                                                    .filter((option) => option.value === row.machine_no || !usedRingFrameMachines.has(option.value))
+                                                                    .map((option) => (
+                                                                        <option key={option.value} value={option.value}>
+                                                                            {option.label || option.value}
+                                                                        </option>
+                                                                    ))}
+                                                            </select>
+                                                        ) : (
+                                                            <input
+                                                                type="text"
+                                                                inputMode="numeric"
+                                                                maxLength={2}
+                                                                value={String(row.machine_no ?? "")}
+                                                                onChange={handleRingFrameMachineNoChange(rowIndex)}
+                                                                className={`${styles.ringFrameInput} ${styles.ringFrameMachineInput} ${errors.ringFrameRows?.[rowIndex]?.machine_no ? styles["input-error"] : ""}`}
+                                                            />
+                                                        )}
                                                     </td>
                                                     <td><input type="text" placeholder="Enter" value={String(row.lycra ?? "")} onChange={handleRingFrameTextChange(rowIndex, "lycra")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[rowIndex]?.lycra ? styles["input-error"] : ""}`} /></td>
                                                     <td>
@@ -1621,6 +1681,34 @@ function SpinningDepartment() {
                                                     <td><input type="text" placeholder="Enter" value={String(row.lycra_missing ?? "")} onChange={handleRingFrameTextChange(rowIndex, "lycra_missing")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[rowIndex]?.lycra_missing ? styles["input-error"] : ""}`} /></td>
                                                     <td><input type="text" placeholder="Enter" value={String(row.others ?? "")} onChange={handleRingFrameTextChange(rowIndex, "others")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[rowIndex]?.others ? styles["input-error"] : ""}`} /></td>
                                                     <td><input type="text" value={String(getRingFrameRowTotal(row))} readOnly className={styles.ringFrameInputWide} /></td>
+                                                    <td>
+                                                        <div className="flex shrink-0 items-center gap-2">
+                                                            {rowIndex === ringFrameRows.length - 1 ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={addRingFrameRow}
+                                                                    disabled={Boolean(ringFrameMachineSelectOptions.length) && ringFrameRows.length >= ringFrameMachineSelectOptions.length}
+                                                                    aria-label="Add row"
+                                                                    title="Add row"
+                                                                    className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#4f63b6] text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                                                >
+                                                                    <FiPlus />
+                                                                </button>
+                                                            ) : (
+                                                                <span className="inline-block h-7 w-7" aria-hidden="true" />
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeRingFrameRow(rowIndex)}
+                                                                disabled={ringFrameRows.length <= 1}
+                                                                aria-label="Delete row"
+                                                                title="Delete row"
+                                                                className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] border border-[#ffcecf] bg-[#fff4f4] text-[#f04f56] disabled:cursor-not-allowed disabled:opacity-50"
+                                                            >
+                                                                <FiTrash2 />
+                                                            </button>
+                                                        </div>
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>

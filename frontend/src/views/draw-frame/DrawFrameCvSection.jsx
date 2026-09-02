@@ -12,6 +12,7 @@ function DrawFrameCvSection({
   handleMetricChange,
   setOneYardMetrics,
   setHalfYardMetrics,
+  errors = {},
 }) {
   return (
     <>
@@ -21,7 +22,7 @@ function DrawFrameCvSection({
           type="date"
           value={form.date}
           onChange={(e) => handleFormChange("date", e.target.value)}
-          className={styles.input}
+          className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`}
         />
       </div>
 
@@ -30,7 +31,7 @@ function DrawFrameCvSection({
         <select
           value={form.machineNumber}
           onChange={(e) => handleFormChange("machineNumber", e.target.value)}
-          className={styles.select}
+          className={`${styles.select} ${errors.header?.machineNumber ? styles.inputError : ""}`}
         >
           <option value="">Select Machine Number</option>
           {cvMachineOptions.map((machine) => (
@@ -59,7 +60,7 @@ function DrawFrameCvSection({
             min="1"
             value={form.readingCount}
             onChange={(e) => handleFormChange("readingCount", e.target.value)}
-            className={styles.input}
+            className={`${styles.input} ${errors.header?.readingCount ? styles.inputError : ""}`}
           />
         </div>
         <button
@@ -80,6 +81,10 @@ function DrawFrameCvSection({
           Calculate CV%
         </button>
       </div>
+
+      {errors.header?.calculation ? (
+        <p className={styles.messageError}>Please calculate CV% before saving.</p>
+      ) : null}
 
       <div className={styles.resultsWrap}>
         {(oneYardMetrics.length ? oneYardMetrics : [emptyMetric()]).map((_, index) => (

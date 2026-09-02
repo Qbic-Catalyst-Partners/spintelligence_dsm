@@ -210,6 +210,25 @@
   pointer-events: none;
 }
 
+.bwc-date-input {
+  cursor: pointer;
+  caret-color: transparent;
+}
+
+.bwc-date-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  position: absolute;
+  right: 0;
+  width: 34px;
+  height: 100%;
+  cursor: pointer;
+}
+
+.bwc-date-icon {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
 .bwc-inline-control {
   display: flex;
   gap: 8px;

@@ -128,6 +128,11 @@ export default function EditRole() {
     }, [currentRole, id]);
 
     const handleUpdateRole = async () => {
+        if (!roleName.trim()) {
+            alert("Role name is required");
+            return;
+        }
+
         try {
             const screenIds = [...new Set(selectedScreens)]
                 .filter((screenId) => !isUnregisteredScreenId(screenId))
@@ -145,7 +150,7 @@ export default function EditRole() {
             ];
 
             const payload = {
-                name: roleName,
+                name: roleName.trim(),
                 description,
                 status: true,
                 screen_ids: screenIds,

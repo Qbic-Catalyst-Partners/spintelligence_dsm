@@ -543,9 +543,15 @@ function SpliceStrength({
                 const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
                 setCountName(selected?.label ?? value);
                 setCountCode(selected?.code ?? "");
+                setErrors((current) => {
+                  if (!current.countName) return current;
+                  const next = { ...current };
+                  delete next.countName;
+                  return next;
+                });
               }}
               options={countDropdownOptions.map((option) => option.label)}
-              className={styles.select}
+              className={`${styles.select} ${errors.countName ? styles.errorInput : ""}`}
               placeholder="Select count name"
             />
           </div>
@@ -554,9 +560,17 @@ function SpliceStrength({
             <label>Auto Coner No.</label>
             <SearchableSelect
               value={autoconerNo}
-              onChange={(value) => setAutoconerNo(value)}
+              onChange={(value) => {
+                setAutoconerNo(value);
+                setErrors((current) => {
+                  if (!current.autoconerNo) return current;
+                  const next = { ...current };
+                  delete next.autoconerNo;
+                  return next;
+                });
+              }}
               options={autoconerDropdownOptions.map((option) => option.value)}
-              className={styles.select}
+              className={`${styles.select} ${errors.autoconerNo ? styles.errorInput : ""}`}
             />
           </div>
 

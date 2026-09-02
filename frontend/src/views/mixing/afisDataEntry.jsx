@@ -165,7 +165,6 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
 
     const getPreviewData = () => ([
         { label: "Date", value: date },
-        { label: "Lot No", value: lotNo },
         { label: "Variety", value: formData.variety },
         { label: "Invoice No", value: formData.invoiceNo },
         { label: "Invoice Date", value: formData.invoiceDate },
@@ -185,7 +184,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
 
     const validate = () => {
         const required = [
-            "variety","invoiceNo","invoiceDate","uql","l5","sfcN","ifc","fibreNepsGms","sfcW","maturity","fineness","scnGms"
+            "variety","invoiceNo","invoiceDate","uql","l5","sfcN","ifc","fibreNepsGms","sfcW","maturity","fineness","scnGms","lw","ln","totalNepCount"
         ];
         const nextErrors = required.reduce((acc, key) => {
             if (String(formData[key] || "").trim() === "") acc[key] = true;

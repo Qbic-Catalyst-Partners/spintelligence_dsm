@@ -42,7 +42,7 @@ export default function CreateRole() {
     ];
 
     const newRole = {
-      name: roleName,
+      name: roleName.trim(),
       description,
       status: true,
       screen_ids: screenIds,

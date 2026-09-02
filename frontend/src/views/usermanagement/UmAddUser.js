@@ -104,7 +104,10 @@ export default function UmAddUser() {
 
   useEffect(() => {
     if (error) {
-      alert(error);
+      if (/employee id/i.test(error)) {
+        setFieldErrors((prev) => ({ ...prev, employee_id: true }));
+      }
+      emitGlobalFailureModal({ message: error });
     }
   }, [error]);
 
@@ -133,7 +136,7 @@ export default function UmAddUser() {
   };
 
   const handlePasswordChange = (e) => {
-    setPassword(e.target.value);
+    setPassword(e.target.value.replace(/\s/g, ""));
     if (fieldErrors.password) {
       setFieldErrors((prev) => {
         const next = { ...prev };

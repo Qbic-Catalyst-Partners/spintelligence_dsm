@@ -435,7 +435,11 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
             })}
           </select>
         ) : type === "radio" ? (
-          <div className="flex gap-4">
+          <div
+            className={`flex gap-4 rounded-[10px] px-2 py-1 transition${
+              errors[field] ? " border border-red-500 bg-[#fff1f2]" : " border border-transparent"
+            }`}
+          >
             {options.map((option) => (
               <label key={option} className="flex items-center gap-2">
                 <input
