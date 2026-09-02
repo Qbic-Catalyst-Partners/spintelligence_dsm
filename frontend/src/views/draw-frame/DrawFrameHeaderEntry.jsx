@@ -29,6 +29,7 @@ import {
   fetchDrawFrameHeaderEntries,
 } from "@/apis/draw-frame";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -91,7 +92,6 @@ const TYPE_CONFIG = {
     buildPayload: (form, entryId) => ({
       entry_id: entryId || undefined,
       type: form.type,
-      entry_scope: "breaker",
       count_name: form.countName,
       consignee_name: form.consigneeName,
       creation_date: form.creationDate,
@@ -172,7 +172,6 @@ const TYPE_CONFIG = {
     buildPayload: (form, entryId) => ({
       entry_id: entryId || undefined,
       type: form.type,
-      entry_scope: "finisher",
       count_name: form.countName,
       consignee_name: form.consigneeName,
       creation_date: form.creationDate,
@@ -628,7 +627,6 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
       const payload = {
         ...activeConfig.buildPayload(form, entryId),
         entry_id: paramId,
-        param_id: paramId,
         // drawframe_qc_header now has its own "operator" column (see backend) — persist it
         // directly rather than relying solely on the submitted-notebook recording below, which
         // has proven fragile for this screen (some entries never got recorded).
@@ -675,6 +673,19 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
           "Draw frame submitted notebook record failed:",
           recordError?.response?.data || recordError?.message || recordError
         );
+      }
+
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Draw Frame",
+          screenName: activeType,
+          machineName: activeType,
+          entryId: paramId,
+          values: previewItems,
+        });
+      } catch (ticketError) {
+        console.error("Threshold ticket generation failed:", ticketError);
       }
 
       onSubmitSuccess?.(savedEntry);

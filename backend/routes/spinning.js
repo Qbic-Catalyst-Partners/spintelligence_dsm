@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
+const { generateTicketId } = require('../utils/ticketId');
 const sqlServer = require('../config/sqlserver');
 const { dedupeVarieties } = require('../utils/variety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
@@ -10,7 +11,6 @@ const {
   refreshProcessParameterStatus
 } = require('./processParameters');
 const SCREEN_ID_PREFIXES = {
-  speed_checking: 'SSC',
   cots_checking: 'SCT',
   lycra_missing: 'SLM',
   bottom_apron_checking: 'SBA',
@@ -172,15 +172,9 @@ const ensureRingFrameLogBookTables = async () => {
   }
 
   await client.query(`
-    ALTER TABLE spinning.ring_frame_rows
-      ADD COLUMN IF NOT EXISTS bobbin_checked BOOLEAN;
-  `);
-
-  await client.query(`
     ALTER TABLE spinning.ring_frame_summary
       ADD COLUMN IF NOT EXISTS out_of_center_ac INTEGER,
       ADD COLUMN IF NOT EXISTS out_of_center_rf INTEGER,
-      ADD COLUMN IF NOT EXISTS lycra_missing_ac INTEGER,
       ADD COLUMN IF NOT EXISTS lycra_missing_rf INTEGER,
       ADD COLUMN IF NOT EXISTS fault_cops_ac NUMERIC,
       ADD COLUMN IF NOT EXISTS fault_cops_rf NUMERIC,
@@ -193,7 +187,6 @@ const normalizeRingFrameRow = (row = {}) => ({
   mc_no: row.mc_no ?? row.mcNo ?? row.machine_no ?? row['Mc No'] ?? null,
   lycra: row.lycra ?? row.Lycra ?? row.txtLycra ?? null,
   bobbin_color: row.bobbin_color ?? row.bobbinColor ?? row['Bobbin Color'] ?? null,
-  bobbin_checked: toBooleanOrNull(row.bobbin_checked ?? row.bobbin ?? row.chkBobbin ?? row.bobbinColorChecked),
   spindle_1: row.spindle_1 ?? row.position_1 ?? row.d1 ?? row['1'] ?? null,
   spindle_2: row.spindle_2 ?? row.position_2 ?? row.d2 ?? row['2'] ?? null,
   spindle_3: row.spindle_3 ?? row.position_3 ?? row.d3 ?? row['3'] ?? null,
@@ -211,7 +204,6 @@ const normalizeRingFrameSummary = (summary = {}) => ({
   out_of_center_ac: toIntegerOrNull(summary.out_of_center_ac ?? summary.txtocac),
   out_of_center_rf: toIntegerOrNull(summary.out_of_center_rf ?? summary.txtocrf ?? summary.out_of_center),
   lycra_missing: summary.lycra_missing ?? summary.lycra_missing_rf ?? summary.txtlmrf ?? null,
-  lycra_missing_ac: toIntegerOrNull(summary.lycra_missing_ac ?? summary.txtlmac),
   lycra_missing_rf: toIntegerOrNull(summary.lycra_missing_rf ?? summary.txtlmrf ?? summary.lycra_missing),
   fault_cops: summary.fault_cops ?? summary.txtftc ?? null,
   fault_cops_ac: summary.fault_cops_ac ?? null,
@@ -219,6 +211,8 @@ const normalizeRingFrameSummary = (summary = {}) => ({
   total_cops: summary.total_cops ?? summary.txttcop ?? null,
   total_cops_ac: summary.total_cops_ac ?? null,
   total_cops_rf: summary.total_cops_rf ?? null,
+  guide_roll_total: summary.guide_roll_total ?? summary.guideRollTotal ?? null,
+  others_total: summary.others_total ?? summary.othersTotal ?? null,
   comments: summary.comments ?? summary.comment ?? summary.txtdesc ?? null
 });
 
@@ -1608,32 +1602,36 @@ router.get('/rsm-lycra-offline/master/mc-nos', getSpinningLycraMachineNumbers);
  *           schema:
  *             type: object
  *             required:
+ *               - entry_id
  *               - inspectiondate
  *               - machineno
- *               - employeename
- *               - display_speed
- *               - spindle_speed
- *               - lhs_value
- *               - rhs_value
  *             properties:
+ *               entry_id:
+ *                 type: string
  *               inspectiondate:
  *                 type: string
  *                 format: date
  *               machineno:
  *                 type: integer
- *               employeename:
+ *               machine_name:
  *                 type: string
  *               display_speed:
  *                 type: number
  *               spindle_speed:
  *                 type: number
- *               lhs_value:
- *                 type: number
- *               rhs_value:
- *                 type: number
+ *               lhs_values:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: LHS spindle number list
+ *               rhs_values:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: RHS spindle number list
  *               difference:
  *                 type: number
- *                 description: Auto calculated (lhs_value - rhs_value)
+ *                 description: Auto calculated on the frontend from Display/Spindle Speed
  *               lhs_textremarks:
  *                 type: string
  *               lhs_audio:
@@ -2848,12 +2846,13 @@ router.post('/ring-frame', async (req, res) => {
     await client.query('BEGIN');
 
     // ✅ 1. Insert Header
+    const operatorName = getAuthenticatedOperatorName(req);
     const inspectionResult = await client.query(`
       INSERT INTO spinning.ring_frame_inspections
-      (entry_id, inspection_type, entry_date, shift, checker_name)
-      VALUES ($1,$2,$3,$4,$5)
+      (entry_id, inspection_type, entry_date, shift, checker_name, operator)
+      VALUES ($1,$2,$3,$4,$5,$6)
       RETURNING id
-    `, [entry_id, inspection_type, entry_date, shift, checker_name]);
+    `, [entry_id, inspection_type, entry_date, shift, checker_name, operatorName]);
 
     const inspection_id = inspectionResult.rows[0].id;
 
@@ -2863,16 +2862,15 @@ router.post('/ring-frame', async (req, res) => {
         const normalizedRow = normalizeRingFrameRow(row);
         await client.query(`
           INSERT INTO spinning.ring_frame_rows
-          (inspection_id, mc_no, lycra, bobbin_color, bobbin_checked,
+          (inspection_id, mc_no, lycra, bobbin_color,
            spindle_1, spindle_2, spindle_3, spindle_4, spindle_5, spindle_6,
            lycra_missing, guide_roll_lapping, others, total)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         `, [
           inspection_id,
           normalizedRow.mc_no,
           normalizedRow.lycra,
           normalizedRow.bobbin_color,
-          normalizedRow.bobbin_checked,
           normalizedRow.spindle_1,
           normalizedRow.spindle_2,
           normalizedRow.spindle_3,
@@ -2893,17 +2891,17 @@ router.post('/ring-frame', async (req, res) => {
       await client.query(`
         INSERT INTO spinning.ring_frame_summary
         (inspection_id, out_of_center, out_of_center_ac, out_of_center_rf,
-         lycra_missing, lycra_missing_ac, lycra_missing_rf,
+         lycra_missing, lycra_missing_rf,
          fault_cops, fault_cops_ac, fault_cops_rf,
-         total_cops, total_cops_ac, total_cops_rf, comments)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         total_cops, total_cops_ac, total_cops_rf,
+         guide_roll_total, others_total, comments)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
       `, [
         inspection_id,
         normalizedSummary.out_of_center,
         normalizedSummary.out_of_center_ac,
         normalizedSummary.out_of_center_rf,
         normalizedSummary.lycra_missing,
-        normalizedSummary.lycra_missing_ac,
         normalizedSummary.lycra_missing_rf,
         normalizedSummary.fault_cops,
         normalizedSummary.fault_cops_ac,
@@ -2911,6 +2909,8 @@ router.post('/ring-frame', async (req, res) => {
         normalizedSummary.total_cops,
         normalizedSummary.total_cops_ac,
         normalizedSummary.total_cops_rf,
+        normalizedSummary.guide_roll_total,
+        normalizedSummary.others_total,
         normalizedSummary.comments
       ]);
     }
@@ -3129,7 +3129,6 @@ router.get('/ring-frame', async (req, res) => {
               'mc_no', r.mc_no,
               'lycra', r.lycra,
               'bobbin_color', r.bobbin_color,
-              'bobbin_checked', r.bobbin_checked,
               'spindle_1', r.spindle_1,
               'spindle_2', r.spindle_2,
               'spindle_3', r.spindle_3,
@@ -3150,7 +3149,6 @@ router.get('/ring-frame', async (req, res) => {
           'out_of_center_ac', s.out_of_center_ac,
           'out_of_center_rf', s.out_of_center_rf,
           'lycra_missing', s.lycra_missing,
-          'lycra_missing_ac', s.lycra_missing_ac,
           'lycra_missing_rf', s.lycra_missing_rf,
           'fault_cops', s.fault_cops,
           'fault_cops_ac', s.fault_cops_ac,
@@ -3158,6 +3156,8 @@ router.get('/ring-frame', async (req, res) => {
           'total_cops', s.total_cops,
           'total_cops_ac', s.total_cops_ac,
           'total_cops_rf', s.total_cops_rf,
+          'guide_roll_total', s.guide_roll_total,
+          'others_total', s.others_total,
           'comments', s.comments
         ) AS summary
 
@@ -3288,12 +3288,14 @@ router.post('/count-change', async (req, res) => {
     // ✅ Start transaction
     await client.query('BEGIN');
 
+    const operatorName = getAuthenticatedOperatorName(req);
+
     // ✅ Insert header
     const inspectionResult = await client.query(`
       INSERT INTO spinning.count_change_inspections
       (entry_id, type, entry_date, rf_no, lycra_draft, count_name_from, count_name_to, no_of_readings,
-       avg_reading, avg_count, avg_strength, overall_csp)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       avg_reading, avg_count, avg_strength, overall_csp, operator)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING id
     `, [
       entry_id,
@@ -3307,7 +3309,8 @@ router.post('/count-change', async (req, res) => {
       toNumberOrNull(avg_reading),
       toNumberOrNull(avg_count),
       toNumberOrNull(avg_strength),
-      toNumberOrNull(overall_csp)
+      toNumberOrNull(overall_csp),
+      operatorName
     ]);
 
     const inspection_id = inspectionResult.rows[0].id;
@@ -3317,8 +3320,8 @@ router.post('/count-change', async (req, res) => {
       const resolvedCsp = toNumberOrNull(row.csp) ?? calculateCsp(row.count, row.strength);
       await client.query(`
         INSERT INTO spinning.count_change_readings
-        (inspection_id, reading_no, reading_value, count, cv_percent, strength, strength_cv_percent, mean, cv_percent_2, csp)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        (inspection_id, reading_no, reading_value, count, cv_percent, strength, mean, cv_percent_2, csp)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       `, [
         inspection_id,
         row.reading_no,
@@ -3326,7 +3329,6 @@ router.post('/count-change', async (req, res) => {
         row.count,
         row.cv_percent,
         row.strength,
-        row.strength_cv_percent,
         row.mean,
         row.cv_percent_2,
         resolvedCsp
@@ -3389,7 +3391,6 @@ router.get('/count-change', async (req, res) => {
             'count', r.count,
             'cv_percent', r.cv_percent,
             'strength', r.strength,
-            'strength_cv_percent', r.strength_cv_percent,
             'mean', r.mean,
             'cv_percent_2', r.cv_percent_2,
             'csp', r.csp
@@ -3521,7 +3522,10 @@ router.post('/qc', async (req, res, next) => {
       slub_min,
       slub_max,
       thickness_min,
-      thickness_max
+      thickness_max,
+      ramp,
+      offset,
+      user_name
     } = req.body;
 
     if (!entry_id) {
@@ -3556,12 +3560,15 @@ router.post('/qc', async (req, res, next) => {
         slub_max,
         thickness_min,
         thickness_max,
-        created_by_user_id
+        ramp,
+        offset,
+        created_by_user_id,
+        operator
       )
       VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
         $11,$12,$13,$14,$15,$16,$17,$18,
-        $19,$20,$21,$22,$23,$24,$25,$26,$27
+        $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30
       )
       RETURNING *`,
       [
@@ -3591,7 +3598,10 @@ router.post('/qc', async (req, res, next) => {
         slub_max,
         thickness_min,
         thickness_max,
-        req.user?.id ?? null
+        ramp,
+        offset,
+        req.user?.id ?? null,
+        user_name || null
       ]
     );
 
@@ -3787,7 +3797,10 @@ router.put('/qc/:qc_id', async (req, res, next) => {
       slub_min,
       slub_max,
       thickness_min,
-      thickness_max
+      thickness_max,
+      ramp,
+      offset,
+      user_name
     } = req.body;
 
     const result = await client.query(
@@ -3817,11 +3830,14 @@ router.put('/qc/:qc_id', async (req, res, next) => {
            slub_max = $23,
            thickness_min = $24,
            thickness_max = $25,
+           ramp = $26,
+           offset = $27,
+           operator = COALESCE($28, operator),
            approval_status = 'pending',
            reviewed_by = NULL,
            reviewed_at = NULL,
            review_remarks = NULL
-       WHERE qc_id = $26
+       WHERE qc_id = $29
        RETURNING *`,
       [
         count_name,
@@ -3849,6 +3865,9 @@ router.put('/qc/:qc_id', async (req, res, next) => {
         slub_max,
         thickness_min,
         thickness_max,
+        ramp,
+        offset,
+        user_name || null,
         qc_id
       ]
     );
@@ -5047,7 +5066,7 @@ const ensureWheelChangeApprovalTicketSchema = async () => {
 // wheelChangeRowKey uniquely identifies the WC row this ticket is for
 // (table name + row id), since ticket_id-style composite ids
 // ("type1:123") aren't stable identifiers to search violation_details by.
-const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
+const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId, entryId) => {
   await ensureWheelChangeApprovalTicketSchema();
   const wheelChangeRowKey = `${tableName}:${wheelChangeRowId}`;
 
@@ -5081,22 +5100,24 @@ const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
     ticket_type: 'WHEEL_CHANGE_APPROVAL',
     wheel_change_row_key: wheelChangeRowKey,
     department,
+    entry_id: entryId || null,
     message: `A Wheel Change proposal is awaiting L4 approval.`
   };
 
+  const ticketId = await generateTicketId(client);
   const ticket = await client.query(
     `INSERT INTO ticketing_system.operator_tickets
      (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
       severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
       violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
      VALUES (
-       'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-       $1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
-       $5, 'Open', NOW(), 'MISSING_VALUE', 'WHEEL_CHANGE_APPROVAL', 'wheel_change_approval',
-       $2::jsonb, $3::int[], 'L4', $4
+       $1,
+       $2, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+       $6, 'Open', NOW(), 'MISSING_VALUE', 'WHEEL_CHANGE_APPROVAL', 'wheel_change_approval',
+       $3::jsonb, $4::int[], 'L4', $5
      )
      RETURNING ticket_id`,
-    [wheelChangeRowKey, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity]
+    [ticketId, wheelChangeRowKey, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity]
   );
   const insertedTicketId = ticket.rows[0]?.ticket_id || null;
 
@@ -5148,7 +5169,7 @@ const runWheelChangeApprovalOverdueCheck = async () => {
 
     // eslint-disable-next-line no-await-in-loop
     const pending = await client.query(
-      `SELECT id, created_at FROM ${tableName}
+      `SELECT id, created_at, entry_id FROM ${tableName}
        WHERE approval_status = 'pending'
          AND created_at <= NOW() - ($1 || ' hours')::interval`,
       [tatHours]
@@ -5156,34 +5177,135 @@ const runWheelChangeApprovalOverdueCheck = async () => {
 
     for (const row of pending.rows) {
       // eslint-disable-next-line no-await-in-loop
-      const ticketId = await createWheelChangeApprovalTicket(tableName, row.id);
+      const ticketId = await createWheelChangeApprovalTicket(tableName, row.id, row.entry_id);
       if (ticketId) created.push(ticketId);
     }
   }
   return created;
 };
 
-const closeWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
+const closeWheelChangeApprovalTicket = async (tableName, wheelChangeRowId, options = {}) => {
   await ensureWheelChangeApprovalTicketSchema();
   const wheelChangeRowKey = `${tableName}:${wheelChangeRowId}`;
-  await client.query(
+  const closed = await client.query(
     `UPDATE ticketing_system.operator_tickets
      SET status = 'Closed'
-     WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL' AND (violation_details->>'wheel_change_row_key') = $1 AND status <> 'Closed'`,
+     WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL' AND (violation_details->>'wheel_change_row_key') = $1 AND status <> 'Closed'
+     RETURNING ticket_id`,
     [wheelChangeRowKey]
   );
+
+  // The ticket list's Actual Res Time/Resolution Gap are read from a matching
+  // ticket_logs row (see supervisorTickets.routes.js's resolution_log join) -
+  // without logging the closing action here, a closed Wheel Change Approval
+  // ticket always showed "--:--" even though it really was resolved.
+  const action = options.decision === 'rejected' ? 'REJECTED' : 'APPROVED';
+  for (const row of closed.rows) {
+    // eslint-disable-next-line no-await-in-loop
+    await client.query(
+      `INSERT INTO ticketing_system.ticket_logs
+       (ticket_id, action, performed_by, role, created_at)
+       VALUES ($1, $2, $3, $4, NOW())`,
+      [row.ticket_id, action, options.performedBy || 'Supervisor', options.role || 'L4']
+    );
+  }
 };
 
 // Wheel Change Approval is owned by L4 fully and directly - there's no
 // configured L5 approver anywhere in Wheel Change Approval Threshold (only
-// L4/TAT), so a missed L4 TAT used to escalate to "any current L5 user"
-// system-wide - the exact blind-notify-everyone pattern removed from every
-// other threshold type this session. A ticket past its TAT just stays at L4
-// and shows Overdue (computed client-side from l4_tat_due_at) - L5 already
-// has full oversight visibility via its Mapped-only view without needing a
-// fake reassignment. Kept as a no-op (rather than removed) so the worker
-// registration in server.js doesn't need touching.
-const runWheelChangeApprovalTatCheck = async () => [];
+// L4/TAT), so this does not reassign to a different tier the way other
+// threshold types escalate (that would mean blindly notifying "any current
+// L5 user" system-wide, which every other threshold type deliberately
+// avoids too). Instead, once a WHEEL_CHANGE_APPROVAL ticket's L4 TAT has
+// elapsed with the ticket still open, a second reminder ticket is raised
+// against the same L4 approver(s) - same wheel_change_row_key, so
+// closeWheelChangeApprovalTicket (called on the real approve/reject) closes
+// both together once the underlying row is actually actioned.
+const runWheelChangeApprovalTatCheck = async () => {
+  await ensureWheelChangeApprovalTicketSchema();
+
+  const overdueTickets = await client.query(
+    `SELECT * FROM ticketing_system.operator_tickets
+     WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL'
+       AND tat_current_level = 'L4'
+       AND status <> 'Closed'
+       AND l4_tat_due_at IS NOT NULL
+       AND l4_tat_due_at <= NOW()`
+  );
+
+  const created = [];
+  for (const ticket of overdueTickets.rows) {
+    const wheelChangeRowKey = ticket.violation_details?.wheel_change_row_key;
+    if (!wheelChangeRowKey) continue; // eslint-disable-line no-continue
+
+    // eslint-disable-next-line no-await-in-loop
+    const existingReminder = await client.query(
+      `SELECT ticket_id FROM ticketing_system.operator_tickets
+       WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL'
+         AND (violation_details->>'wheel_change_row_key') = $1
+         AND (violation_details->>'escalation_of') = $2
+         AND status <> 'Closed'
+       LIMIT 1`,
+      [wheelChangeRowKey, ticket.ticket_id]
+    );
+    if (existingReminder.rows[0]?.ticket_id) continue; // eslint-disable-line no-continue
+
+    const l4UserIds = Array.isArray(ticket.approval_l4_user_ids) ? ticket.approval_l4_user_ids : [];
+    const department = ticket.violation_details?.department || null;
+    const violationDetails = {
+      category: 'MISSED_FREQUENCY',
+      ticket_type: 'WHEEL_CHANGE_APPROVAL',
+      wheel_change_row_key: wheelChangeRowKey,
+      escalation_of: ticket.ticket_id,
+      department,
+      entry_id: ticket.violation_details?.entry_id || null,
+      message: `A Wheel Change proposal was not approved by L4 within the configured time and is now overdue.`
+    };
+
+    // eslint-disable-next-line no-await-in-loop
+    const reminder = await client.query(
+      `INSERT INTO ticketing_system.operator_tickets
+       (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+        severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
+        violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
+       VALUES (
+         'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+         $1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+         'High', 'Open', NOW(), 'MISSING_VALUE', 'WHEEL_CHANGE_APPROVAL', 'wheel_change_approval',
+         $2::jsonb, $3::int[], 'L4', NULL
+       )
+       RETURNING ticket_id`,
+      [ticket.machine_name, JSON.stringify(violationDetails), l4UserIds]
+    );
+    const reminderTicketId = reminder.rows[0]?.ticket_id;
+    if (reminderTicketId) created.push(reminderTicketId);
+
+    // eslint-disable-next-line no-await-in-loop
+    await client.query(
+      `INSERT INTO ticketing_system.ticket_logs
+       (ticket_id, action, performed_by, role, created_at)
+       VALUES ($1, 'OVERDUE_REMINDER_RAISED', 'System', 'System', NOW())`,
+      [ticket.ticket_id]
+    );
+
+    if (reminderTicketId && l4UserIds.length) {
+      // eslint-disable-next-line no-await-in-loop
+      await createNotificationsForUsers(l4UserIds, {
+        ticketId: reminderTicketId,
+        type: 'WHEEL_CHANGE_APPROVAL',
+        category: 'Tickets',
+        priority: 'High',
+        title: (user) => `Hi ${user.full_name || 'there'} (L4), a Wheel Change approval is overdue`,
+        body: (user) =>
+          `${user.full_name || 'You'} (L4) - a Wheel Change proposal was not approved in time (ticket ${ticket.ticket_id}) and is now overdue.`,
+        linkUrl: `/supervisor-tickets/${reminderTicketId}`,
+        payload: { ticket_id: reminderTicketId, wheel_change_row_key: wheelChangeRowKey }
+      });
+    }
+  }
+
+  return created;
+};
 
 // Called right after a Wheel Change is approved (type1-4) - consumes the
 // Active PP for its Count + Consignee (flips it to Inactive) and stamps
@@ -5225,7 +5347,11 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
     // saved/pending. Until then the PP stays Active so it's clear the slot
     // hasn't actually been used yet.
     const savedRow = await consumeAndStampWheelChangeRow(resolved.tableName, result.rows[0]);
-    await closeWheelChangeApprovalTicket(resolved.tableName, resolved.id);
+    await closeWheelChangeApprovalTicket(resolved.tableName, resolved.id, {
+      decision: 'approved',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
 
     res.status(200).json({
       message: 'Spinning wheel change entry approved',
@@ -5260,7 +5386,11 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
     // Nothing to revert on the PP side any more - the PP only goes Inactive
     // on approval now, so a rejected (still-pending) entry never touched it.
     const rejectedRow = result.rows[0];
-    await closeWheelChangeApprovalTicket(resolved.tableName, resolved.id);
+    await closeWheelChangeApprovalTicket(resolved.tableName, resolved.id, {
+      decision: 'rejected',
+      performedBy: reviewedBy || req.user?.full_name || req.user?.employee_id,
+      role: req.user?.role,
+    });
 
     res.status(200).json({
       message: 'Spinning wheel change entry rejected',

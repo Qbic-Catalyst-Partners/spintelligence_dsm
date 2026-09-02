@@ -631,6 +631,10 @@ const ensureLapCvTables = async () => {
         ADD COLUMN IF NOT EXISTS samples jsonb;
     `);
     await client.query(`
+      ALTER TABLE blowroom.${tableName}
+        ADD COLUMN IF NOT EXISTS operator TEXT;
+    `);
+    await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS ${tableName}_entry_id_uq
       ON blowroom.${tableName} (entry_id)
       WHERE entry_id IS NOT NULL;
@@ -1264,18 +1268,17 @@ router.post('/br-waste-study', async (req, res, next) => {
     await client.query('BEGIN');
     const result = await client.query(
       `INSERT INTO blowroom.br_waste_study (
-        entry_id, waste_study_id, date, variety, entry_type, study_type,
+        entry_id, date, variety, entry_type, study_type,
         carding_production_kg, type_entries, waste_type_entries,
         waste_type, waste_kg, waste_percent, overall_percent, operator,
         remarks
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
       )
       RETURNING *`,
       [
         entry_id || waste_study_id || null,
-        waste_study_id || entry_id || null,
         resolvedDate,
         variety || null,
         type || null,
@@ -1962,9 +1965,9 @@ const createLapCvRoutes = (tableName, routePath, screenLabel) => {
           entry_id, record_date, machine_name, variety, type,
           lap_weight, lap_length, grams_per_meter,
           samples,
-          average, minimum, maximum, std_deviation, cv_percent
+          average, minimum, maximum, std_deviation, cv_percent, operator
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
         RETURNING *`,
         [
           entry_id,
@@ -1980,7 +1983,8 @@ const createLapCvRoutes = (tableName, routePath, screenLabel) => {
           toNumberOrNull(minimum),
           toNumberOrNull(maximum),
           toNumberOrNull(std_deviation),
-          toNumberOrNull(cv_percent)
+          toNumberOrNull(cv_percent),
+          String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null
         ]
       );
 

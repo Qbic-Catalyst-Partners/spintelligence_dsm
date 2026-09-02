@@ -1,4 +1,5 @@
 const client = require('../connection');
+const { generateTicketId } = require('../utils/ticketId');
 
 const normalize = (v) => String(v || '').toLowerCase().replace(/\s+/g, '_');
 
@@ -121,16 +122,18 @@ async function tryAutoGenerateTicket({
       : `${notebook} entry ${entryId || ''} is missing: ${missing.join(', ')}.`,
   };
 
+  const ticketId = await generateTicketId(client);
   const insert = await client.query(
     `INSERT INTO ticketing_system.operator_tickets
      (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value,
       severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type,
       ticket_kind, violation_details, approval_l1_user_ids)
-     VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-       $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7, 'Open', NOW(), $8, $9, $10, 'VALUE_THRESHOLD',
-       'value_threshold', $11::jsonb, $12::int[])
+     VALUES ($1,
+       $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, 'Open', NOW(), $9, $10, $11, 'VALUE_THRESHOLD',
+       'value_threshold', $12::jsonb, $13::int[])
      RETURNING ticket_id, severity, status`,
     [
+      ticketId,
       userId || null,
       userName || 'System',
       machineName || notebook,

@@ -5,6 +5,9 @@ const sqlServer = require('../config/sqlserver');
 const { dedupeVarieties } = require('../utils/variety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 
+const getAuthenticatedOperatorName = (req) =>
+  String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null;
+
 const mapMachineRows = (rows = []) =>
   rows
     .map((r) => ({
@@ -259,7 +262,7 @@ router.post('/', async (req, res) => {
                 spl_no,
                 roving_percent,
                 smx_cvim,
-                created_at
+                operator
             )
             VALUES(
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
@@ -349,7 +352,7 @@ router.post('/', async (req, res) => {
                 data.spl_no,
                 toNumberOrNull(data.roving_percent),
                 toNumberOrNull(data.smx_cvim),
-                data.date || null
+                getAuthenticatedOperatorName(req)
             ]
         );
 

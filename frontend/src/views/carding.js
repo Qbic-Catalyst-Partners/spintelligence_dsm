@@ -23,6 +23,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { clearCardingState } from "@/store/slices/carding";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
 
@@ -93,6 +94,7 @@ function Carding() {
   const [validationMessage, setValidationMessage] = useState("");
   const [bwcInspectionType, setBwcInspectionType] = useState("Within");    const [lotNo, setLotNo] = useState("");
   const [cardWasteVariety, setCardWasteVariety] = useState("");
+  const [cardWasteStudyType, setCardWasteStudyType] = useState("Type 1");
   const { varietyOptions: cardWasteVarietyOptions, varietyOptionsError: cardWasteVarietyOptionsError, loadingVarietyOptions: loadingCardWasteVarietyOptions } = useBlowroomMasterVarieties();
     useEffect(() => {
         if (!typeOptions.some((item) => item.id === checkingType)) {
@@ -205,16 +207,42 @@ function Carding() {
             const ok = await childRef.current?.submit?.();
             if (ok) {
                 storeCreatedProcessParameterId(ok);
+                // Acknowledgement Threshold's screen catalog splits "Individual Card
+                // Waste Study" into per-study-type entries ("...Type 1"/"Type 2"/
+                // "Type 3"), not the single generic type name in the dropdown here —
+                // send the catalog-matching name (from BrWasteStudyEntry's own
+                // onStudyTypeChange) so a threshold configured for the exact screen
+                // actually fires.
+                const notebookNameForSubmission = isCardWasteStudy
+                    ? `${selectedType} ${cardWasteStudyType}`
+                    : selectedType;
                 await recordSubmittedNotebook({
                     department: "Quality Control",
                     subDepartment: "Carding",
-                    notebookName: selectedType,
+                    notebookName: notebookNameForSubmission,
                     entryId,
                     lotNo,
                     childRef,
                     previewItems,
                     user,
                 });
+                // "Carding NRE%" already raises its own threshold ticket inside
+                // cardingNreDataEntry.jsx's submit() - calling this generically
+                // here too would file a second, duplicate ticket for the same breach.
+                if (normalizeTypeName(selectedType) !== normalizeTypeName("Carding NRE%")) {
+                    try {
+                        await createThresholdViolationTickets({
+                            department: "Quality Control",
+                            subDepartment: "Carding",
+                            screenName: selectedType,
+                            machineName: selectedType,
+                            entryId,
+                            values: previewItems,
+                        });
+                    } catch (ticketError) {
+                        console.error("Threshold ticket generation failed:", ticketError);
+                    }
+                }
                 await reserveEntryId();
                 setShowSuccess(true);
             }
@@ -334,6 +362,7 @@ function Carding() {
                                 showEntryId={false}
                                 variety={cardWasteVariety}
                                 onVarietyChange={setCardWasteVariety}
+                                onStudyTypeChange={setCardWasteStudyType}
                                 hideVarietyField
                             />
                             <Footer

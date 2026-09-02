@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useSelector } from "react-redux";
 import { createPortal } from "react-dom";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
@@ -496,6 +497,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   },
   ref
 ) {
+  const user = useSelector((state) => state.auth?.user);
   const formSectionRef = useRef(null);
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(createDefaultForm);
@@ -718,8 +720,11 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     slub_max: parseNumberValue(form.slubMax),
     thickness_min: parseNumberValue(form.thicknessMin),
     thickness_max: parseNumberValue(form.thicknessMax),
+    ramp: form.ramp,
+    offset: form.offset,
     lycra_draft: parseNumberValue(form.lycraDraft),
     lycra_percent: parseNumberValue(form.lycraPercent),
+    user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
   });
 
   const submit = async () => {

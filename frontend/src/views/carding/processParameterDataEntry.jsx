@@ -599,7 +599,6 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
     draft_speed: parseNumberValue(form.draftSpeed),
     tension_draft: parseNumberValue(form.tensionDraft),
     delivery_hank: parseNumberValue(form.deliveryHank),
-    setting: "",
     feed_roll_to_lickerin: parseNumberValue(form.feedRollToLickerin),
     lickerin_to_cylinder: parseNumberValue(form.lickerinToCylinder),
     cylinder_to_flats: parseNumberValue(form.cylinderToFlats),

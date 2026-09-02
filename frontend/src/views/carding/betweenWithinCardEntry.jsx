@@ -11,6 +11,7 @@ import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { fetchCardingMasterMachines } from "@/apis/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 
 const MAX_ENTRY_COUNT = 100;
 const defaultMachineOptions = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
@@ -385,16 +386,34 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
 
             // Awaited BEFORE setShowSuccess(true) below — see natiDataEntry.jsx for why.
             try {
+                // Acknowledgement Threshold's screen catalog tracks "Within" and
+                // "Between" as two separate notebook entries ("Between & Within Data
+                // Entry - Within" / "- Between"), not the single generic type name
+                // shown in the Type dropdown here — send the catalog-matching name
+                // so a threshold configured for either exact screen actually fires.
                 await recordSubmittedNotebook({
                     department: "Quality Control",
                     subDepartment: "Carding",
-                    notebookName: selectedType,
+                    notebookName: `Between & Within Data Entry - ${inspectionType}`,
                     entryId: nextEntryId || entryId,
                     previewItems,
                     user,
                 });
             } catch (recordError) {
                 console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+            }
+
+            try {
+                await createThresholdViolationTickets({
+                    department: "Quality Control",
+                    subDepartment: "Carding",
+                    screenName: `Between & Within Data Entry - ${inspectionType}`,
+                    machineName: mcName || `Between & Within Data Entry - ${inspectionType}`,
+                    entryId: nextEntryId || entryId,
+                    values: previewItems,
+                });
+            } catch (ticketError) {
+                console.error("Threshold ticket generation failed:", ticketError);
             }
             setShowSuccess(true);
 
@@ -432,6 +451,14 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
             { label: `Row ${index + 1} Sample Weight`, value: row.sampleWeight },
             { label: `Row ${index + 1} Hank`, value: normalizeHankValue(row.hank) },
         ])),
+        ...statFields.map((field) => ({
+            label: `Sample Weight Calculations - ${field.label === "Avg" ? "Avg" : field.label}`,
+            value: sampleWeightStats[field.key],
+        })),
+        ...statFields.map((field) => ({
+            label: `Hank Calculations - ${field.label === "Avg" ? "Avg" : field.label}`,
+            value: hankStats[field.key],
+        })),
         ...customFieldDefs.map((field) => ({
             label: field.field_label,
             value: customFieldValues[field.id],

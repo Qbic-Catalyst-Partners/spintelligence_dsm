@@ -15,6 +15,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { clearComberState, submitComberUqc } from "@/store/slices/comber";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
 
@@ -185,6 +186,25 @@ function Comber() {
                     previewItems,
                     user,
                 });
+                // "Ribbon Lap CV1M Data Entry" and "Nati Data Entry" already raise their
+                // own threshold tickets inside their own submit() (Nati's per-row values
+                // need unprefixed labels to actually match a configured threshold field -
+                // see natiDataEntry.jsx) - calling this generically here too would file a
+                // second, duplicate ticket for the same breach.
+                if (selectedType !== "Ribbon Lap CV1M Data Entry" && selectedType !== "Nati Data Entry") {
+                    try {
+                        await createThresholdViolationTickets({
+                            department: "Quality Control",
+                            subDepartment: "Comber",
+                            screenName: selectedType,
+                            machineName: selectedType,
+                            entryId,
+                            values: previewItems,
+                        });
+                    } catch (ticketError) {
+                        console.error("Threshold ticket generation failed:", ticketError);
+                    }
+                }
                 await reserveEntryId();
             }
         } catch (e) {

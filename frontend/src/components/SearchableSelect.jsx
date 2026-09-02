@@ -52,6 +52,12 @@ function SearchableSelect({
     [normalizedOptions, value]
   );
   const displayValue = isOpen ? searchTerm : selectedOption?.label || value;
+  // The synthetic empty/"All" option (includeEmptyOption) has value "" and
+  // matches selectedOption whenever nothing real is selected - pre-filling
+  // the search box with its label ("All") on open filtered every real option
+  // out (none of them contain the word "all"), leaving the list empty. Only
+  // an actual, non-empty selection should pre-fill the search box.
+  const openSearchTerm = selectedOption && selectedOption.value !== "" ? selectedOption.label : "";
 
   const filteredOptions = useMemo(() => {
     const keyword = String(searchTerm || "").trim().toLowerCase();
@@ -123,13 +129,13 @@ function SearchableSelect({
           setIsOpen(true);
         }}
         onFocus={() => {
-          setSearchTerm(selectedOption?.label || value);
+          setSearchTerm(openSearchTerm);
           setIsOpen(true);
           onFocus?.();
         }}
         onClick={() => {
           if (disabled) return;
-          setSearchTerm(selectedOption?.label || value);
+          setSearchTerm(openSearchTerm);
           setIsOpen(true);
         }}
         placeholder={placeholder}

@@ -49,6 +49,16 @@ const ensureDelegationsTable = async () => {
       created_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  // Revoke is a soft-cancel, not a row delete - ticket-visibility joins across
+  // operatorTickets/supervisorTickets already read straight from this table by
+  // date range, so keeping the row (with revoked_at set) preserves an audit
+  // trail of who was delegated what and when it was pulled back, instead of
+  // silently losing that history.
+  await client.query(`
+    ALTER TABLE users.delegations
+      ADD COLUMN IF NOT EXISTS revoked_at timestamptz NULL,
+      ADD COLUMN IF NOT EXISTS revoked_by integer REFERENCES users.user_details(id)
+  `);
 };
 
 router.use(auth);
@@ -122,6 +132,8 @@ router.get('/', async (req, res, next) => {
            d.to_date,
            d.no_of_days,
            d.created_at,
+           d.revoked_at,
+           d.revoked_by,
            o.full_name AS owner_name,
            o.employee_id AS owner_employee_id,
            t.full_name AS delegate_name,
@@ -141,6 +153,92 @@ router.get('/', async (req, res, next) => {
       page,
       limit,
       total: countResult.rows[0]?.count || 0,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Edit an existing, still-active delegation's date range.
+ */
+router.patch('/:id', async (req, res, next) => {
+  try {
+    if (!isAdminUser(req)) {
+      return res.status(403).json({ message: 'Only admin can edit delegations' });
+    }
+
+    await ensureDelegationsTable();
+
+    const id = parsePositiveInt(req.params?.id);
+    if (!id) {
+      return res.status(400).json({ message: 'Invalid delegation id' });
+    }
+
+    const fromDate = parseDateOnly(req.body?.from_date);
+    const toDate = parseDateOnly(req.body?.to_date);
+    if (!fromDate || !toDate) {
+      return res.status(400).json({ message: 'Valid from date and to date are required' });
+    }
+    if (new Date(toDate) < new Date(fromDate)) {
+      return res.status(400).json({ message: 'To date cannot be before from date' });
+    }
+
+    const noOfDays = Math.round((new Date(toDate) - new Date(fromDate)) / (1000 * 60 * 60 * 24)) + 1;
+
+    const result = await client.query(
+      `UPDATE users.delegations
+       SET from_date = $1, to_date = $2, no_of_days = $3
+       WHERE id = $4 AND revoked_at IS NULL
+       RETURNING *`,
+      [fromDate, toDate, noOfDays, id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ message: 'Delegation not found or already revoked' });
+    }
+
+    return res.status(200).json({
+      message: 'Delegation updated successfully',
+      delegation: result.rows[0],
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Revoke a delegation (soft-cancel - the row stays for audit history, but
+ * ticket-visibility joins exclude it via revoked_at IS NULL).
+ */
+router.delete('/:id', async (req, res, next) => {
+  try {
+    if (!isAdminUser(req)) {
+      return res.status(403).json({ message: 'Only admin can revoke delegations' });
+    }
+
+    await ensureDelegationsTable();
+
+    const id = parsePositiveInt(req.params?.id);
+    if (!id) {
+      return res.status(400).json({ message: 'Invalid delegation id' });
+    }
+
+    const result = await client.query(
+      `UPDATE users.delegations
+       SET revoked_at = now(), revoked_by = $1
+       WHERE id = $2 AND revoked_at IS NULL
+       RETURNING *`,
+      [req.user.id || null, id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ message: 'Delegation not found or already revoked' });
+    }
+
+    return res.status(200).json({
+      message: 'Delegation revoked successfully',
+      delegation: result.rows[0],
     });
   } catch (error) {
     next(error);

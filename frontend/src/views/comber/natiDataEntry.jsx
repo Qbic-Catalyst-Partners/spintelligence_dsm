@@ -7,6 +7,7 @@ import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { clearComberState, submitComberNatiDataEntry } from "@/store/slices/comber";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import styles from "./natiDataEntry.module.css";
 
 const emptyComberState = {
@@ -180,6 +181,36 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
             setErrors({});
 
             const linkedEntryId = payload.entry_id;
+
+            // comber.js's own generic post-submit ticket call matches this
+            // notebook's getPreviewData(), whose per-row labels are prefixed
+            // ("Row 1 - Ratio size-1.0") for display clarity - none of those
+            // ever match a Value Threshold rule's field name, which is
+            // configured against the unprefixed catalog names ("Ratio into
+            // size-1.0" etc, see fieldCatalog.js's "Comber::Nati Data Entry"
+            // entry). Raising it here instead, with unprefixed labels per row,
+            // is the same pattern ribbonLapCVDataEntry.jsx already uses -
+            // "Nati Data Entry" must stay in comber.js's own-ticketing
+            // exclusion list to avoid a duplicate.
+            try {
+                await createThresholdViolationTickets({
+                    department: "Quality Control",
+                    subDepartment: "Comber",
+                    screenName: selectedType || "Nati Data Entry",
+                    machineName: selectedType || "Nati Data Entry",
+                    entryId: linkedEntryId,
+                    values: entries
+                        .filter((entry) => entry.mc_no !== "")
+                        .flatMap((entry) => [
+                            { label: "Ratio into size-1.0", value: entry.ratio_size_1 },
+                            { label: "Ratio into size-0.7", value: entry.ratio_size_07 },
+                            { label: "Ratio into size-0.5", value: entry.ratio_size_05 },
+                        ]),
+                });
+            } catch (ticketError) {
+                console.error("Threshold ticket generation failed:", ticketError);
+            }
+
             const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
             if (linkedEntryId && customFieldEntries.length) {
                 try {
