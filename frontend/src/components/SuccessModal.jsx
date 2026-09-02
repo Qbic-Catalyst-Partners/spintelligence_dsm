@@ -7,8 +7,12 @@ function SuccessModal({
   scope = "page",
   closeLabel = "Close",
   hideButton = false,
+  icon = "\u2713",
+  variant,
 }) {
   if (!open) return null;
+
+  const variantClass = variant === "warning" ? ` ${styles.modalWarning}` : "";
 
   return (
     <div
@@ -16,9 +20,9 @@ function SuccessModal({
       data-success-modal="true"
       data-global-success-modal={scope === "global" ? "true" : undefined}
     >
-      <div className={hideButton ? `${styles.modal} ${styles.modalCompact}` : styles.modal}>
+      <div className={hideButton ? `${styles.modal} ${styles.modalCompact}${variantClass}` : styles.modal}>
         <div className={styles.icon} aria-hidden="true">
-          {"\u2713"}
+          {icon}
         </div>
         <div className={styles.message}>{message}</div>
 

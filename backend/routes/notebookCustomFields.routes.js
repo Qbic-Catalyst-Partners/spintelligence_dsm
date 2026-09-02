@@ -173,15 +173,6 @@ const DEFAULT_LITERAL_BY_FIELD_TYPE = {
   special: 'NULL',
 };
 
-const ensureNotebookCustomFieldsDbColumnSupport = async () => {
-  await client.query(`
-    ALTER TABLE ticketing_system.notebook_custom_fields
-      ADD COLUMN IF NOT EXISTS db_column_name TEXT NULL,
-      ADD COLUMN IF NOT EXISTS db_table_name TEXT NULL,
-      ADD COLUMN IF NOT EXISTS decimal_places INTEGER NULL
-  `);
-};
-
 const MAX_DECIMAL_PLACES = 6;
 
 const parseDecimalPlaces = (value) => {
@@ -279,55 +270,8 @@ const parseOptions = (value) => {
   return [];
 };
 
-const ensureNotebookCustomFieldsTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.notebook_custom_fields (
-      id BIGSERIAL PRIMARY KEY,
-      department TEXT NOT NULL,
-      sub_department TEXT NOT NULL,
-      notebook TEXT NOT NULL,
-      field_label TEXT NOT NULL,
-      field_type TEXT NOT NULL DEFAULT 'text',
-      field_options JSONB NOT NULL DEFAULT '[]',
-      is_active BOOLEAN NOT NULL DEFAULT true,
-      created_by_user_id INTEGER NULL,
-      created_by_name TEXT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS notebook_custom_fields_lookup_idx
-    ON ticketing_system.notebook_custom_fields
-    (lower(trim(department)), lower(trim(sub_department)), lower(trim(notebook)))
-  `);
-};
-
-const ensureNotebookCustomFieldValuesTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.notebook_custom_field_values (
-      id BIGSERIAL PRIMARY KEY,
-      custom_field_id BIGINT NOT NULL REFERENCES ticketing_system.notebook_custom_fields(id) ON DELETE CASCADE,
-      entry_id TEXT NOT NULL,
-      value TEXT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (custom_field_id, entry_id)
-    )
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS notebook_custom_field_values_entry_idx
-    ON ticketing_system.notebook_custom_field_values (entry_id)
-  `);
-};
-
 router.post('/', async (req, res) => {
   try {
-    await ensureNotebookCustomFieldsTable();
-    await ensureNotebookCustomFieldsDbColumnSupport();
-
     const department = cleanText(req.body?.department);
     const subDepartment = cleanText(req.body?.sub_department ?? req.body?.subDepartment);
     const notebook = cleanText(req.body?.notebook);
@@ -374,9 +318,6 @@ router.post('/', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    await ensureNotebookCustomFieldsTable();
-    await ensureNotebookCustomFieldsDbColumnSupport();
-
     const { department, sub_department: subDepartment, notebook, status } = req.query;
     const page = parsePositiveInt(req.query?.page, 1);
     const limit = Math.min(parsePositiveInt(req.query?.limit, 50), MAX_LIMIT);
@@ -434,9 +375,6 @@ router.get('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    await ensureNotebookCustomFieldsTable();
-    await ensureNotebookCustomFieldsDbColumnSupport();
-
     const { id } = req.params;
     const fieldLabel = cleanText(req.body?.field_label ?? req.body?.fieldLabel);
     let fieldType = parseFieldType(req.body?.field_type ?? req.body?.fieldType);
@@ -492,9 +430,6 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    await ensureNotebookCustomFieldsTable();
-    await ensureNotebookCustomFieldsDbColumnSupport();
-
     const { id } = req.params;
 
     const existing = await client.query(
@@ -531,10 +466,6 @@ router.delete('/:id', async (req, res) => {
 
 router.patch('/:id/toggle', async (req, res) => {
   try {
-    await ensureNotebookCustomFieldsTable();
-    await ensureNotebookCustomFieldValuesTable();
-    await ensureNotebookCustomFieldsDbColumnSupport();
-
     const { id } = req.params;
     const result = await client.query(
       `UPDATE ticketing_system.notebook_custom_fields
@@ -576,10 +507,6 @@ router.patch('/:id/toggle', async (req, res) => {
 
 router.get('/values', async (req, res) => {
   try {
-    await ensureNotebookCustomFieldsTable();
-    await ensureNotebookCustomFieldValuesTable();
-    await ensureNotebookCustomFieldsDbColumnSupport();
-
     const entryId = cleanText(req.query?.entry_id ?? req.query?.entryId);
     if (!entryId) {
       return res.status(400).json({ error: 'entry_id is required' });
@@ -642,10 +569,6 @@ router.get('/values', async (req, res) => {
 
 router.post('/values', async (req, res) => {
   try {
-    await ensureNotebookCustomFieldsTable();
-    await ensureNotebookCustomFieldValuesTable();
-    await ensureNotebookCustomFieldsDbColumnSupport();
-
     const entryId = cleanText(req.body?.entry_id ?? req.body?.entryId);
     const values = req.body?.values;
 

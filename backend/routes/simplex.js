@@ -37,41 +37,6 @@ const getAuthenticatedOperatorName = (req) =>
     ''
   ).trim() || null;
 const isUniqueViolation = (err) => err && err.code === '23505';
-// These Simplex tables store created_at/updated_at as `timestamp WITHOUT time zone` with a bare
-// CURRENT_TIMESTAMP default — on this DB, that silently writes a different offset than what gets
-// displayed back, shifting "Created At" by several hours (sometimes onto the wrong calendar day)
-// in Custom Report. Same root cause and same fix as Comber's/Draw Frame's equivalent tables:
-// convert to timestamptz so new rows store an unambiguous absolute instant.
-let simplexTimestampColumnsReady = false;
-const ensureSimplexTimestampColumnsHaveTimezone = async () => {
-  if (simplexTimestampColumnsReady) return;
-  const columnsByTable = {
-    simplex_inspections: ['created_at'],
-    smx_breaks_study_header: ['created_at', 'updated_at'],
-    u_data_entry: ['created_at'],
-    simplex_process_parameter: ['created_at', 'updated_at']
-  };
-  for (const [table, columns] of Object.entries(columnsByTable)) {
-    for (const column of columns) {
-      await client.query(`
-        DO $$
-        BEGIN
-          IF EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'simplex' AND table_name = '${table}' AND column_name = '${column}'
-              AND data_type = 'timestamp without time zone'
-          ) THEN
-            ALTER TABLE simplex.${table}
-              ALTER COLUMN ${column} TYPE timestamptz USING ${column} AT TIME ZONE 'UTC';
-            ALTER TABLE simplex.${table}
-              ALTER COLUMN ${column} SET DEFAULT now();
-          END IF;
-        END $$;
-      `);
-    }
-  }
-  simplexTimestampColumnsReady = true;
-};
 const ALLOWED_SHIFT_TYPES = new Set(['General', 'Day', 'Half Night', 'Full Night']);
 const toWholeNumberOrNull = (value) => {
   if (value === undefined || value === null || value === '') return null;
@@ -149,161 +114,6 @@ const nextWrappingSimplexSubmissionId = async () => {
   return `SWR-${String(result.rows[0].n).padStart(4, '0')}`;
 };
 
-const ensureSimplexNotebookTable = async () => {
-  await client.query(`CREATE SCHEMA IF NOT EXISTS simplex`);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS simplex.simplex_notebook (
-      id BIGSERIAL PRIMARY KEY,
-      entry_id TEXT,
-      notebook_type TEXT,
-      entry_date DATE,
-      sap_no TEXT,
-      proposed_sap_no TEXT,
-      parameter_rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      notes JSONB NOT NULL DEFAULT '{}'::jsonb,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    ALTER TABLE simplex.simplex_notebook
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS notebook_type TEXT,
-      ADD COLUMN IF NOT EXISTS entry_date DATE,
-      ADD COLUMN IF NOT EXISTS sap_no TEXT,
-      ADD COLUMN IF NOT EXISTS proposed_sap_no TEXT,
-      ADD COLUMN IF NOT EXISTS parameter_rows JSONB NOT NULL DEFAULT '[]'::jsonb,
-      ADD COLUMN IF NOT EXISTS notes JSONB NOT NULL DEFAULT '{}'::jsonb,
-      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-  `);
-
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS simplex_simplex_notebook_entry_id_uq
-    ON simplex.simplex_notebook (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS simplex_simplex_notebook_entry_date_idx
-    ON simplex.simplex_notebook (entry_date DESC, id DESC);
-  `);
-};
-
-// Safety net matching the real production schema for the SMX Breaks Study Report's 5 tables —
-// in case this ever runs against a fresh DB that hasn't had them created yet. No-ops via
-// IF NOT EXISTS wherever the tables (as on the current DB) already exist.
-let smxBreaksStudyTablesReady = false;
-const ensureSmxBreaksStudyTables = async () => {
-  if (smxBreaksStudyTablesReady) return;
-  await client.query(`CREATE SCHEMA IF NOT EXISTS simplex`);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS simplex.smx_breaks_study_header (
-      id SERIAL PRIMARY KEY,
-      entry_id TEXT,
-      s_no VARCHAR NOT NULL,
-      entry_date DATE NOT NULL,
-      machine_name VARCHAR NOT NULL,
-      operator_name VARCHAR,
-      shift CHAR(1),
-      remarks TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS simplex.smx_breaks_inspection_items (
-      id SERIAL PRIMARY KEY,
-      study_id INTEGER NOT NULL REFERENCES simplex.smx_breaks_study_header(id) ON DELETE CASCADE,
-      item_name VARCHAR,
-      status_value VARCHAR,
-      remarks TEXT,
-      length_range TEXT,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS simplex.smx_user_fiber_parameters (
-      id SERIAL PRIMARY KEY,
-      study_id INTEGER NOT NULL REFERENCES simplex.smx_breaks_study_header(id) ON DELETE CASCADE,
-      A1 VARCHAR, A2 VARCHAR, A3 VARCHAR, A4 VARCHAR,
-      B1 VARCHAR, B2 VARCHAR, B3 VARCHAR, B4 VARCHAR,
-      C1 VARCHAR, C2 VARCHAR, C3 VARCHAR, C4 VARCHAR,
-      D1 VARCHAR, D2 VARCHAR, D3 VARCHAR, D4 VARCHAR,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS simplex.smx_epi_parameters (
-      id SERIAL PRIMARY KEY,
-      study_id INTEGER NOT NULL REFERENCES simplex.smx_breaks_study_header(id) ON DELETE CASCADE,
-      yarn_a1 NUMERIC, yarn_a2 NUMERIC, yarn_a3 NUMERIC, yarn_a4 NUMERIC,
-      yarn_b1 NUMERIC, yarn_b2 NUMERIC, yarn_b3 NUMERIC, yarn_b4 NUMERIC,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS simplex.smx_other_field_values (
-      id SERIAL PRIMARY KEY,
-      study_id INTEGER NOT NULL REFERENCES simplex.smx_breaks_study_header(id) ON DELETE CASCADE,
-      time TIME,
-      break_count INTEGER,
-      remarks TEXT,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  smxBreaksStudyTablesReady = true;
-};
-
-const ensureSimplexEntryIdColumns = async () => {
-  await ensureSimplexTimestampColumnsHaveTimezone();
-  await ensureSmxBreaksStudyTables();
-  await client.query(`
-    ALTER TABLE IF EXISTS simplex.simplex_inspections
-      ADD COLUMN IF NOT EXISTS entry_id text;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS simplex_inspections_entry_id_uq
-    ON simplex.simplex_inspections (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-  await client.query(`
-    ALTER TABLE IF EXISTS simplex.smx_breaks_study_header
-      ADD COLUMN IF NOT EXISTS entry_id text;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS smx_breaks_study_header_entry_id_uq
-    ON simplex.smx_breaks_study_header (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-  await client.query(`
-    ALTER TABLE IF EXISTS simplex.u_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id text;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS simplex_u_data_entry_entry_id_uq
-    ON simplex.u_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-  await client.query(`
-    ALTER TABLE IF EXISTS simplex.simplex_process_parameter
-      ADD COLUMN IF NOT EXISTS entry_id text;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS simplex_process_parameter_entry_id_uq
-    ON simplex.simplex_process_parameter (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-};
-
 const normalizeParameterRows = (value) => {
   if (Array.isArray(value)) {
     return value.map((row) => ({
@@ -324,71 +134,6 @@ const normalizeParameterRows = (value) => {
   }
 
   return [];
-};
-
-// ---------------------------------------------------------------------------
-// Simplex Wheel Change — the frontend (WheelChange.jsx) and its API client
-// (fetchSimplexWheelChangeEntries/submitSimplexWheelChangeEntry/
-// approve|rejectSimplexWheelChangeApproval) were fully built assuming a
-// /simplex/wheel-change route family, but it was never implemented at all —
-// every submission 404'd. Same entry_id/parameters/rows shape already used
-// by Draw Frame's wheel_change table, plus the pending/approved/rejected
-// approval workflow the frontend UI already expects (Overwrite Warning
-// banners, Awaiting L2 / Rejected badges) — that workflow doesn't exist
-// anywhere else in the backend yet either, so it's built fresh here.
-const ensureSimplexWheelChangeTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS simplex.wheel_change (
-      id BIGSERIAL PRIMARY KEY,
-      entry_id TEXT,
-      type TEXT NOT NULL DEFAULT 'Wheel Change',
-      machine_no TEXT,
-      proposed_sap_no TEXT,
-      parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
-      rows JSONB NOT NULL DEFAULT '{}'::jsonb,
-      operator TEXT,
-      remarks TEXT,
-      approval_status TEXT NOT NULL DEFAULT 'approved',
-      review_remarks TEXT,
-      reviewed_by TEXT,
-      reviewed_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await client.query(`
-    ALTER TABLE simplex.wheel_change
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'Wheel Change',
-      ADD COLUMN IF NOT EXISTS machine_no TEXT,
-      ADD COLUMN IF NOT EXISTS proposed_sap_no TEXT,
-      ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
-      ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '{}'::jsonb,
-      ADD COLUMN IF NOT EXISTS operator TEXT,
-      ADD COLUMN IF NOT EXISTS remarks TEXT,
-      ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending',
-      ADD COLUMN IF NOT EXISTS review_remarks TEXT,
-      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
-      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-  `);
-  // ADD COLUMN IF NOT EXISTS above is a no-op once the column already exists,
-  // so a prior deploy's wrong default ('approved') would otherwise persist
-  // forever. Force it explicitly on every startup.
-  await client.query(`
-    ALTER TABLE simplex.wheel_change ALTER COLUMN approval_status SET DEFAULT 'pending';
-  `);
-  // Date was dropped from the entry form and the Saved Entries table — the column now just
-  // sits unused, so drop it too rather than leaving dead data around.
-  await client.query(`
-    ALTER TABLE simplex.wheel_change DROP COLUMN IF EXISTS entry_date;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS simplex_wheel_change_entry_id_uq
-    ON simplex.wheel_change (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
 };
 
 // Mirrors spinning.js's fetchLatestWheelChangeByMachine — scoped to the
@@ -416,7 +161,6 @@ const fetchSimplexLatestWheelChangeByMachine = async (machineNumber, approvalSta
 
 router.post('/wheel-change', async (req, res, next) => {
   try {
-    await ensureSimplexWheelChangeTable();
     const payload = req.body || {};
     const entry_id = String(payload.entry_id ?? '').trim() || null;
     const type = String(payload.type ?? payload.notebook_type ?? 'Wheel Change').trim() || 'Wheel Change';
@@ -461,7 +205,6 @@ router.post('/wheel-change', async (req, res, next) => {
 
 router.get('/wheel-change', async (req, res, next) => {
   try {
-    await ensureSimplexWheelChangeTable();
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 10));
     const offset = (page - 1) * limit;
@@ -509,7 +252,6 @@ router.get('/wheel-change', async (req, res, next) => {
 
 router.get('/wheel-change/approvals', async (req, res, next) => {
   try {
-    await ensureSimplexWheelChangeTable();
     const status = String(req.query.status ?? '').trim();
     const whereClause = status ? 'WHERE approval_status = $1' : '';
     const result = await client.query(
@@ -525,7 +267,6 @@ router.get('/wheel-change/approvals', async (req, res, next) => {
 
 router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
   try {
-    await ensureSimplexWheelChangeTable();
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
@@ -558,7 +299,6 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
 
 router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
   try {
-    await ensureSimplexWheelChangeTable();
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
@@ -592,7 +332,6 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
 
 const saveSimplexNotebook = async (req, res, next) => {
   try {
-    await ensureSimplexNotebookTable();
 
     const payload = req.body || {};
     const parameterRows = normalizeParameterRows(payload.parameter_rows ?? payload.rows ?? payload.parameters);
@@ -634,7 +373,6 @@ const saveSimplexNotebook = async (req, res, next) => {
 
 const getSimplexNotebook = async (req, res, next) => {
   try {
-    await ensureSimplexNotebookTable();
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 50));
@@ -1223,7 +961,6 @@ router.get('/SMXCotsChange/master/dropdown', getSimplexUqcMasterDropdown);
  */
 const saveSimplexCotsChange = async (req, res) => {
   try {
-    await ensureSimplexEntryIdColumns();
     const {
       entry_id,
       type,
@@ -1328,7 +1065,6 @@ router.post('/cots-change-data-entry', saveSimplexCotsChange);
  */
 const getSimplexCotsChange = async (req, res) => {
   try {
-    await ensureSimplexEntryIdColumns();
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
@@ -1548,7 +1284,6 @@ router.get('/study/master/machine-names', getStudyMachineNamesFromSpxCots);
  */
 router.post('/study', async (req, res, next) => {
   try {
-    await ensureSimplexEntryIdColumns();
     const {
       entry_id,
       s_no,
@@ -1876,7 +1611,6 @@ const parseSmxOtherFieldsRemarks = (remarks) => {
 
 router.get('/list', async (req, res, next) => {
   try {
-    await ensureSimplexEntryIdColumns();
     const headerResult = await client.query(
       `SELECT * FROM simplex.smx_breaks_study_header ORDER BY entry_date DESC`
     );
@@ -1995,7 +1729,6 @@ router.get('/list', async (req, res, next) => {
  */
 router.post('/uqc', async (req, res) => {
     try {
-        await ensureSimplexEntryIdColumns();
         console.log("UQC BODY:", req.body);
 
         const {
@@ -2090,7 +1823,6 @@ router.post('/uqc', async (req, res) => {
  */
 const getSimplexUqcEntries = async (req, res, { forceGlobal = false } = {}) => {
     try {
-        await ensureSimplexEntryIdColumns();
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const fetchAll = String(req.query.all || '').toLowerCase() === 'true'
             || String(req.query.limit || '').toLowerCase() === 'all';
@@ -2218,7 +1950,6 @@ router.get('/uqc/global', async (req, res) => {
 
 router.post('/process_parameter', async (req, res, next) => {
   try {
-    await ensureSimplexEntryIdColumns();
     const data = req.body;
 
     if (!data.entry_id) {
@@ -2334,7 +2065,6 @@ router.post('/process_parameter', async (req, res, next) => {
 
 router.get('/process_parameter', async (req, res, next) => {
   try {
-    await ensureSimplexEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);

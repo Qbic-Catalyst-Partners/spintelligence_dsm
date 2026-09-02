@@ -2,10 +2,8 @@ const express = require('express');
 const router = express.Router();
 const client = require('../connection');
 const auth = require('../middleware/auth');
-const { createNotification, ensureNotificationMetadataColumns } = require('../utils/notifications');
-const { ensureTicketApprovalsTable } = require('./operatorTickets.routes');
+const { createNotification } = require('../utils/notifications');
 const { ensureDelegationsTable } = require('./delegations.routes');
-const { ensureReportsToColumn } = require('./user.routes');
 
 const parsePositiveInt = (value) => {
   const n = Number(value);
@@ -53,20 +51,6 @@ const isAdminUser = (req) => {
   return role === 'admin' || role === 'super admin' || role === 'superadmin';
 };
 
-const ensureSupervisorAssignmentsTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS users.supervisor_assignments (
-      id bigserial PRIMARY KEY,
-      supervisor_user_id integer NOT NULL REFERENCES users.user_details(id) ON DELETE CASCADE,
-      employee_user_id integer NOT NULL REFERENCES users.user_details(id) ON DELETE CASCADE,
-      is_active boolean NOT NULL DEFAULT true,
-      assigned_at timestamptz NOT NULL DEFAULT now(),
-      assigned_by integer REFERENCES users.user_details(id),
-      UNIQUE (supervisor_user_id, employee_user_id)
-    )
-  `);
-};
-
 const getUserIdByEmployeeCode = async (employeeIdCode) => {
   const code = String(employeeIdCode || '').trim();
   if (!code) return null;
@@ -85,56 +69,6 @@ const resolveUserId = async ({ userId, employeeCode }) => {
 };
 
 router.use(auth);
-
-let operatorTicketApprovalColumnsReady = false;
-let operatorTicketApprovalColumnsPromise = null;
-
-const runEnsureOperatorTicketApprovalColumns = async () => {
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l1_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l2_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l3_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l4_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l5_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
-  `);
-};
-
-const ensureOperatorTicketApprovalColumns = async () => {
-  if (operatorTicketApprovalColumnsReady) return;
-
-  if (!operatorTicketApprovalColumnsPromise) {
-    operatorTicketApprovalColumnsPromise = runEnsureOperatorTicketApprovalColumns()
-      .then(() => {
-        operatorTicketApprovalColumnsReady = true;
-      })
-      .finally(() => {
-        operatorTicketApprovalColumnsPromise = null;
-      });
-  }
-
-  return operatorTicketApprovalColumnsPromise;
-};
-
-const ensureNotificationRecipientColumn = async () => {
-  await ensureNotificationMetadataColumns();
-};
 
 // A delegate could already SEE a delegator's ticket in their list (the
 // ticket-list queries join users.delegations for that), but this is the
@@ -382,11 +316,8 @@ const canViewTicketAsReviewer = async (req, ticket, requiredLevel = null) => {
 
 router.get('/tickets', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
-    await ensureNotificationRecipientColumn();
     await ensureDelegationsTable();
     // Reporting-hierarchy visibility (below) walks reports_to_user_id.
-    await ensureReportsToColumn();
 
     const requesterId = parsePositiveInt(req.user?.id);
     if (!requesterId) return res.status(401).json({ message: 'Authentication required' });
@@ -717,8 +648,6 @@ router.get('/tickets', async (req, res, next) => {
 
 router.get('/tickets/:id/l2-preview', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
-    await ensureNotificationRecipientColumn();
 
     const ticketId = String(req.params.id || '').trim();
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
@@ -864,7 +793,6 @@ router.get('/tickets/:id/l2-preview', async (req, res, next) => {
 
 router.get('/tickets/timeline/graph', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
 
     const requesterId = parsePositiveInt(req.user?.id);
     if (!requesterId) return res.status(401).json({ message: 'Authentication required' });
@@ -959,8 +887,6 @@ router.get('/tickets/timeline/graph', async (req, res, next) => {
 
 router.get('/tickets/:id', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
-    await ensureNotificationRecipientColumn();
 
     const ticketId = String(req.params.id || '').trim();
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
@@ -1061,7 +987,6 @@ router.get('/tickets/:id', async (req, res, next) => {
 
 router.get('/tickets/:id/timeline', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
     const ticketId = String(req.params.id || '').trim();
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
 
@@ -1172,7 +1097,6 @@ router.get('/tickets/:id/timeline', async (req, res, next) => {
 // confirms whether it actually got acknowledged.
 router.patch('/tickets/acknowledge/mark-submit', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
     const canViewAll = await getPrivilegedSupervisorAccess(req);
     const ticketId = getTicketIdFromRequest(req);
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
@@ -1203,7 +1127,6 @@ router.patch('/tickets/acknowledge/mark-submit', async (req, res, next) => {
 
 router.patch('/tickets/acknowledge', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
     const canViewAll = await getPrivilegedSupervisorAccess(req);
     const ticketId = getTicketIdFromRequest(req);
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
@@ -1269,7 +1192,6 @@ router.patch('/tickets/acknowledge', async (req, res, next) => {
 
 const updateSupervisorTicketStatusHandler = async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
     const canViewAll = await getPrivilegedSupervisorAccess(req);
     const ticketId = getTicketIdFromRequest(req);
     const status = normalizeTicketStatusInput(req.body?.status || req.body?.ticket_status || req.body?.ticketStatus);
@@ -1523,7 +1445,6 @@ const runL4SelfResolveReconciliationCheck = async () => {
 
 router.patch('/tickets/approve', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
     const canViewAll = await getPrivilegedSupervisorAccess(req);
     const ticketId = getTicketIdFromRequest(req);
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
@@ -1581,7 +1502,6 @@ router.patch('/tickets/approve', async (req, res, next) => {
       [ticketId, req.user?.full_name || req.user?.employee_id || 'Supervisor', req.user?.role || 'Supervisor']
     );
 
-    await ensureTicketApprovalsTable();
     await client.query(
       `UPDATE ticketing_system.ticket_approvals
        SET action_status = 'Approved'
@@ -1620,8 +1540,6 @@ router.patch('/tickets/approve', async (req, res, next) => {
 
 router.patch('/tickets/reject', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
-    await ensureNotificationRecipientColumn();
     const canViewAll = await getPrivilegedSupervisorAccess(req);
     const ticketId = getTicketIdFromRequest(req);
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
@@ -1686,7 +1604,6 @@ router.patch('/tickets/reject', async (req, res, next) => {
       [ticketId, req.user?.full_name || req.user?.employee_id || 'Supervisor', req.user?.role || 'Supervisor']
     );
 
-    await ensureTicketApprovalsTable();
     await client.query(
       `UPDATE ticketing_system.ticket_approvals
        SET action_status = 'Rejected'
@@ -1733,7 +1650,6 @@ router.post('/assign', async (req, res, next) => {
       return res.status(403).json({ message: 'Only admin can assign supervisor mappings' });
     }
 
-    await ensureSupervisorAssignmentsTable();
 
     const supervisorUserId = await resolveUserId({
       userId: req.body?.supervisor_user_id,
@@ -1781,7 +1697,6 @@ router.delete('/unassign', async (req, res, next) => {
       return res.status(403).json({ message: 'Only admin can remove supervisor mappings' });
     }
 
-    await ensureSupervisorAssignmentsTable();
 
     const supervisorUserId = await resolveUserId({
       userId: req.body?.supervisor_user_id,
@@ -1824,7 +1739,6 @@ router.delete('/unassign', async (req, res, next) => {
  */
 router.get('/supervisor/:supervisorId/employees', async (req, res, next) => {
   try {
-    await ensureSupervisorAssignmentsTable();
     const supervisorId = parsePositiveInt(req.params.supervisorId);
     if (!supervisorId) return res.status(400).json({ message: 'Valid supervisorId is required' });
 
@@ -1867,7 +1781,6 @@ router.get('/supervisor/:supervisorId/employees', async (req, res, next) => {
  */
 router.get('/employee/:employeeId/supervisor', async (req, res, next) => {
   try {
-    await ensureSupervisorAssignmentsTable();
     const employeeId = parsePositiveInt(req.params.employeeId);
     if (!employeeId) return res.status(400).json({ message: 'Valid employeeId is required' });
 

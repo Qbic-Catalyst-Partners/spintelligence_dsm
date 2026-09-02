@@ -3,27 +3,6 @@ const client = require('../connection');
 
 const router = express.Router();
 
-const ensurePpThresholdTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.pp_thresholds (
-      id BIGSERIAL PRIMARY KEY,
-      notebook_name TEXT NOT NULL,
-      completion_threshold_hours INTEGER NOT NULL,
-      approval_l1 TEXT NULL,
-      approval_l1_name TEXT NULL,
-      approval_l2 TEXT NULL,
-      approval_l2_name TEXT NULL,
-      is_active BOOLEAN NOT NULL DEFAULT true,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS pp_thresholds_notebook_name_uq
-    ON ticketing_system.pp_thresholds (notebook_name)
-  `);
-};
-
 const cleanText = (value) => {
   const text = String(value ?? '').trim();
   return text ? text : null;
@@ -35,7 +14,6 @@ const parseHours = (value) => {
 };
 
 const getActivePpThresholdsMap = async () => {
-  await ensurePpThresholdTable();
   const result = await client.query(
     `SELECT * FROM ticketing_system.pp_thresholds WHERE is_active = true`
   );
@@ -48,7 +26,6 @@ const getActivePpThresholdsMap = async () => {
 
 router.get('/', async (req, res, next) => {
   try {
-    await ensurePpThresholdTable();
     const result = await client.query(
       `SELECT * FROM ticketing_system.pp_thresholds ORDER BY notebook_name ASC`
     );
@@ -60,8 +37,6 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    await ensurePpThresholdTable();
-
     const notebookName = cleanText(req.body?.notebook_name);
     if (!notebookName) {
       return res.status(400).json({ message: 'notebook_name is required' });
@@ -126,8 +101,6 @@ router.post('/', async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    await ensurePpThresholdTable();
-
     const { id } = req.params;
 
     const result = await client.query(
@@ -148,5 +121,4 @@ router.delete('/:id', async (req, res, next) => {
 });
 
 module.exports = router;
-module.exports.ensurePpThresholdTable = ensurePpThresholdTable;
 module.exports.getActivePpThresholdsMap = getActivePpThresholdsMap;

@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
-const { createNotificationsForUsers, ensureNotificationMetadataColumns } = require('../utils/notifications');
+const { createNotificationsForUsers } = require('../utils/notifications');
 const { generateTicketId } = require('../utils/ticketId');
 const { ensureDelegationsTable } = require('./delegations.routes');
-const { getManagerChain, ensureReportsToColumn } = require('./user.routes');
+const { getManagerChain } = require('./user.routes');
 const sendEmail = require('../email');
 const multer = require('multer');
 const csvParser = require('csv-parser');
@@ -394,93 +394,6 @@ const parsePositiveInt = (value) => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 
-const ensureTicketApprovalsTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.ticket_approvals (
-      id BIGSERIAL PRIMARY KEY,
-      ticket_id TEXT NOT NULL,
-      level TEXT NOT NULL,
-      action_status TEXT NOT NULL,
-      performed_by TEXT,
-      role TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS ticket_approvals_ticket_id_idx
-    ON ticketing_system.ticket_approvals (ticket_id)
-  `);
-};
-
-const ensureOperatorTicketApprovalColumns = async () => {
-  // ticket_type / ticket_kind are written by several ticket-creation routes
-  // (processParameters, spinning, submittedNotebooks) and read by the
-  // supervisor-tickets query, but no migration ever created them - on a DB
-  // provisioned from an older schema they are missing and the supervisor
-  // dashboard query fails with "column ot.ticket_kind does not exist",
-  // returning no tickets. Self-heal here so every environment has them.
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS ticket_kind varchar(50) NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l1_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l2_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l3_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS submission_frequency_config_id bigint NULL REFERENCES ticketing_system.screen_submission_frequency(id)
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS tat_current_level text NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS l1_tat_due_at timestamptz NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS l2_tat_due_at timestamptz NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS l3_tat_due_at timestamptz NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l4_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l5_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS l4_tat_due_at timestamptz NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS l5_tat_due_at timestamptz NULL
-  `);
-};
-
-const ensureNotificationRecipientColumn = async () => {
-  await ensureNotificationMetadataColumns();
-};
-
 const uniquePositiveIds = (ids = []) =>
   Array.from(new Set(ids.filter((id) => Number.isInteger(Number(id)) && Number(id) > 0).map(Number)));
 
@@ -748,39 +661,6 @@ const normalizeTicketStatusInput = (value) => {
   return statuses[normalized] || null;
 };
 
-const ensureValueThresholdRulesTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.value_threshold_rules (
-      id bigserial PRIMARY KEY,
-      department varchar(100) NOT NULL,
-      sub_department varchar(100) NOT NULL,
-      notebook varchar(150) NOT NULL,
-      field varchar(150) NOT NULL,
-      l1_user_id integer NOT NULL REFERENCES users.user_details(id),
-      approval_l1_user_ids integer[] NULL,
-      l1_user_name varchar(255),
-      criticality varchar(50) NOT NULL,
-      typical_value text NOT NULL,
-      value_mode varchar(20) NOT NULL,
-      plus_value numeric,
-      minus_value numeric,
-      unique_ticket_key text NOT NULL UNIQUE,
-      is_active boolean NOT NULL DEFAULT true,
-      created_at timestamptz NOT NULL DEFAULT NOW(),
-      updated_at timestamptz NOT NULL DEFAULT NOW()
-    )
-  `);
-  // comparison_mode is the actual evaluation rule ("more_than" / "less_than" /
-  // "more_and_less_than") the frontend already sends as comparison_operator/
-  // condition_level - upsertValueThresholdRule previously never persisted it
-  // (only `criticality`, which is severity: High/Medium/Low), so nothing
-  // stored here could ever be evaluated against a submitted value.
-  await client.query(`
-    ALTER TABLE ticketing_system.value_threshold_rules
-      ADD COLUMN IF NOT EXISTS comparison_mode varchar(30) NOT NULL DEFAULT 'more_and_less_than'
-  `);
-};
-
 const normalizeThresholdMode = (value) => {
   const mode = String(value || '').trim().toLowerCase();
   if (mode === 'percentage' || mode === 'percent' || mode === '%') return 'Percentage';
@@ -837,7 +717,6 @@ const normalizeComparisonMode = (value) => {
 };
 
 const upsertValueThresholdRule = async (payload) => {
-  await ensureValueThresholdRulesTable();
   rejectLegacyThresholdL2Fields(payload);
 
   const department = pickDropdownValue(payload.department);
@@ -996,41 +875,6 @@ const parseTatHours = (value) => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 
-const ensureScreenFrequencyTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.screen_submission_frequency (
-      id BIGSERIAL PRIMARY KEY,
-      screen_name TEXT NOT NULL,
-      department TEXT NULL,
-      sub_department TEXT NULL,
-      range INTEGER NOT NULL,
-      frequency INTEGER NULL,
-      is_active BOOLEAN NOT NULL DEFAULT true,
-      approval_l1 TEXT NULL,
-      criticality TEXT NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      UNIQUE (screen_name, department, sub_department)
-    )
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.screen_submission_frequency
-      ADD COLUMN IF NOT EXISTS criticality TEXT NULL
-  `);
-};
-
-const ensureTicketResolutionSlaTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS ticketing_system.ticket_resolution_sla (
-      level text PRIMARY KEY,
-      resolution_hours integer NOT NULL DEFAULT 24,
-      is_active boolean NOT NULL DEFAULT true,
-      updated_at timestamptz NOT NULL DEFAULT now(),
-      created_at timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-};
-
 const normalizeSlaLevel = (value) => {
   const level = String(value || "").trim().toUpperCase();
   return ["L1", "L2", "L3", "L4"].includes(level) ? level : null;
@@ -1154,8 +998,6 @@ const checkSubmissionFrequencyValueBreach = async (config) => {
 };
 
 const runSubmissionFrequencyCheck = async () => {
-  await ensureScreenFrequencyTable();
-  await ensureOperatorTicketApprovalColumns();
 
   const configs = await client.query(
     `SELECT * FROM ticketing_system.screen_submission_frequency WHERE is_active = true`
@@ -1292,8 +1134,6 @@ const runSubmissionFrequencyCheck = async () => {
 // screen config's single approval_lN id only for a level the chain doesn't
 // reach.
 const runSubmissionFrequencyTatCheck = async () => {
-  await ensureScreenFrequencyTable();
-  await ensureOperatorTicketApprovalColumns();
 
   await client.query(
     `UPDATE ticketing_system.operator_tickets ot
@@ -1450,7 +1290,6 @@ router.post('/submission-frequency/check', async (req, res, next) => {
 
 router.get('/ticket-resolution-sla', async (req, res, next) => {
   try {
-    await ensureTicketResolutionSlaTable();
     const result = await client.query(
       `SELECT level, resolution_hours, is_active, created_at, updated_at
        FROM ticketing_system.ticket_resolution_sla
@@ -1464,7 +1303,6 @@ router.get('/ticket-resolution-sla', async (req, res, next) => {
 
 router.post('/ticket-resolution-sla', async (req, res, next) => {
   try {
-    await ensureTicketResolutionSlaTable();
     const level = normalizeSlaLevel(req.body?.level);
     const hours = normalizeSlaHours(req.body?.resolution_hours ?? req.body?.hours);
     const isActive = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
@@ -1487,7 +1325,6 @@ router.post('/ticket-resolution-sla', async (req, res, next) => {
 
 router.patch('/ticket-resolution-sla/:level/status', async (req, res, next) => {
   try {
-    await ensureTicketResolutionSlaTable();
     const level = normalizeSlaLevel(req.params.level);
     const isActive = req.body?.is_active;
     if (!level) return res.status(400).json({ message: 'level must be L1, L2, L3, or L4' });
@@ -1557,8 +1394,6 @@ router.patch('/ticket-resolution-sla/:level/status', async (req, res, next) => {
  */
 router.post('/submission-frequency', async (req, res, next) => {
   try {
-    await ensureScreenFrequencyTable();
-    await ensureOperatorTicketApprovalColumns();
 
     const {
       screen_name,
@@ -1650,7 +1485,6 @@ router.post('/submission-frequency', async (req, res, next) => {
  */
 router.get('/submission-frequency', async (req, res, next) => {
   try {
-    await ensureScreenFrequencyTable();
 
     const result = await client.query(
       `SELECT
@@ -1690,8 +1524,6 @@ router.get('/submission-frequency', async (req, res, next) => {
  */
 router.post('/submission-frequency/check', async (req, res, next) => {
   try {
-    await ensureScreenFrequencyTable();
-    await ensureOperatorTicketApprovalColumns();
 
     const noDueTickets = await runSubmissionFrequencyTatCheck();
 
@@ -2038,12 +1870,9 @@ const getValueThresholdRuleMap = async ({
 
 router.get('/', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
-    await ensureNotificationRecipientColumn();
     await ensureDelegationsTable();
     // Reporting-hierarchy visibility (below) walks reports_to_user_id, so make
     // sure the column exists before the recursive scope subquery references it.
-    await ensureReportsToColumn();
 
     const page = parseInt(req.query.page) || 1;
     const limit = 6;
@@ -2246,7 +2075,6 @@ router.get('/', async (req, res, next) => {
 
 router.get('/submission-ticketing', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
     const offset = (page - 1) * limit;
@@ -2341,7 +2169,6 @@ router.get('/submission-ticketing', async (req, res, next) => {
 // level or as the ticket's owner).
 router.get('/process-parameter-ticketing', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
     const offset = (page - 1) * limit;
@@ -2552,7 +2379,6 @@ router.get('/process-parameter-ticketing', async (req, res, next) => {
  */
 router.get('/:id/timeline', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
     const ticketId = String(req.params.id || '').trim();
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
 
@@ -2761,8 +2587,6 @@ router.get('/:id', async (req, res, next) => {
  */
 router.post('/', async (req, res, next) => {
   try {
-    await ensureOperatorTicketApprovalColumns();
-    await ensureNotificationRecipientColumn();
     const {
       user_id,
       user_name,
@@ -2945,8 +2769,6 @@ router.post('/', async (req, res, next) => {
 router.post('/generate', async (req, res, next) => {
   let transactionStarted = false;
   try {
-    await ensureOperatorTicketApprovalColumns();
-    await ensureNotificationRecipientColumn();
     const tickets = Array.isArray(req.body?.tickets) ? req.body.tickets : [];
 
     if (!tickets.length) {
@@ -3124,7 +2946,6 @@ router.post('/generate', async (req, res, next) => {
 
 router.get('/thresholds/list', async (req, res, next) => {
   try {
-    await ensureValueThresholdRulesTable();
     const { department, sub_department, notebook, field, l1_user_id, status } = req.query;
     const where = [];
     const values = [];
@@ -3207,7 +3028,6 @@ router.post('/thresholds', async (req, res, next) => {
 // Frequency's equivalent three routes below.
 router.patch('/thresholds/:id', async (req, res, next) => {
   try {
-    await ensureValueThresholdRulesTable();
     const { id } = req.params;
     const body = req.body || {};
     rejectLegacyThresholdL2Fields(body);
@@ -3305,7 +3125,6 @@ router.patch('/thresholds/:id', async (req, res, next) => {
 
 router.patch('/thresholds/:id/status', async (req, res, next) => {
   try {
-    await ensureValueThresholdRulesTable();
     const { id } = req.params;
     const { is_active } = req.body || {};
 
@@ -3336,7 +3155,6 @@ router.patch('/thresholds/:id/status', async (req, res, next) => {
 
 router.delete('/thresholds/:id', async (req, res, next) => {
   try {
-    await ensureValueThresholdRulesTable();
     const { id } = req.params;
 
     const result = await client.query(
@@ -3361,8 +3179,6 @@ router.delete('/thresholds/:id', async (req, res, next) => {
 
 router.patch('/submission-frequency/:id', async (req, res, next) => {
   try {
-    await ensureScreenFrequencyTable();
-
     const { id } = req.params;
     const {
       screen_name,
@@ -3436,8 +3252,6 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
 
 router.patch('/submission-frequency/:id/status', async (req, res, next) => {
   try {
-    await ensureScreenFrequencyTable();
-
     const { id } = req.params;
     const { is_active } = req.body;
 
@@ -3469,8 +3283,6 @@ router.patch('/submission-frequency/:id/status', async (req, res, next) => {
 
 router.delete('/submission-frequency/:id', async (req, res, next) => {
   try {
-    await ensureScreenFrequencyTable();
-
     const { id } = req.params;
 
     const result = await client.query(
@@ -4237,7 +4049,6 @@ router.put('/submit/:id', async (req, res, next) => {
       ]
     );
 
-    await ensureTicketApprovalsTable();
     await client.query(
       `INSERT INTO ticketing_system.ticket_approvals (ticket_id, level, action_status, performed_by, role)
        VALUES ($1, 'L1', $2, $3, $4)`,
@@ -4285,7 +4096,6 @@ router.put('/submit/:id', async (req, res, next) => {
 
 router.get('/:id/approvals', async (req, res, next) => {
   try {
-    await ensureTicketApprovalsTable();
     const ticketId = req.params.id;
 
     const result = await client.query(
@@ -4307,7 +4117,6 @@ router.get('/:id/approvals', async (req, res, next) => {
 // supervisor level and get one row per approval-cycle entry.
 const getApprovalQueue = async (req, res, next) => {
   try {
-    await ensureTicketApprovalsTable();
 
     const levelFilter = String(req.query.level || 'L2').trim().toUpperCase();
     const statusFilter = String(req.query.status || '').trim();
@@ -4476,5 +4285,3 @@ router.get('/approvals/l2-queue', async (req, res, next) => {
 module.exports = router;
 module.exports.runSubmissionFrequencyTatCheck = runSubmissionFrequencyTatCheck;
 module.exports.runSubmissionFrequencyCheck = runSubmissionFrequencyCheck;
-module.exports.ensureTicketApprovalsTable = ensureTicketApprovalsTable;
-module.exports.ensureValueThresholdRulesTable = ensureValueThresholdRulesTable;

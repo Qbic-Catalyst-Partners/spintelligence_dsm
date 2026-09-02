@@ -730,14 +730,3 @@ const startThresholdTicketWorker = () => {
 
 startThresholdTicketWorker();
 
-// value_threshold_rules' comparison_mode column (and the table itself) was
-// previously only migrated lazily, the first time someone hit the
-// /operator-tickets/thresholds routes - notebook submit routes that evaluate
-// against it (mixing.js's autoCreateTicket) never triggered that migration
-// themselves, so a fresh deploy's very first threshold breach could 500 on a
-// missing column. Ensure it once at boot instead.
-db.initPromise
-  .then(() => operatorTicketRoutes.ensureValueThresholdRulesTable())
-  .catch((error) => console.warn('[value-threshold-rules] schema ensure skipped:', error.message));
-
-

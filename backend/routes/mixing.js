@@ -577,199 +577,6 @@ const getMixingQcMasterDropdown = async (req, res, next) => {
 
 const getEmployeeMasterDropdown = createEmployeeMasterDropdown(sqlServer, 'mixing');
 
-// openness_inspection stores its submission timestamp as `timestamp WITHOUT time zone` with a bare
-// default — on this DB, that silently writes a different offset than what gets displayed back,
-// shifting "Created At" by several hours. Same root cause and same fix as every other
-// department's equivalent tables: convert to timestamptz so new rows store an unambiguous instant.
-const ensureMixingTimestampColumnsHaveTimezone = async () => {
-  await client.query(`
-    DO $$
-    BEGIN
-      IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'mixing' AND table_name = 'openness_inspection' AND column_name = 'created_at'
-          AND data_type = 'timestamp without time zone'
-      ) THEN
-        ALTER TABLE mixing.openness_inspection
-          ALTER COLUMN created_at TYPE timestamptz USING created_at AT TIME ZONE 'UTC';
-        ALTER TABLE mixing.openness_inspection
-          ALTER COLUMN created_at SET DEFAULT now();
-      END IF;
-    END $$;
-  `);
-};
-
-// This is one-time idempotent schema setup (add-column-if-not-exists, drop+recreate a view),
-// not per-request work — it used to run on every single POST to a Mixing route, which under
-// concurrent requests raced on the view's DROP/CREATE and intermittently failed with
-// "duplicate key value violates unique constraint pg_type_typname_nsp_index". Memoizing to a
-// single shared promise means every caller awaits the same one-time run instead of each
-// kicking off its own.
-let ensureMixingEntryIdColumnsPromise = null;
-const ensureMixingEntryIdColumns = () => {
-  if (!ensureMixingEntryIdColumnsPromise) {
-    ensureMixingEntryIdColumnsPromise = ensureMixingEntryIdColumnsImpl().catch((err) => {
-      ensureMixingEntryIdColumnsPromise = null;
-      throw err;
-    });
-  }
-  return ensureMixingEntryIdColumnsPromise;
-};
-
-const runMixingSchemaStep = async (label, fn) => {
-  try {
-    await fn();
-  } catch (err) {
-    console.error(`Mixing schema step "${label}" failed:`, err);
-    throw err;
-  }
-};
-
-const ensureMixingEntryIdColumnsImpl = async () => {
-  await runMixingSchemaStep('timestamp columns', () => ensureMixingTimestampColumnsHaveTimezone());
-
-  await runMixingSchemaStep('cotton_hvi_data_entry columns', async () => {
-    await client.query(`
-      ALTER TABLE mixing.cotton_hvi_data_entry
-        ADD COLUMN IF NOT EXISTS entry_id TEXT,
-        ADD COLUMN IF NOT EXISTS operator TEXT,
-        ADD COLUMN IF NOT EXISTS moisture NUMERIC,
-        ADD COLUMN IF NOT EXISTS strength NUMERIC,
-        ADD COLUMN IF NOT EXISTS amt NUMERIC;
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS cotton_hvi_data_entry_entry_id_uq
-      ON mixing.cotton_hvi_data_entry (entry_id)
-      WHERE entry_id IS NOT NULL;
-    `);
-    await client.query(`
-      WITH numbered AS (
-        SELECT
-          ctid,
-          ROW_NUMBER() OVER (ORDER BY inspection_date, invoice_date, lot_no, invoice_no, ctid) AS rn
-        FROM mixing.cotton_hvi_data_entry
-        WHERE entry_id IS NULL OR BTRIM(entry_id) = ''
-      )
-      UPDATE mixing.cotton_hvi_data_entry t
-      SET entry_id = LPAD(numbered.rn::text, 4, '0')
-      FROM numbered
-      WHERE t.ctid = numbered.ctid;
-    `);
-  });
-
-  await runMixingSchemaStep('fibre_data_entry columns', async () => {
-    await client.query(`
-      ALTER TABLE mixing.fibre_data_entry
-        ADD COLUMN IF NOT EXISTS entry_id TEXT;
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS fibre_data_entry_entry_id_uq
-      ON mixing.fibre_data_entry (entry_id)
-      WHERE entry_id IS NOT NULL;
-    `);
-  });
-
-  await runMixingSchemaStep('afis_data_entry columns', async () => {
-    await client.query(`
-      ALTER TABLE mixing.afis_data_entry
-        ADD COLUMN IF NOT EXISTS entry_id TEXT,
-        ADD COLUMN IF NOT EXISTS lw NUMERIC,
-        ADD COLUMN IF NOT EXISTS ln NUMERIC,
-        ADD COLUMN IF NOT EXISTS total_nep_count NUMERIC;
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS afis_data_entry_entry_id_uq
-      ON mixing.afis_data_entry (entry_id)
-      WHERE entry_id IS NOT NULL;
-    `);
-  });
-
-  await runMixingSchemaStep('moisture_data_entry columns', async () => {
-    await client.query(`
-      ALTER TABLE mixing.moisture_data_entry
-        ADD COLUMN IF NOT EXISTS entry_id TEXT,
-        ADD COLUMN IF NOT EXISTS lot_no VARCHAR(50);
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS moisture_data_entry_entry_id_uq
-      ON mixing.moisture_data_entry (entry_id)
-      WHERE entry_id IS NOT NULL;
-    `);
-  });
-
-  await runMixingSchemaStep('openness_inspection columns', async () => {
-    await client.query(`
-      ALTER TABLE mixing.openness_inspection
-        ADD COLUMN IF NOT EXISTS entry_id TEXT,
-        ADD COLUMN IF NOT EXISTS br_line TEXT;
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS openness_inspection_entry_id_uq
-      ON mixing.openness_inspection (entry_id)
-      WHERE entry_id IS NOT NULL;
-    `);
-    // The form sends beater_type/beater_speed_rpm per entry, but these columns never existed on
-    // openness_entries — the values were silently dropped on every submission (never inserted,
-    // never selectable), leaving "Entry N - Beater Type"/"Entry N - Beater Speed (RPM)" blank in
-    // Custom Report even though every other per-entry field worked.
-    await client.query(`
-      ALTER TABLE mixing.openness_entries
-        ADD COLUMN IF NOT EXISTS beater_type TEXT,
-        ADD COLUMN IF NOT EXISTS beater_speed_rpm NUMERIC;
-    `);
-    // The notebook computes a per-stage "Openness %" (stage AOV vs. previous stage AOV) and an
-    // "Overall Openness Efficiency %" (last stage AOV vs. first stage AOV) in the browser, but
-    // neither was ever sent to the backend or had a column to land in — Custom Report showed them
-    // as blank forever. Persist both so the calculated numbers survive past the browser preview.
-    // Standardized on "openness_percentage" as the column name — drop the older "openness_percent"
-    // column this same migration briefly introduced.
-    await client.query(`
-      ALTER TABLE mixing.openness_entries
-        ADD COLUMN IF NOT EXISTS openness_percentage NUMERIC(10,2);
-    `);
-    await client.query(`
-      ALTER TABLE mixing.openness_entries
-        DROP COLUMN IF EXISTS openness_percent;
-    `);
-    await client.query(`
-      ALTER TABLE mixing.openness_inspection
-        ADD COLUMN IF NOT EXISTS overall_openness_percent NUMERIC;
-    `);
-  });
-
-  await runMixingSchemaStep('mixing_qc_header columns', async () => {
-    await client.query(`
-      ALTER TABLE mixing.mixing_qc_header
-        ADD COLUMN IF NOT EXISTS entry_id TEXT,
-        ADD COLUMN IF NOT EXISTS operator TEXT;
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS mixing_qc_header_entry_id_uq
-      ON mixing.mixing_qc_header (entry_id)
-      WHERE entry_id IS NOT NULL;
-    `);
-  });
-
-  await runMixingSchemaStep('afis6_cotton_data_entry index', () => client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS afis6_cotton_data_entry_entry_id_uq
-    ON mixing.afis6_cotton_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `));
-  await runMixingSchemaStep('afis6_mmf_data_entry columns', () => client.query(`
-    ALTER TABLE mixing.afis6_mmf_data_entry
-      ADD COLUMN IF NOT EXISTS cut_length_l_n_cv_percent NUMERIC,
-      ADD COLUMN IF NOT EXISTS cut_length_sfc_w_percent NUMERIC,
-      ADD COLUMN IF NOT EXISTS material_class VARCHAR(255),
-      ADD COLUMN IF NOT EXISTS comment VARCHAR(255),
-      ADD COLUMN IF NOT EXISTS crimp_percent NUMERIC;
-  `));
-  await runMixingSchemaStep('afis6_mmf_data_entry index', () => client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS afis6_mmf_data_entry_entry_id_uq
-    ON mixing.afis6_mmf_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `));
-};
-
 const normalizeKey = (value) => String(value || '').toLowerCase().replace(/\s+/g, '_');
 const resolveFieldValue = (obj, fieldName) => {
   if (!obj || typeof obj !== 'object') return undefined;
@@ -1160,7 +967,6 @@ router.get('/qc/master/user-names', getEmployeeMasterDropdown);
  */
 router.post('/cotton-hvi', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id,
       inspection_date,
@@ -1309,7 +1115,6 @@ router.post('/cotton-hvi', async (req, res, next) => {
  */
 router.get('/cotton-hvi', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = parseInt(page);
@@ -1401,7 +1206,6 @@ router.get('/cotton-hvi', async (req, res, next) => {
  */
 router.post('/fibre', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id,
       inspection_date,
@@ -1511,7 +1315,6 @@ router.post('/fibre', async (req, res, next) => {
  */
 router.get('/fibre', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -1600,7 +1403,6 @@ router.get('/fibre', async (req, res, next) => {
  */
 router.post('/afis', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id,
       inspection_date,
@@ -1716,7 +1518,6 @@ router.post('/afis', async (req, res, next) => {
  */
 router.get('/afis', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -1760,7 +1561,6 @@ const AFIS6_COTTON_NUMERIC_FIELDS = [
 
 router.post('/afis6-cotton', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id, inspection_date, lot_no, variety, invoice_date, mc_name,
       blow_room, carding, breaker_drawing, finisher_drawing, comber,
@@ -1828,7 +1628,6 @@ router.post('/afis6-cotton', async (req, res, next) => {
 
 router.get('/afis6-cotton', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.max(1, parseInt(limit) || 10);
@@ -1863,7 +1662,6 @@ const AFIS6_MMF_NUMERIC_FIELDS = [
 
 router.post('/afis6-mmf', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id, inspection_date, machine_name, comment, material_class,
       lot_no, variety, invoice_date, mc_name, blow_room, carding,
@@ -1946,7 +1744,6 @@ router.post('/afis6-mmf', async (req, res, next) => {
 
 router.get('/afis6-mmf', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.max(1, parseInt(limit) || 10);
@@ -2029,7 +1826,6 @@ router.get('/afis6-mmf', async (req, res, next) => {
  */
 router.post('/moisture', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id,
       inspection_date,
@@ -2137,7 +1933,6 @@ router.post('/moisture', async (req, res, next) => {
  */
 router.get('/moisture', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -2240,7 +2035,6 @@ router.get('/moisture', async (req, res, next) => {
 
 router.post('/openness', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id,
       inspection_date,
@@ -2395,7 +2189,6 @@ router.post('/openness', async (req, res, next) => {
 
 router.get('/openness', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
 
     const inspections = await client.query(
       `SELECT *
@@ -2511,7 +2304,6 @@ router.get('/openness', async (req, res, next) => {
 
 router.post('/qc', async (req, res, next) => {
   try {
-    await ensureMixingEntryIdColumns();
     const {
       entry_id,
       consignee_name,
@@ -2614,11 +2406,6 @@ router.post('/qc', async (req, res, next) => {
  */
 router.get('/qc', async (req, res, next) => {
   try {
-    // This route SELECTs h.operator, which only exists after ensureMixingEntryIdColumns() has run.
-    // Every other mixing route calls it first; this one didn't, so a fresh deploy (or any process
-    // that hits GET /qc before a POST /qc/cotton-hvi/etc. has run) would 500 with
-    // "column h.operator does not exist".
-    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = parseInt(page);
@@ -2738,11 +2525,6 @@ router.get('/qc', async (req, res, next) => {
  */
 router.put('/qc/:qc_id', async (req, res, next) => {
   try {
-    // This route's UPDATE writes to mixing_qc_header.operator, which only exists after
-    // ensureMixingEntryIdColumns() has run. Every other mixing route calls it first; this one
-    // didn't, so it would 500 with "column operator does not exist" until some other mixing route
-    // happened to run first in the process lifetime.
-    await ensureMixingEntryIdColumns();
     const { qc_id } = req.params;
 
     const {
