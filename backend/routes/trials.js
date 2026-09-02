@@ -474,7 +474,7 @@ router.get('/master/spinning-machines', async (req, res) => {
        FROM dbo.MCMASTER m
        JOIN dbo.dept_mai d ON m.DEPTCODE = d.DEPTCODE
        WHERE m.compcode = '1'
-         AND LOWER(LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255))))) LIKE '%spinning%'
+         AND m.DEPTCODE = 48
          AND (@prefix = '' OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @machinePrefix)
        ORDER BY m.MCNAME`,
       { prefix, machinePrefix: likeToken }
@@ -538,10 +538,7 @@ router.get('/master/autoconer-machines', async (req, res) => {
        FROM dbo.MCMASTER m
        JOIN dbo.dept_mai d ON m.DEPTCODE = d.DEPTCODE
        WHERE m.compcode = '1'
-         AND (
-           LOWER(LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255))))) LIKE '%autoconer%'
-           OR LOWER(LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255))))) LIKE '%autocone%'
-         )
+         AND m.DEPTCODE = 19
          AND (@prefix = '' OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @machinePrefix)
        ORDER BY m.MCNAME`,
       { prefix, machinePrefix: likeToken }

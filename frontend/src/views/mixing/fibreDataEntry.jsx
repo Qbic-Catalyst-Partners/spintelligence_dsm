@@ -163,7 +163,6 @@ const FibreDataEntry = forwardRef(function FibreDataEntry({ date, entryId, lotNo
 
     const getPreviewData = () => ([
         { label: "Date", value: date },
-        { label: "Lot No", value: lotNo },
         { label: "Variety", value: formData.variety },
         { label: "Invoice No", value: formData.invoiceNo },
         { label: "Invoice Date", value: formData.invoiceDate },

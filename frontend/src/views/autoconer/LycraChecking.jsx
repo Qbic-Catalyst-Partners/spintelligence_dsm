@@ -55,14 +55,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
   const handleCustomFieldChange = (fieldId, value) => {
     setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
   };
-  const errorStyle = (flag) =>
-    flag
-      ? {
-          borderColor: "#ef4444",
-          backgroundColor: "#fff1f2",
-          boxShadow: "0 0 0 1000px #fff1f2 inset",
-        }
-      : undefined;
+  const errorClass = (flag) => (flag ? styles.errorField : "");
 
   const lycraPercent = useMemo(() => {
     if (!lycraWeight || !totalWeight) return "";
@@ -288,7 +281,19 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
       <div className={styles.formGrid}>
         <div className={styles.field}>
           <label>Type</label>
-          <select value={selectedType} onChange={(e) => onTypeChange(e.target.value)} style={errorStyle(errors.type)}>
+          <select
+            value={selectedType}
+            onChange={(e) => {
+              onTypeChange(e.target.value);
+              setErrors((current) => {
+                if (!current.type) return current;
+                const next = { ...current };
+                delete next.type;
+                return next;
+              });
+            }}
+            className={errorClass(errors.type)}
+          >
             {types.map((type) => {
               const optionValue =
                 typeof type === "string"
@@ -315,7 +320,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
 
         <div className={styles.field}>
           <label>Lycra Draft</label>
-          <input value={lycraDraft} onChange={(e) => setLycraDraft(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }))} style={errorStyle(errors.lycraDraft)} />
+          <input value={lycraDraft} onChange={(e) => setLycraDraft(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }))} className={errorClass(errors.lycraDraft)} />
         </div>
 
         <div className={styles.field}>
@@ -326,9 +331,15 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
               const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
               setCountName(selected?.label ?? value);
               setCountCode(selected?.code ?? "");
+              setErrors((current) => {
+                if (!current.countName) return current;
+                const next = { ...current };
+                delete next.countName;
+                return next;
+              });
             }}
             options={countDropdownOptions}
-            className={styles.select}
+            className={`${styles.select || ""} ${errorClass(errors.countName)}`.trim()}
             placeholder="Select count name"
           />
         </div>
@@ -338,7 +349,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
           <input
             value={lycraWeight}
             onChange={(e) => setLycraWeight(sanitizeNumericInput(e.target.value, { precision: 10, scale: 4 }))}
-            style={errorStyle(errors.lycraWeight)}
+            className={errorClass(errors.lycraWeight)}
           />
         </div>
 
@@ -347,7 +358,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
           <input
             value={fabricWeight}
             onChange={(e) => setFabricWeight(sanitizeNumericInput(e.target.value, { precision: 10, scale: 4 }))}
-            style={errorStyle(errors.fabricWeight)}
+            className={errorClass(errors.fabricWeight)}
           />
         </div>
 
@@ -356,7 +367,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
           <input
             value={totalWeight}
             onChange={(e) => setTotalWeight(sanitizeNumericInput(e.target.value, { precision: 10, scale: 4 }))}
-            style={errorStyle(errors.totalWeight)}
+            className={errorClass(errors.totalWeight)}
           />
         </div>
 
@@ -371,7 +382,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
             <input
               value={readingsCount}
               onChange={(e) => setReadingsCount(sanitizeIntegerInput(e.target.value, 10))}
-              style={errorStyle(errors.readingsCount || errors.generatedRows)}
+              className={errorClass(errors.readingsCount || errors.generatedRows)}
             />
           </div>
           <button type="button" className={styles.generateBtn} onClick={handleGenerate}>
@@ -397,7 +408,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
                     <input
                       value={row.length}
                       onChange={(e) => handleReadingChange(index, e.target.value)}
-                      style={errorStyle(errors[`row-${index}`])}
+                      className={errorClass(errors[`row-${index}`])}
                     />
                   </td>
                 </tr>

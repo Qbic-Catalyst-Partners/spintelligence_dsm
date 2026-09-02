@@ -134,14 +134,24 @@ export default function TicketDetails() {
   // so it's passed via ?ticketType= and trusted here directly. Fall back to guessing from
   // the ticket's own fields only for links that don't carry that param (e.g. old bookmarks).
   const isSubmissionTicket = ticketType
-    ? ticketType === "submission"
+    ? String(ticketType).trim().toLowerCase() === "submission"
     : isSubmissionTicketRecord(resolvedTicket) ||
       String(resolvedTicket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
   const submissionParameterNames = rawParameterNames.filter(
     (param) => isSubmissionFrequencyParameterName(param) || isNotebookAcknowledgementParameterName(param)
   );
+  // "ACKNOWLEDGEMENT" only makes sense as a fallback for actual Notebook
+  // Acknowledgement tickets - a Submission Frequency ticket (missed the
+  // required submission count for a screen, no acknowledgement involved)
+  // falling back to that same label was misleading, so it uses the screen
+  // name from violation_details instead when no real parameter matched.
+  const isAcknowledgementTicket = rawParameterNames.some(isNotebookAcknowledgementParameterName);
   const displayParameterNames = isSubmissionTicket
-    ? (submissionParameterNames.length ? submissionParameterNames : ["ACKNOWLEDGEMENT"])
+    ? (submissionParameterNames.length
+        ? submissionParameterNames
+        : [isAcknowledgementTicket
+            ? "ACKNOWLEDGEMENT"
+            : resolvedTicket?.violation_details?.screen_name || resolvedTicket?.machine_name || resolvedTicket?.notebook || "SUBMISSION FREQUENCY"])
     : rawParameterNames;
 
   const parameterMap =
@@ -183,19 +193,28 @@ export default function TicketDetails() {
         const hours = Math.max(0, Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60)));
         return `${hours} hr${hours === 1 ? "" : "s"}`;
       })()
-    : resolvedTicket?.frequency ||
-      resolvedTicket?.submission_frequency ||
-      resolvedTicket?.check_frequency ||
-      resolvedTicket?.threshold_value?.expected_frequency ||
-      "-";
+    : resolvedTicket?.violation_details?.window_days
+      ? `Every ${resolvedTicket.violation_details.window_days} day${resolvedTicket.violation_details.window_days === 1 ? "" : "s"}`
+      : resolvedTicket?.frequency ||
+        resolvedTicket?.submission_frequency ||
+        resolvedTicket?.check_frequency ||
+        resolvedTicket?.threshold_value?.expected_frequency ||
+        "-";
+  // runSubmissionFrequencyCheck (operatorTickets.routes.js) stamps
+  // actual_occurrences/required_occurrences directly on violation_details -
+  // the .checks.* paths below never matched any real ticket shape, so this
+  // always fell through to "-" even though the backend sends the real counts.
   const submissionOccurrences = isPpBatchTicket
     ? 1
-    : resolvedTicket?.occurrences ??
-      resolvedTicket?.occurrence_count ??
-      resolvedTicket?.count ??
-      resolvedTicket?.violation_details?.checks?.expected_occurrences ??
-      resolvedTicket?.violation_details?.checks?.actual_occurrences ??
-      "-";
+    : resolvedTicket?.violation_details?.actual_occurrences !== undefined &&
+      resolvedTicket?.violation_details?.required_occurrences !== undefined
+      ? `${resolvedTicket.violation_details.actual_occurrences} / ${resolvedTicket.violation_details.required_occurrences}`
+      : resolvedTicket?.occurrences ??
+        resolvedTicket?.occurrence_count ??
+        resolvedTicket?.count ??
+        resolvedTicket?.violation_details?.checks?.expected_occurrences ??
+        resolvedTicket?.violation_details?.checks?.actual_occurrences ??
+        "-";
 
   const getTimelineIcon = (title) => {
     const normalized = String(title || "").toLowerCase();
@@ -366,6 +385,14 @@ export default function TicketDetails() {
               <p className={styles["mobile-meta-value"]}>{resolvedTicket.machine_name || resolvedTicket.notebook || "-"}</p>
             </div>
             <div>
+              <span className={styles["mobile-meta-label"]}>Entry ID</span>
+              <p className={styles["mobile-meta-value"]}>
+                {resolvedTicket.entry_id ||
+                  resolvedTicket.violation_details?.entry_id ||
+                  (isSubmissionTicket ? "No entry submitted" : "-")}
+              </p>
+            </div>
+            <div>
               <span className={styles["mobile-meta-label"]}>Created At</span>
               <p className={styles["mobile-meta-value"]}>
                 {formatCompactDateTime(resolvedTicket.created_at || resolvedTicket.rawCreatedAt)}
@@ -530,7 +557,9 @@ export default function TicketDetails() {
                   <div className={styles["table-row"]} key={`${item.name}-${index}`}>
                     <span className={styles["value-strong"]}>{resolvedTicket.machine_name || resolvedTicket.notebook || "-"}</span>
                     <span className={styles["value-strong"]}>
-                      {resolvedTicket.entry_id || resolvedTicket.violation_details?.entry_id || "-"}
+                      {resolvedTicket.entry_id ||
+                        resolvedTicket.violation_details?.entry_id ||
+                        (isSubmissionTicket ? "No entry submitted" : "-")}
                     </span>
                     <span className={styles["value-strong"]}>{item.name}</span>
                     <span className={`${styles["value-strong"]} ${styles.danger}`}>{isSubmissionTicket ? submissionFrequency : item.actual}</span>

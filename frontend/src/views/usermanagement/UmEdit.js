@@ -381,7 +381,7 @@ export default function EditUser() {
                 <input
                   type={showPassword ? "text" : "password"}
                   placeholder="New Password"
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => setPassword(e.target.value.replace(/\s/g, ""))}
                 />
                 {showPassword ? (
                   <FaEyeSlash onClick={() => setShowPassword(false)} />

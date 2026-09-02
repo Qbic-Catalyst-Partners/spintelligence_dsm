@@ -44,6 +44,16 @@ const toWholeNumberOrNull = (value) => {
   if (!Number.isFinite(n)) return null;
   return Math.round(n);
 };
+// Break-matrix cell entries (the comma-separated "1,2,3" values per length-range x break-type
+// cell) are whatever the user actually typed, decimals included - unlike spindle counts/hk
+// values/fiber parameters, which are genuinely whole numbers, these shouldn't be rounded through
+// toWholeNumberOrNull's Math.round(). Keeps the exact number as entered (still validated as a
+// real finite number first).
+const toNumberOrNull = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
 const parseBreakArray = (value) => {
   if (Array.isArray(value)) {
     return value
@@ -81,9 +91,13 @@ const diffMinutes = (startHHMM, endHHMM) => {
   if (diff < 0) diff += 24 * 60;
   return diff;
 };
-const toWholePercent = (value) => {
+// The frontend's own percentage displays (formatPercentage in SMXBreaksStudyReport.jsx) keep 2
+// decimal places (e.g. "19.05%"), not a rounded whole number - the derived percentage figures
+// here used to go through Math.round() and lose that precision, same issue as the raw
+// break-matrix cells before toNumberOrNull above. Matches the frontend's own .toFixed(2) rounding.
+const toDecimalPercent = (value) => {
   if (!Number.isFinite(value)) return 0;
-  return Math.round(value);
+  return Math.round(value * 100) / 100;
 };
 
 const parseNotebookDate = (value) => {
@@ -1336,25 +1350,27 @@ router.post('/study', async (req, res, next) => {
     const study_id = headerResult.rows[0].id;
 
     const normalizedItems = [];
-    const breakTotalsByColumn = [];
+    // The frontend's own Grand Total (SMXBreaksStudyReport.jsx's getTotalBreakPercentages) sums
+    // every one of the 9 break-type columns across every length-range row the user added, not
+    // just a "first row" or "up to some column" subset - matched here the same way, by summing
+    // every item's own count regardless of row, so a submission with N length rows sums all N of
+    // them. This replaces a stateful "stop accumulating after the first SLIVER BREAKS item seen"
+    // flag that only ever worked correctly for a single length-range row - once a submission had
+    // more than one row, everything from the second row onward was silently dropped from the
+    // total (a real Grand Total of 36 across two rows was being stored as 15, just the first
+    // row's own total).
     let grandTotalBreaks = 0;
-    let includeInGrandTotal = true;
-    const STOP_AT = 'SLIVER BREAKS';
 
     // Insert inspection items
     let derivedBreakCount = 0;
     if (inspection_items && Array.isArray(inspection_items)) {
       for (const item of inspection_items) {
         const normalizedName = normalizeBreakItemName(item?.item_name);
-        const breakArray = parseBreakArray(item?.status_value).map((v) => String(toWholeNumberOrNull(v) ?? 0));
+        const breakArray = parseBreakArray(item?.status_value).map((v) => String(toNumberOrNull(v) ?? 0));
         const columnTotal = breakArray.length;
-        const statusValue = breakArray.length ? toPgArrayLiteral(breakArray) : toWholeNumberOrNull(item?.status_value);
+        const statusValue = breakArray.length ? toPgArrayLiteral(breakArray) : toNumberOrNull(item?.status_value);
         if (breakArray.length) derivedBreakCount += breakArray.length;
-        if (includeInGrandTotal) {
-          grandTotalBreaks += columnTotal;
-          breakTotalsByColumn.push({ name: normalizedName, total: columnTotal });
-          if (normalizedName.toUpperCase() === STOP_AT) includeInGrandTotal = false;
-        }
+        grandTotalBreaks += columnTotal;
         await client.query(
           `INSERT INTO simplex.smx_breaks_inspection_items
            (study_id, item_name, status_value, remarks, length_range)
@@ -1384,56 +1400,32 @@ router.post('/study', async (req, res, next) => {
       ? (finishHk - startHk)
       : null;
 
-    const overallBreakagePct = (runningSpdl && totalHours && totalHours > 0)
-      ? toWholePercent((grandTotalBreaks / runningSpdl / totalHours) * 100)
-      : 0;
+    // The frontend already computes this exact figure on screen (grandTotalBreakPercent in
+    // SMXBreaksStudyReport.jsx) - trust and store what it sent rather than recomputing a second,
+    // separately-rounded copy here. Only falls back to a server-side computation for callers that
+    // don't send it (e.g. older API consumers).
+    const providedOverallBreakagePct = toNumberOrNull(other_field_values?.overall_breakage_percent);
+    const overallBreakagePct = providedOverallBreakagePct !== null
+      ? providedOverallBreakagePct
+      : (runningSpdl && totalHours && totalHours > 0)
+        ? toDecimalPercent((grandTotalBreaks / runningSpdl / totalHours) * 100)
+        : 0;
 
-    const derivedRows = [];
-    if (hank !== null) derivedRows.push({ item_name: 'HANK', status_value: hank });
-    if (startTime?.hhmm) derivedRows.push({ item_name: 'START TIME', status_value: startTime.hhmm });
-    if (endTime?.hhmm) derivedRows.push({ item_name: 'END TIME', status_value: endTime.hhmm });
-    if (totalMinutes !== null) derivedRows.push({ item_name: 'TOTAL TIME (MINUTES)', status_value: totalMinutes });
-    if (Number.isInteger(idleSpindles)) derivedRows.push({ item_name: 'IDLE SPINDLES', status_value: idleSpindles });
-    if (Number.isInteger(totalSpdl)) derivedRows.push({ item_name: 'TOTAL SPDL', status_value: totalSpdl });
-    if (runningSpdl !== null) derivedRows.push({ item_name: 'RUNNING SPDL', status_value: runningSpdl });
-    derivedRows.push({ item_name: 'TOTAL BREAKS (GRAND)', status_value: grandTotalBreaks });
-    derivedRows.push({ item_name: 'OVERALL BREAKAGE (%)', status_value: overallBreakagePct });
-    const hasTotalBreakPercentRow = [...normalizedItems, ...derivedRows].some((row) => {
-      const name = String(row?.item_name || '').trim().toUpperCase();
-      return name === 'TOTAL BREAK (%)' || name === 'TOTAL BREAK %' || name === 'TOTAL BREAKAGE (%)';
-    });
-    if (!hasTotalBreakPercentRow) {
-      derivedRows.push({ item_name: 'TOTAL BREAK (%)', status_value: overallBreakagePct });
-    }
-    // "TOTAL No. OF BREAKS/100SH" on the frontend (grandTotalBreakPercent) uses the exact same
-    // formula as overallBreakagePct above — stored under its own matching label too so a report
-    // filtering by that exact name finds it, without duplicating the calculation.
-    derivedRows.push({ item_name: 'TOTAL No. OF BREAKS/100SH', status_value: overallBreakagePct });
-
-    for (const col of breakTotalsByColumn) {
-      const ratio = grandTotalBreaks > 0 ? toWholePercent((col.total / grandTotalBreaks) * 100) : 0;
-      derivedRows.push({
-        item_name: `${col.name} BREAKS (%)`,
-        status_value: ratio
-      });
-      // "No. of breaks 100 spindles / hr" on the frontend (noOfBreaksPer100Spindles) — breaks in
-      // that column as a percentage of running spindles, distinct from the ratio above (which is
-      // that column's share of the grand total breaks, not spindle-relative).
-      const per100Sh = runningSpdl > 0 ? toWholePercent((col.total * 100) / runningSpdl) : 0;
-      derivedRows.push({
-        item_name: `${col.name} BREAKS/100SH`,
-        status_value: per100Sh
-      });
-    }
-
-    for (const row of derivedRows) {
-      await client.query(
-        `INSERT INTO simplex.smx_breaks_inspection_items
-         (study_id, item_name, status_value, remarks)
-         VALUES ($1, $2, $3, $4)`,
-        [study_id, row.item_name, String(row.status_value), 'derived']
-      );
-    }
+    // Hank/Start Time/End Time/Total Minutes/Idle Spindles/Total Spdl/Running Spdl and the
+    // Grand Total/percentage summary figures used to also be written here as extra "derived"
+    // rows into smx_breaks_inspection_items (remarks='derived'). That was pure duplication for
+    // the first group - hank/total_spdl/idle_spindles/running_spdl/end_time/total_minutes are
+    // already real columns on smx_other_field_values below, and start_time is that table's own
+    // `time` column - and actively wrong for the second group: the "stop accumulating after the
+    // first SLIVER BREAKS item" logic above only ever summed the *first* length-range row once
+    // the table stopped being a fixed single row, silently ignoring every row after it (e.g. a
+    // real Grand Total of 36 across two length rows was being stored as 15, just the first row's
+    // total). Neither group is read back anywhere in Custom Report (grep confirms nothing looks
+    // up those item_name labels), so this table now only ever holds the real length-range x
+    // break-type matrix cells inserted above. Grand Total/Overall Breakage % are instead stored
+    // as real columns on smx_other_field_values below, from the frontend's own already-computed
+    // values (see other_field_values.break_count/overall_breakage_percent) rather than
+    // recomputed here - GET /list reads them back as-stored.
 
     // Insert user fiber parameters
     if (user_fiber_parameters) {
@@ -1485,16 +1477,18 @@ router.post('/study', async (req, res, next) => {
 
     // Insert other field values
     if (other_field_values) {
-      const providedBreakArray = parseBreakArray(other_field_values.break_count);
-      // grandTotalBreaks (the real per-cell sum from the break matrix, now populated by the
-      // inspection_items/items fix above) takes priority — providedBreakArray.length was always 1
-      // for any plain-number break_count value (parseBreakArray splits on ',', and a bare number
-      // has none), so it silently overrode the real total before this reorder.
-      const computedBreakCount = grandTotalBreaks || providedBreakArray.length || derivedBreakCount;
+      // The frontend already computed this exact number (grandTotal in SMXBreaksStudyReport.jsx)
+      // and sent it as other_field_values.break_count - trust and store that directly rather than
+      // a server-side recount, same reasoning as overall_breakage_percent above. Falls back to
+      // the server's own per-cell count only when a caller doesn't send break_count at all.
+      const providedBreakCount = toNumberOrNull(other_field_values.break_count);
+      const computedBreakCount = providedBreakCount !== null
+        ? providedBreakCount
+        : (grandTotalBreaks || derivedBreakCount);
       const siderName = String(req.body?.s_name ?? other_field_values.s_name ?? other_field_values.sider_name ?? '').trim();
+      // sider_name now has its own column (see INSERT below) - no longer packed into remarks.
       const remarksBlock = [
         other_field_values.remarks || null,
-        siderName ? `S.NAME:${siderName}` : null,
         startTime?.hhmm ? `START:${startTime.hhmm}` : null,
         endTime?.hhmm ? `END:${endTime.hhmm}` : null,
         totalMinutes !== null ? `TOTAL_MINUTES:${totalMinutes}` : null
@@ -1504,8 +1498,9 @@ router.post('/study', async (req, res, next) => {
          (study_id, time, break_count, remarks,
           study_type, end_time, total_minutes, start_hk, finish_hk, hank,
           total_spdl, idle_spindles, running_spdl,
-          tpi, tpm, average_speed, mixing, roving_hk, doff_length, rh_percent, temp_percent)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+          tpi, tpm, average_speed, mixing, roving_hk, doff_length, rh_percent, temp_percent,
+          overall_breakage_percent, sider_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
         [
           study_id,
           // `time` is a Postgres `time without time zone` column — it can't hold a "08:00-16:00"
@@ -1531,9 +1526,49 @@ router.post('/study', async (req, res, next) => {
           other_field_values.roving_hk || null,
           other_field_values.doff_length || null,
           other_field_values.rh_percent || null,
-          other_field_values.temp_percent || null
+          other_field_values.temp_percent || null,
+          overallBreakagePct,
+          siderName || null
         ]
       );
+
+      // Same trust-the-frontend reasoning as break_count/overall_breakage_percent - these are the
+      // two per-column summary rows (TOTAL BREAKS, NO. OF BREAKS 100 SPINDLES/HR) the screen
+      // shows, sent as {columnLabel: value} objects. Stored as their own rows in
+      // smx_breaks_inspection_items (length_range NULL - they're not tied to any one length
+      // range, they summarize across the whole matrix) rather than JSONB, keeping every
+      // break-related figure in the one table. remarks='summary' distinguishes them from the raw
+      // matrix cells (remarks null/'') without colliding with the old, now-removed
+      // remarks='derived' rows from before this table was trimmed to matrix-only data.
+      const columnTotalBreaks = other_field_values.column_total_breaks;
+      const columnBreaksPer100Sh = other_field_values.column_breaks_per_100sh;
+      const summaryRows = [];
+      // A 0 here just means that break type never happened on this study - not a real recorded
+      // figure worth a row of its own. Skipping it keeps this table free of one row per unused
+      // column on every submission and matches "not shown" for these on the report (nothing to
+      // read back if nothing was ever stored).
+      if (columnTotalBreaks && typeof columnTotalBreaks === 'object') {
+        for (const [columnLabel, value] of Object.entries(columnTotalBreaks)) {
+          const numericValue = toNumberOrNull(value);
+          if (numericValue === null || numericValue === 0) continue;
+          summaryRows.push({ item_name: `${normalizeBreakItemName(columnLabel)} TOTAL BREAKS`, status_value: numericValue });
+        }
+      }
+      if (columnBreaksPer100Sh && typeof columnBreaksPer100Sh === 'object') {
+        for (const [columnLabel, value] of Object.entries(columnBreaksPer100Sh)) {
+          const numericValue = toNumberOrNull(value);
+          if (numericValue === null || numericValue === 0) continue;
+          summaryRows.push({ item_name: `${normalizeBreakItemName(columnLabel)} BREAKS PER 100SH`, status_value: numericValue });
+        }
+      }
+      for (const row of summaryRows) {
+        await client.query(
+          `INSERT INTO simplex.smx_breaks_inspection_items
+           (study_id, item_name, status_value, remarks, length_range)
+           VALUES ($1, $2, $3, 'summary', NULL)`,
+          [study_id, row.item_name, String(row.status_value)]
+        );
+      }
     }
 
     await client.query('COMMIT');
@@ -1572,27 +1607,17 @@ router.post('/study', async (req, res, next) => {
  *         description: List of study reports
  */
 // The save endpoint above (POST /) never stores most of the form's fields as columns on
-// smx_breaks_study_header itself — the length-range x break-type matrix, plus several derived
-// scalars (Hank, Start/End Time, Total Minutes, Idle/Total/Running Spindles, Grand Total breaks,
-// Overall Breakage %) live as individual rows in smx_breaks_inspection_items keyed by item_name,
-// and Sider Name/Start/End/Total Minutes are additionally packed into a single delimited string
-// in smx_other_field_values.remarks ("S.NAME:<x> | START:<hh:mm> | END:<hh:mm> |
-// TOTAL_MINUTES:<n>"). GET /list used to only SELECT * the header table, so Custom Report (and
-// anything else consuming this list) had none of that data to work with and fell back to showing
-// unrelated values (e.g. the row's own id) for every one of those fields. Join both child tables
-// in here and flatten the scalars back onto each row.
-const SMX_BREAKS_DERIVED_ITEM_NAME_TO_FIELD = {
-  'HANK': 'hank',
-  'START TIME': 'derived_start_time',
-  'END TIME': 'derived_end_time',
-  'TOTAL TIME (MINUTES)': 'derived_total_minutes',
-  'IDLE SPINDLES': 'idle_spindles',
-  'TOTAL SPDL': 'total_spindles',
-  'RUNNING SPDL': 'running_spindles',
-  'TOTAL BREAKS (GRAND)': 'grand_total_breaks',
-  'OVERALL BREAKAGE (%)': 'overall_breakage_percent',
-  'TOTAL BREAK (%)': 'total_break_percent',
-};
+// smx_breaks_study_header itself — Hank/Start/End Time/Total Minutes/Idle/Total/Running Spindles/
+// Grand Total Breaks/Overall Breakage % are all real columns on smx_other_field_values instead
+// (start_time is that table's own `time` column), saved exactly as the frontend itself computed
+// and sent them at submit time rather than recomputed here - see the POST handler's own comment
+// on why a second, independently-derived copy risked drifting from what the user actually saw on
+// screen. Sider Name/Start/End/Total Minutes are additionally packed into a single delimited
+// string in `remarks` ("S.NAME:<x> | START:<hh:mm> | END:<hh:mm> | TOTAL_MINUTES:<n>") for older
+// rows saved before the dedicated columns existed. GET /list used to only SELECT * the header
+// table, so Custom Report (and anything else consuming this list) had none of that data to work
+// with and fell back to showing unrelated values (e.g. the row's own id) for every one of those
+// fields. Join the child tables in here and flatten the scalars back onto each row.
 
 const parseSmxOtherFieldsRemarks = (remarks) => {
   const text = String(remarks || '');
@@ -1638,26 +1663,74 @@ router.get('/list', async (req, res, next) => {
     otherFieldsResult.rows.forEach((row) => otherFieldsByStudy.set(row.study_id, row));
 
     const rows = headerResult.rows.map((row) => {
+      // Items now holds two kinds of rows: the raw length-range x break-type matrix cells
+      // (remarks null/''), and the per-column summary rows (remarks='summary', length_range
+      // NULL - see POST handler). Both are also unpacked back into columnTotalBreaks/
+      // columnBreaksPer100Sh below. May still include legacy remarks='derived' rows from before
+      // this table was trimmed to matrix-only data (old submissions this cleanup didn't touch) -
+      // those carry no length_range either and aren't 'summary', so they're just inert leftovers,
+      // harmless to leave in `items` as-is.
       const items = itemsByStudy.get(row.id) || [];
-      const derived = {};
-      items.forEach((item) => {
-        const fieldKey = SMX_BREAKS_DERIVED_ITEM_NAME_TO_FIELD[String(item.item_name || '').trim().toUpperCase()];
-        if (fieldKey) derived[fieldKey] = item.status_value;
-      });
       const otherFieldsRow = otherFieldsByStudy.get(row.id);
       const packed = otherFieldsRow ? parseSmxOtherFieldsRemarks(otherFieldsRow.remarks) : {};
+      const totalMinutes = otherFieldsRow?.total_minutes ?? packed.total_minutes ?? null;
+      const runningSpdl = otherFieldsRow?.running_spdl ?? null;
+      // Grand Total and Overall Breakage % are exactly what the frontend itself computed and
+      // sent at submit time (break_count / overall_breakage_percent on smx_other_field_values) -
+      // read back as-stored rather than recomputed here, so what Custom Report shows always
+      // matches what the user actually saw on screen when they submitted, with no risk of a
+      // second, independently-rounded copy drifting from it.
+      const grandTotalBreaks = otherFieldsRow?.break_count ?? 0;
+      const overallBreakagePercent = otherFieldsRow?.overall_breakage_percent ?? 0;
+      // Same as above, for the two per-column summary rows - stored as their own
+      // remarks='summary' rows in `items` (see POST handler), rebuilt back into
+      // {columnLabel: value} objects here by stripping the " TOTAL BREAKS"/" BREAKS PER 100SH"
+      // suffix each row's item_name was given at insert time.
+      const columnTotalBreaks = {};
+      const columnBreaksPer100Sh = {};
+      items.forEach((item) => {
+        if (item.remarks !== 'summary') return;
+        const name = String(item.item_name || '');
+        if (name.endsWith(' TOTAL BREAKS')) {
+          columnTotalBreaks[name.slice(0, -' TOTAL BREAKS'.length)] = Number(item.status_value);
+        } else if (name.endsWith(' BREAKS PER 100SH')) {
+          columnBreaksPer100Sh[name.slice(0, -' BREAKS PER 100SH'.length)] = Number(item.status_value);
+        }
+      });
 
       return {
         ...row,
         items,
-        ...derived,
-        // Prefer the dedicated derived item rows (computed straight from the form's own
-        // start/end time inputs); fall back to the packed remarks copy for older entries saved
-        // before this GET endpoint existed to read either source.
-        start_time: derived.derived_start_time || packed.start_time || null,
-        end_time: derived.derived_end_time || packed.end_time || null,
-        total_minutes: derived.derived_total_minutes ?? packed.total_minutes ?? null,
-        sider_name: packed.sider_name || null,
+        hank: otherFieldsRow?.hank ?? null,
+        idle_spindles: otherFieldsRow?.idle_spindles ?? null,
+        total_spindles: otherFieldsRow?.total_spdl ?? null,
+        running_spindles: runningSpdl,
+        grand_total_breaks: grandTotalBreaks,
+        overall_breakage_percent: overallBreakagePercent,
+        total_break_percent: overallBreakagePercent,
+        column_total_breaks: columnTotalBreaks,
+        column_breaks_per_100sh: columnBreaksPer100Sh,
+        // Prefer the dedicated columns saved directly on smx_other_field_values; fall back to the
+        // packed remarks copy for older entries saved before those columns existed.
+        start_time: otherFieldsRow?.time || packed.start_time || null,
+        end_time: otherFieldsRow?.end_time || packed.end_time || null,
+        total_minutes: totalMinutes,
+        sider_name: otherFieldsRow?.sider_name || packed.sider_name || null,
+        // These were saved on smx_other_field_values (see POST /study above) but never actually
+        // read back here - Custom Report's field catalog lists TPI/TPM/Average Speed/Mixing/
+        // Roving HK/Doff Length/RH%/TEMP%/Start HK/Finish HK, but with nothing on the row to
+        // match against, every one of them fell through to the report's last-resort "first
+        // non-empty value anywhere on the row" fallback and all showed the row's own `id` instead.
+        tpi: otherFieldsRow?.tpi ?? null,
+        tpm: otherFieldsRow?.tpm ?? null,
+        average_speed: otherFieldsRow?.average_speed ?? null,
+        mixing: otherFieldsRow?.mixing ?? null,
+        roving_hk: otherFieldsRow?.roving_hk ?? null,
+        doff_length: otherFieldsRow?.doff_length ?? null,
+        rh_percent: otherFieldsRow?.rh_percent ?? null,
+        temp_percent: otherFieldsRow?.temp_percent ?? null,
+        start_hk: otherFieldsRow?.start_hk ?? null,
+        finish_hk: otherFieldsRow?.finish_hk ?? null,
       };
     });
 

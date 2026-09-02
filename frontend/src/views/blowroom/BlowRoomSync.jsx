@@ -263,8 +263,6 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     },
     getPreviewData: () => {
       const header = [
-        { label: "Type", value: selectedTypeName || form.type },
-        { label: "Entry ID", value: entryId || "-" },
         { label: "Line No.", value: form.lineNo },
         { label: "Variety", value: form.variety },
         { label: "Checked By", value: form.checkedBy },

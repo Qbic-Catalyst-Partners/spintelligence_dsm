@@ -13,6 +13,7 @@ function DrawFrameCotsSection({
   handleFormChange,
   machineEntries,
   handleMachineChange,
+  errors = {},
 }) {
   return (
     <>
@@ -22,7 +23,7 @@ function DrawFrameCotsSection({
           type="date"
           value={form.date}
           onChange={(e) => handleFormChange("date", e.target.value)}
-          className={styles.input}
+          className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`}
         />
       </div>
 
@@ -31,7 +32,7 @@ function DrawFrameCotsSection({
         <select
           value={form.shift}
           onChange={(e) => handleFormChange("shift", e.target.value)}
-          className={styles.select}
+          className={`${styles.select} ${errors.header?.shift ? styles.inputError : ""}`}
         >
           {shiftOptions.map((option) => (
             <option key={option} value={option}>
@@ -46,7 +47,7 @@ function DrawFrameCotsSection({
         <select
           value={form.processType}
           onChange={(e) => handleFormChange("processType", e.target.value)}
-          className={styles.select}
+          className={`${styles.select} ${errors.header?.processType ? styles.inputError : ""}`}
         >
           {processTypeOptions.map((option) => (
             <option key={option} value={option}>
@@ -68,7 +69,7 @@ function DrawFrameCotsSection({
               </div>
 
               <div className={styles.machineGrid}>
-                <div className={styles.field}>
+                <div className={`${styles.field} ${errors.machines?.[index]?.fanWaste ? styles.inputError : ""}`}>
                   <label className={styles.label}>Fan Waste</label>
                   <div className={styles.radioGroup}>
                     {cleanUncleanOptions.map((option) => (
@@ -86,7 +87,7 @@ function DrawFrameCotsSection({
                   </div>
                 </div>
 
-                <div className={styles.field}>
+                <div className={`${styles.field} ${errors.machines?.[index]?.cotChange ? styles.inputError : ""}`}>
                   <label className={styles.label}>Cot Change</label>
                   <div className={styles.radioGroup}>
                     {yesNoOptions.map((option) => (
@@ -104,7 +105,7 @@ function DrawFrameCotsSection({
                   </div>
                 </div>
 
-                <div className={styles.field}>
+                <div className={`${styles.field} ${errors.machines?.[index]?.stripperWaste ? styles.inputError : ""}`}>
                   <label className={styles.label}>Stripper Waste</label>
                   <div className={styles.radioGroup}>
                     {cleanUncleanOptions.map((option) => (
@@ -136,7 +137,7 @@ function DrawFrameCotsSection({
                       />
                     </div>
 
-                    <div className={styles.field}>
+                    <div className={`${styles.field} ${errors.machines?.[index]?.autoLevel ? styles.inputError : ""}`}>
                       <label className={styles.label}>Auto Leveller Status</label>
                       <div className={styles.radioGroup}>
                         {onOffOptions.map((option) => (
@@ -154,7 +155,7 @@ function DrawFrameCotsSection({
                       </div>
                     </div>
 
-                    <div className={styles.field}>
+                    <div className={`${styles.field} ${errors.machines?.[index]?.silverMon ? styles.inputError : ""}`}>
                       <label className={styles.label}>Sliver Monitor</label>
                       <div className={styles.radioGroup}>
                         {onOffOptions.map((option) => (
@@ -177,14 +178,14 @@ function DrawFrameCotsSection({
                       <input
                         value={machine.massThick}
                         onChange={(e) => handleMachineChange(index, "massThick", e.target.value)}
-                        className={styles.input}
+                        className={`${styles.input} ${errors.machines?.[index]?.massThick ? styles.inputError : ""}`}
                         inputMode="decimal"
                         type="number"
                         step="any"
                       />
                     </div>
 
-                    <div className={styles.field}>
+                    <div className={`${styles.field} ${errors.machines?.[index]?.scanningR ? styles.inputError : ""}`}>
                       <label className={styles.label}>Scanning Roller Area</label>
                       <div className={styles.radioGroup}>
                         {cleanUncleanOptions.map((option) => (

@@ -1402,10 +1402,7 @@ const fetchAutoconerMasterData = async (query = {}) => {
         FROM dbo.MCMASTER m
         JOIN dbo.dept_mai d ON m.DEPTCODE = d.DEPTCODE
         WHERE m.compcode = '1'
-          AND (
-            LOWER(LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255))))) LIKE '%autoconer%'
-            OR LOWER(LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255))))) LIKE '%autocone%'
-          )
+          AND m.DEPTCODE = 19
           AND LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) <> ''
         ORDER BY autoconer_no
       `)

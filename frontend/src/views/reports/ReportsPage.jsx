@@ -1121,13 +1121,13 @@ const normalizeBetweenWithinCardRows = (inspectionType) => (response) =>
 // original machine name/label can be reconstructed later purely from the column key — see
 // machineSlugToLabel below.
 const slugifyMachineName = (machine) => String(machine ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
-const machineSlugToLabel = (slug) => {
-  const normalized = String(slug ?? "").toLowerCase();
-  if (normalized === "cdg_03" || normalized === "cdg_06") {
-    return "B/R Line 11(CDG 03 &06)";
-  }
-  return String(slug ?? "").toUpperCase().replace(/_/g, "-");
-};
+// CDG-03 and CDG-06 used to be special-cased here to display as "B/R Line 11(CDG 03 &06)" - a
+// leftover from when the master-machines dropdown (backend's LIKE '%CDG%') incorrectly let Blow
+// Room's "B/R LINE 11 (CDG 03 & 06)" line through as a pickable Carding machine, so a real
+// submission's slug briefly collided with that name. Now that the dropdown is anchored to
+// 'CDG%' (backend/routes/carding.js), CDG-03/CDG-06 are just two genuine Carding machines and
+// should show their own real name like every other machine, not a Blow Room label.
+const machineSlugToLabel = (slug) => String(slug ?? "").toUpperCase().replace(/_/g, "-");
 
 const normalizeCardThickPlaceRows = (response) =>
   extractResponseRows(response).map((row) => {
@@ -1267,9 +1267,10 @@ const normalizeSpinningCountChangeRows = (response) =>
     };
   });
 
-// Spinning's "Ring Frame Log Book" always submits a fixed 24 machine rows (spinning.js's
-// createRingFrameRows()/RING_FRAME_RF_TOTAL — machine numbers 1-24, unlike Count Change/Yarn CV's
-// genuinely variable reading count) plus one summary block per submission. The GET route already
+// Spinning's "Ring Frame Log Book" used to always submit a fixed 24 machine rows; it now starts
+// with 1 row and lets the user add/delete rows (same +/delete pattern as Card DFK Data/SMX Breaks
+// Study Report), sending only the rows a machine was actually picked for — a genuinely variable
+// count per submission now, like Count Change/Yarn CV. The GET route already
 // joins both back as a `rows` array (mc_no, lycra, bobbin_color, bobbin_checked,
 // spindle_1..6, guide_roll_lapping, lycra_missing, others, total) and a `summary` object
 // (out_of_center[_ac/_rf], fault_cops[_ac/_rf], total_cops[_ac/_rf], comments), but Custom Report
@@ -2077,6 +2078,18 @@ const parseSmxBreaksStudyFieldLabel = (label) => {
   return SMX_BREAKS_STUDY_COLUMNS.includes(columnLabel) ? { lengthRange: match[1], columnLabel } : null;
 };
 
+// A break-matrix cell can hold several individual break readings (the entry form's placeholder is
+// literally "1,2,3" - a plain comma-separated list typed as-is). The backend stores that list as a
+// Postgres array-literal STRING on the varchar status_value column (e.g. "{1,5,5}" for 3 readings)
+// so every individual reading survives, not just a count. Custom Report was showing that raw
+// "{1,5,5}" literal - braces included - instead of the plain "1,5,5" the user actually typed and
+// sees on the entry screen itself. Strip the braces back off so the report matches the source.
+const formatSmxBreaksStudyCellValue = (rawValue) => {
+  const text = String(rawValue ?? "").trim();
+  if (!text) return rawValue;
+  return text.startsWith("{") && text.endsWith("}") ? text.slice(1, -1) : text;
+};
+
 const getSmxBreaksStudyCellValue = (row, fieldLabel) => {
   const parsed = parseSmxBreaksStudyFieldLabel(fieldLabel);
   if (!parsed) return undefined;
@@ -2086,7 +2099,7 @@ const getSmxBreaksStudyCellValue = (row, fieldLabel) => {
       normalizeLookupKey(item?.item_name) === normalizeLookupKey(parsed.columnLabel) &&
       normalizeLookupKey(item?.length_range) === normalizeLookupKey(parsed.lengthRange)
   );
-  return match ? match.status_value : undefined;
+  return match ? formatSmxBreaksStudyCellValue(match.status_value) : undefined;
 };
 
 // Simplex's "Stretch %" notebook stores a dynamic number of tables (each with its own meta
@@ -2818,12 +2831,38 @@ const normalizeForDedupKey = (value) =>
     .replace(/-/g, "minus")
     .replace(/[^a-z0-9]+/g, "");
 
+// getCanonicalReportFieldKey used to rebuild `Object.entries(reportFieldAliases)` (~200+ entries)
+// and re-normalize every alias candidate on every single call, with no caching. For most report
+// types (~20-40 fields) that's cheap enough not to notice, but "SMX Breaks Study Report" has a
+// ~155-field catalog (13 length ranges x 9 break types, see fieldCatalog.js) and this function
+// used to be called inside an O(N^2) dedup filter (see computeCatalogFieldsForType below) - the
+// combination was tens of millions of regex/string operations on the main thread, freezing the
+// tab ("Page Unresponsive") whenever this report type's fields were computed or re-selected.
+// Precomputing the alias table into a flat Map once (module load) makes each lookup O(1) instead
+// of O(A), and caching results by raw field key makes repeat lookups free.
+const canonicalReportFieldKeyByAlias = new Map();
+Object.entries(reportFieldAliases).forEach(([label, aliases]) => {
+  const canonicalKey = normalizeForDedupKey(label);
+  [label, ...aliases].forEach((candidate) => {
+    const normalizedCandidate = normalizeForDedupKey(candidate);
+    // First-declared-label-wins, matching the original Object.entries(...).find()'s iteration
+    // order — only set if some earlier label hasn't already claimed this exact alias string.
+    if (!canonicalReportFieldKeyByAlias.has(normalizedCandidate)) {
+      canonicalReportFieldKeyByAlias.set(normalizedCandidate, canonicalKey);
+    }
+  });
+});
+const canonicalReportFieldKeyCache = new Map();
+
 const getCanonicalReportFieldKey = (field) => {
   const fieldKey = String(field?.key || field?.label || "").trim();
-  const matchedAlias = Object.entries(reportFieldAliases).find(([label, aliases]) =>
-    [label, ...aliases].some((candidate) => normalizeForDedupKey(candidate) === normalizeForDedupKey(fieldKey))
-  );
-  return normalizeForDedupKey(matchedAlias ? matchedAlias[0] : fieldKey);
+  if (canonicalReportFieldKeyCache.has(fieldKey)) {
+    return canonicalReportFieldKeyCache.get(fieldKey);
+  }
+  const normalizedFieldKey = normalizeForDedupKey(fieldKey);
+  const canonicalKey = canonicalReportFieldKeyByAlias.get(normalizedFieldKey) ?? normalizedFieldKey;
+  canonicalReportFieldKeyCache.set(fieldKey, canonicalKey);
+  return canonicalKey;
 };
 
 const getReportFieldValue = (row, field) => {
@@ -3283,6 +3322,37 @@ const getCellValue = (row, field, operatorByEntryKey = {}, context = {}) => {
     return cellValue !== null && typeof cellValue !== "undefined" && cellValue !== "" ? String(cellValue) : "-";
   }
 
+  // "Total Breaks - <column>" and "No. of Breaks per 100 Spindles / Hr - <column>" read from
+  // GET /list's column_total_breaks/column_breaks_per_100sh objects ({columnLabel: value}) - the
+  // generic fuzzy fallback below only ever looks at flat top-level row keys, so it can't reach
+  // into a nested object and these always showed blank ("-") no matter what was actually saved.
+  const smxBreaksStudyTotalBreaksMatch = /^Total Breaks - (.+)$/.exec(field.label || field.key || "");
+  if (smxBreaksStudyTotalBreaksMatch && row?.column_total_breaks) {
+    const columnLabel = smxBreaksStudyTotalBreaksMatch[1];
+    const entry = Object.entries(row.column_total_breaks).find(
+      ([label]) => normalizeLookupKey(label) === normalizeLookupKey(columnLabel)
+    );
+    return entry && entry[1] !== null && typeof entry[1] !== "undefined" && entry[1] !== "" ? String(entry[1]) : "-";
+  }
+  const smxBreaksStudyPer100ShMatch = /^No\. of Breaks per 100 Spindles \/ Hr - (.+)$/.exec(field.label || field.key || "");
+  if (smxBreaksStudyPer100ShMatch && row?.column_breaks_per_100sh) {
+    const columnLabel = smxBreaksStudyPer100ShMatch[1];
+    const entry = Object.entries(row.column_breaks_per_100sh).find(
+      ([label]) => normalizeLookupKey(label) === normalizeLookupKey(columnLabel)
+    );
+    return entry && entry[1] !== null && typeof entry[1] !== "undefined" && entry[1] !== "" ? String(entry[1]) : "-";
+  }
+  if ((field.label || field.key) === "Grand Total" && row && "grand_total_breaks" in row) {
+    return row.grand_total_breaks !== null && typeof row.grand_total_breaks !== "undefined" && row.grand_total_breaks !== ""
+      ? String(row.grand_total_breaks)
+      : "-";
+  }
+  if ((field.label || field.key) === "Total No. of Breaks/100SH" && row && "total_break_percent" in row) {
+    return row.total_break_percent !== null && typeof row.total_break_percent !== "undefined" && row.total_break_percent !== ""
+      ? String(row.total_break_percent)
+      : "-";
+  }
+
   // Same reasoning as the A% guard above, for Stretch %'s `tables` array.
   if (parseStretchFieldLabel(field.label || field.key)) {
     const stretchValue = getStretchTableValue(row, field.label || field.key);
@@ -3672,9 +3742,31 @@ function CalendarPanel({ month, onMonthChange, onDateClick, selectedValue, title
   );
 }
 
+// Reports/custom had no persistence at all - department/sub-department/type/Level/Username all
+// hard-reset to their hardcoded defaults on every browser refresh, with nothing to restore a
+// prior selection. That looked like the Level/Username filters "flashing to All" on refresh, when
+// really they just permanently reset (there was never a delayed restore to flash back FROM).
+// sessionStorage persists the selection for the tab's lifetime without leaking it across devices
+// or surviving intentionally past session end, unlike localStorage.
+const REPORTS_FILTER_STORAGE_KEY = "reportsCustomPageFilters";
+const readStoredReportFilters = () => {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(window.sessionStorage.getItem(REPORTS_FILTER_STORAGE_KEY) || "{}") || {};
+  } catch {
+    return {};
+  }
+};
+
 function ReportsPage() {
   const authUser = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
+  // Must NOT read sessionStorage in the useState initializer - that runs on the client's very
+  // first render too (before hydration reconciles against the server-rendered HTML), so the
+  // server (which always sees "no window") and the client would render different text for the
+  // same initial paint and React would throw a hydration mismatch. Always start from the fixed
+  // SSR-safe defaults, then restore the stored selection client-side only, after mount, in the
+  // effect below - by then hydration has already completed against matching output.
   const [department, setDepartment] = useState("Quality Control");
   const [subDepartment, setSubDepartment] = useState("Spinning");
   const [reportType, setReportType] = useState("Process Parameter");
@@ -3682,6 +3774,47 @@ function ReportsPage() {
   const [endDate, setEndDate] = useState(toInputDate(today));
   const [analysisLevel, setAnalysisLevel] = useState("");
   const [analysisUserId, setAnalysisUserId] = useState("");
+  // The initial mount always runs both effects below in the same flush, before any of the
+  // restore effect's setState calls have actually re-rendered - so the persist effect's very
+  // first invocation would otherwise still see the pre-restore defaults and immediately
+  // clobber the storage we just read. Skip exactly that first invocation; every later one (the
+  // re-render the restore triggers, or any real user change) reflects real state and persists.
+  const skipNextFilterPersistRef = useRef(true);
+
+  useEffect(() => {
+    const stored = readStoredReportFilters();
+    // Never restore "Analysis" itself - a refresh should only land there if the user actually
+    // picks it again this session. Restoring it automatically was surfacing the Level/Username
+    // filter (which only renders for that one department) on every refresh whenever an earlier
+    // tab/session had last touched Team Performance, even while the user is really working in a
+    // different department - confusing since nothing on screen explains why it appeared.
+    if (stored.department && !isAnalysisDepartment(stored.department)) {
+      setDepartment(stored.department);
+      if (stored.subDepartment) setSubDepartment(stored.subDepartment);
+      if (stored.reportType) setReportType(stored.reportType);
+    }
+    // Level/Username are meaningless without the Analysis department restored above, so there is
+    // nothing to restore for them here - they only ever populate again once the user deliberately
+    // re-selects that department in this session.
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (skipNextFilterPersistRef.current) {
+      skipNextFilterPersistRef.current = false;
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(
+        REPORTS_FILTER_STORAGE_KEY,
+        JSON.stringify({ department, subDepartment, reportType, analysisLevel, analysisUserId })
+      );
+    } catch {
+      // sessionStorage can throw in private-browsing/quota-exceeded edge cases - losing the
+      // "remember my filters" convenience isn't worth surfacing an error for.
+    }
+  }, [department, subDepartment, reportType, analysisLevel, analysisUserId]);
+
   const [rows, setRows] = useState([]);
   const [rowsByType, setRowsByType] = useState({});
   const [useAllFields, setUseAllFields] = useState(false);
@@ -3812,6 +3945,19 @@ function ReportsPage() {
     String(schedule?.id || schedule?._id || schedule?.scheduleId || schedule?.schedule_id || "");
 
   useEffect(() => {
+    // On every fresh load/refresh, `authUser`/`accessByDepartment` start out empty for one render
+    // before the real access data arrives, so `departments` is briefly []. Correcting department
+    // against an empty list used to fall through to "" here, then - once real access data landed
+    // a tick later - "" wasn't in the (now non-empty) list either, so this fell back to
+    // `departments[0]`. `reportSources` (above) declares "Analysis" as its literal first key, so
+    // for any admin/analysis-report user (who gets the full, unfiltered reportSources - see
+    // getAccessibleReportSources) this silently forced the Department filter to "Analysis" (and
+    // with it, the Level/Username filter) on every single refresh, regardless of what the user
+    // actually had selected. Skip this correction entirely until real access data has loaded -
+    // an already-valid `department` (the default, or one restored from storage) is left alone
+    // during that gap instead of being bounced to "" and then to whatever key happens to be
+    // first in the catalog.
+    if (!departments.length) return;
     const nextDepartment = departments.includes(department) ? department : (departments[0] || "");
     const nextSubDepartments = isAnalysisDepartment(nextDepartment)
       ? getStatisticsSubDepartmentOptions()
@@ -3874,7 +4020,35 @@ function ReportsPage() {
       }
     });
     const backendFields = uniqueOptions(builderInputFields).map(toReportField).filter(Boolean);
-    const rawCatalogFields = uniqueOptions(getThresholdFieldsForScreen(typeName, subDepartmentName)).map(toReportField).filter(Boolean);
+    // "SMX Breaks Study Report"'s catalog has a fixed 13 (length range) x 9 (break type) = 117
+    // per-cell columns, generated for every possible combination whether or not any submission
+    // ever fills it in — most studies only ever record a handful of these cells. Showing all 117
+    // (plus ~38 other fields) in Available Fields was both misleading (117-9=108 always blank)
+    // and, before the O(N) dedup fix above, the direct cause of a "Page Unresponsive" freeze.
+    // Narrow the per-cell columns down to only the (length range, break type) combos that some
+    // loaded row actually has real data for — every other field (scalar header fields, summary
+    // columns) is left untouched.
+    const smxBreaksStudyPresentCombos = typeName === "SMX Breaks Study Report"
+      ? typeRows.reduce((set, row) => {
+          const items = Array.isArray(row?.items) ? row.items : [];
+          items.forEach((item) => {
+            if (!item?.length_range) return; // summary rows carry no length_range - not a matrix cell
+            set.add(`${normalizeLookupKey(item.item_name)}|${normalizeLookupKey(item.length_range)}`);
+          });
+          return set;
+        }, new Set())
+      : null;
+    const rawCatalogFields = uniqueOptions(getThresholdFieldsForScreen(typeName, subDepartmentName))
+      .map(toReportField)
+      .filter(Boolean)
+      .filter((field) => {
+        if (!smxBreaksStudyPresentCombos) return true;
+        const parsed = parseSmxBreaksStudyFieldLabel(field.label || field.key);
+        if (!parsed) return true;
+        return smxBreaksStudyPresentCombos.has(
+          `${normalizeLookupKey(parsed.columnLabel)}|${normalizeLookupKey(parsed.lengthRange)}`
+        );
+      });
     // getThresholdFieldsForScreen is keyed by type name only, and a few names (e.g. "Process
     // Parameter") are reused across unrelated departments with different field sets — for those,
     // only keep catalog fields that actually exist on the typeRows fetched for this dept/type. Names
@@ -3977,17 +4151,29 @@ function ReportsPage() {
         ["Count CV %", "Strength CV %"].includes(label)
       );
     };
-    const definedFields = [...backendFields, ...catalogFields].filter(
-      (field, index, list) =>
-        field?.key &&
-        !excludedFieldKeys.has(getCanonicalReportFieldKey(field)) &&
-        !isOperatorLikeField(field) &&
-        !isEntryIdLikeField(field) &&
-        !isRawCardThickPlaceField(field) &&
-        !isRawCardDfkField(field) &&
-        !isRawSpinningCountChangeField(field) &&
-        index === list.findIndex((item) => getCanonicalReportFieldKey(item) === getCanonicalReportFieldKey(field))
-    );
+    // "unique by canonical key" used to be `list.findIndex(...) === index` - O(N^2) in field
+    // count. Harmless for a ~20-40 field catalog, but "SMX Breaks Study Report"'s ~155-field
+    // catalog turned this into tens of thousands of re-scans and was the actual cause of the
+    // "Page Unresponsive" freeze on that report type (see getCanonicalReportFieldKey above).
+    // A Set of canonical keys seen so far makes this O(N).
+    const seenCanonicalFieldKeys = new Set();
+    const definedFields = [...backendFields, ...catalogFields].filter((field) => {
+      if (!field?.key) return false;
+      const canonicalKey = getCanonicalReportFieldKey(field);
+      if (
+        excludedFieldKeys.has(canonicalKey) ||
+        isOperatorLikeField(field) ||
+        isEntryIdLikeField(field) ||
+        isRawCardThickPlaceField(field) ||
+        isRawCardDfkField(field) ||
+        isRawSpinningCountChangeField(field) ||
+        seenCanonicalFieldKeys.has(canonicalKey)
+      ) {
+        return false;
+      }
+      seenCanonicalFieldKeys.add(canonicalKey);
+      return true;
+    });
     // When this notebook type has a defined field set, show only those fields — no extra
     // columns pulled in from the raw row shape (ids, internal/meta keys, etc). Only fall back
     // to inferring fields from the typeRows when nothing is defined for this screen at all.
@@ -4356,14 +4542,14 @@ function ReportsPage() {
     const withCountChangeColumns = countChangeReadingFields.length
       ? [...withYarnCvColumns, ...countChangeReadingFields]
       : withYarnCvColumns;
-    // Unlike Count Change/Yarn CV (genuinely variable N), Ring Frame Log Book's grid is a fixed
-    // 24-row table every time (spinning.js's createRingFrameRows() always builds RING_FRAME_RF_TOTAL
-    // = 24 typeRows, machine numbers 1-24, and the backend always inserts all 24 regardless of which
-    // ones the user actually filled in) — so these fields must always be offered, not only once a
-    // submission happens to be loaded. Deriving the count from `typeRows` (like the truly-variable
-    // screens do) meant Available Fields showed nothing for these columns until a report with data
-    // in the selected date range had actually loaded. Take the max of the fixed 24 and whatever's
-    // actually on a loaded row, so a future row with more than 24 still isn't clipped.
+    // Ring Frame Log Book used to always submit a fixed 24-row grid, so these fields were always
+    // offered regardless of loaded data. It now starts at 1 row with add/delete buttons (same
+    // pattern as Card DFK Data/SMX Breaks Study Report) and only the machines actually checked
+    // get sent/stored — genuinely variable per submission now, like Count Change/Yarn CV. A
+    // hardcoded floor of 24 here would keep offering up to 312 always-blank fields (13 metrics x
+    // 24 rows) no matter how few rows any real submission actually has, which is exactly the
+    // "empty fields cluttering the catalog" problem already fixed for SMX Breaks Study Report's
+    // matrix. Derive the count purely from what's actually on loaded rows instead.
     const isRingFrameLogBookReport = subDepartmentName === "Spinning" && typeName === "Ring Frame Log Book";
     const ringFrameRowCount = isRingFrameLogBookReport
       ? typeRows.reduce((max, row) => {
@@ -4372,7 +4558,7 @@ function ReportsPage() {
             count += 1;
           }
           return Math.max(max, count);
-        }, 24)
+        }, 0)
       : 0;
     const ringFrameRowFields = Array.from({ length: ringFrameRowCount }, (_, index) => {
       const n = index + 1;

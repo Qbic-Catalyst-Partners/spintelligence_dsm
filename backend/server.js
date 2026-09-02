@@ -209,7 +209,15 @@ const ENTRY_ID_ROUTE_TABLES = {
   // drift behind what's really in the table and reissue an id that already exists,
   // failing the save with "duplicate key value violates ... parameter_entries_entry_id_uq".
   '/autoconer/parameter-entries/pending-csp': 'autoconer.parameter_entries',
-  '/autoconer/parameter-entries/pending-quality': 'autoconer.parameter_entries'
+  '/autoconer/parameter-entries/pending-quality': 'autoconer.parameter_entries',
+  // Without a table mapping, next-id for these two SMX Breaks Study Report routes was computed
+  // only from ticketing_system.frontend_entry_registry, which had zero rows for either route_path
+  // (reservations for this screen were never actually landing there under the right key) - so the
+  // "next" id kept coming back as 1 regardless of how many real rows already existed in the header
+  // table. Scanning the real table directly fixes that drift at the source, same as the autoconer
+  // mappings above.
+  '/simplex/list': 'simplex.smx_breaks_study_header',
+  '/simplex/study': 'simplex.smx_breaks_study_header'
 };
 
 const ENTRY_ID_ROUTE_PREFIXES = {
@@ -230,7 +238,19 @@ const ENTRY_ID_ROUTE_PREFIXES = {
   // invoked directly (bypassing the frontend's own per-study reservation + per-tuft "-01"
   // suffixing) — that's how blowroom.drop_test ended up with unprefixed entry_id rows like
   // "0004", "0005", "0006".
-  '/blowroom/drop-test': { prefix: 'BDT', width: 4, separator: '-' }
+  '/blowroom/drop-test': { prefix: 'BDT', width: 4, separator: '-' },
+  // Same missing-mapping bug as drop-test above, for SMX Breaks Study Report - useDatabaseEntryId
+  // reserves via GET /entry-id/next?route_path=/simplex/list (screenCatalog.js's config.routePath
+  // for this screen), which without this entry fell through to the bare-number fallback too,
+  // producing unprefixed rows like "0006" instead of "SBS-0006".
+  '/simplex/list': { prefix: 'SBS', width: 4, separator: '-' },
+  // The GET /simplex/list mapping above only covers the frontend's preview call. The actual save
+  // goes to POST /simplex/study - a DIFFERENT route_path. Whenever the frontend's reserved id
+  // doesn't make it into the POST body, the global reservation middleware (server.js's POST
+  // interceptor) computes a fresh id keyed by THIS route_path, and without a mapping here it also
+  // fell through to the bare-number fallback - the real cause of study_id=11 saving as unprefixed
+  // "0007" instead of "SBS-0011" even after the /simplex/list mapping was added.
+  '/simplex/study': { prefix: 'SBS', width: 4, separator: '-' }
 };
 
 // Extract only the TRAILING run of digits (the actual sequence number), not

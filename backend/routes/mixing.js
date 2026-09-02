@@ -2140,28 +2140,19 @@ router.post('/openness', async (req, res, next) => {
 
     await client.query('COMMIT');
 
-    let ticket = null;
-    if (Array.isArray(entries) && entries.length) {
-      const values = {};
-      entries.forEach((e, idx) => {
-        values[`entry_${idx + 1}_actual_op_value`] = e.actual_op_value;
-      });
-      ticket = await autoCreateTicket({
-        screenKey: 'openness',
-        machine_name: req.body.machine_name || SCREEN_NAMES.openness,
-        department: req.body.department || req.body.management_field,
-        sub_department: req.body.sub_department || req.body.erp_product_code,
-        user_name: req.body.user_name,
-        values,
-        entry_id: savedEntryId
-      });
-    }
-
+    // Value Threshold ticket generation for this screen now happens client-side
+    // (frontend/src/views/mixing/opennessDataEntry.jsx would call
+    // createThresholdViolationTickets, same as Cotton HVI/Fibre/AFIS/Moisture) -
+    // calling autoCreateTicket here too used to run after COMMIT with no
+    // department/sub_department ever supplied by the frontend, so it always
+    // resolved to null but still risked turning a genuinely successful save
+    // into a reported 500 if it ever threw (the catch below issues a ROLLBACK
+    // that no longer has a transaction to roll back).
     res.status(201).json({
       message: "Openness created successfully",
       inspection_id: inspectionId,
       entry_id: savedEntryId,
-      ticket
+      ticket: null
     });
 
   } catch (error) {

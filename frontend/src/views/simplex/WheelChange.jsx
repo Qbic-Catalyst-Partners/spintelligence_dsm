@@ -330,6 +330,7 @@ const WheelChange = forwardRef(function WheelChange(
   ).trim();
   const [form, setForm] = useState(createInitialForm);
   const [rows, setRows] = useState(createEmptyRows);
+  const [errors, setErrors] = useState({});
   const [machineOptions, setMachineOptions] = useState([]);
   const [mixingOptions, setMixingOptions] = useState([]);
   const [submitError, setSubmitError] = useState("");
@@ -678,6 +679,7 @@ const WheelChange = forwardRef(function WheelChange(
   const clear = () => {
     setForm(createInitialForm());
     setRows(createEmptyRows());
+    setErrors({});
     setSubmitError("");
     setUnapprovedEntry(null);
     setCustomFieldValues({});
@@ -685,7 +687,15 @@ const WheelChange = forwardRef(function WheelChange(
     lastLoadedMachineOnlyRef.current = "";
   };
 
-  const validate = () => Boolean(selectedTypeName && form.smxNo && form.smxNoProposed);
+  const validate = () => {
+    const nextErrors = {};
+    if (!String(selectedTypeName || "").trim()) nextErrors.type = true;
+    if (!String(form.smxNo || "").trim()) nextErrors.smxNo = true;
+    if (!String(form.smxNoProposed || "").trim()) nextErrors.smxNoProposed = true;
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
 
   const getPreviewData = () => [
     ...(unapprovedEntry
@@ -973,9 +983,20 @@ const WheelChange = forwardRef(function WheelChange(
           <div className="flex min-w-0 flex-col gap-2">
             <label className="text-[14px] font-semibold text-slate-700">Type</label>
             <select
-              className="w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700"
+              className={`w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700${
+                errors.type ? " border-red-500 bg-red-50" : ""
+              }`}
+              style={errors.type ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : undefined}
               value={selectedTypeName}
-              onChange={(e) => onTypeChange?.(e.target.value)}
+              onChange={(e) => {
+                onTypeChange?.(e.target.value);
+                setErrors((current) => {
+                  if (!current.type) return current;
+                  const next = { ...current };
+                  delete next.type;
+                  return next;
+                });
+              }}
             >
               <option value="">Select checking type</option>
               {typeOptions.map((item, idx) => {
@@ -1002,9 +1023,19 @@ const WheelChange = forwardRef(function WheelChange(
           <div className="flex min-w-0 flex-col gap-2">
             <label className="text-[14px] font-semibold text-slate-700">SMX No.</label>
             <SearchableSelect
-              className="w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700"
+              className={`w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700${
+                errors.smxNo ? " border-red-500 bg-red-50" : ""
+              }`}
               value={form.smxNo}
-              onChange={(value) => setForm((current) => ({ ...current, smxNo: value }))}
+              onChange={(value) => {
+                setForm((current) => ({ ...current, smxNo: value }));
+                setErrors((current) => {
+                  if (!current.smxNo) return current;
+                  const next = { ...current };
+                  delete next.smxNo;
+                  return next;
+                });
+              }}
               options={machineOptions}
               placeholder="Select"
               ariaLabel="SMX No."
@@ -1014,9 +1045,19 @@ const WheelChange = forwardRef(function WheelChange(
           <div className="flex min-w-0 flex-col gap-2">
             <label className="text-[14px] font-semibold text-slate-700">SMX No. (Proposed)</label>
             <SearchableSelect
-              className="w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700"
+              className={`w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700${
+                errors.smxNoProposed ? " border-red-500 bg-red-50" : ""
+              }`}
               value={form.smxNoProposed}
-              onChange={(value) => setForm((current) => ({ ...current, smxNoProposed: value }))}
+              onChange={(value) => {
+                setForm((current) => ({ ...current, smxNoProposed: value }));
+                setErrors((current) => {
+                  if (!current.smxNoProposed) return current;
+                  const next = { ...current };
+                  delete next.smxNoProposed;
+                  return next;
+                });
+              }}
               options={machineOptions}
               placeholder="Select"
               ariaLabel="SMX No. Proposed"

@@ -113,6 +113,7 @@ function DrumWiseAppearance({
           boxShadow: "0 0 0 1000px #fff1f2 inset",
         }
       : undefined;
+  const errorClass = (flag) => (flag ? styles.errorField : "");
 
   const savedRows = useMemo(
     () => savedEntries.flatMap((entry) => mapDrumWiseEntryToRows(entry)).slice(0, 10),
@@ -430,7 +431,19 @@ function DrumWiseAppearance({
         <div className={styles.formGrid}>
           <div className={styles.field}>
             <label>Type</label>
-            <select value={selectedType} onChange={(e) => onTypeChange(e.target.value)} style={errorStyle(errors.type)}>
+            <select
+              value={selectedType}
+              onChange={(e) => {
+                onTypeChange(e.target.value);
+                setErrors((current) => {
+                  if (!current.type) return current;
+                  const next = { ...current };
+                  delete next.type;
+                  return next;
+                });
+              }}
+              className={errorClass(errors.type)}
+            >
               {types.map((type) => {
                 const optionValue =
                   typeof type === "string"
@@ -469,7 +482,7 @@ function DrumWiseAppearance({
                   return next;
                 });
               }}
-              style={errorStyle(errors.testNo)}
+              className={errorClass(errors.testNo)}
               placeholder="Enter Test No"
             />
           </div>
@@ -482,9 +495,15 @@ function DrumWiseAppearance({
                 const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
                 setCountName(selected?.label ?? value);
                 setCountCode(selected?.code ?? "");
+                setErrors((current) => {
+                  if (!current.countName) return current;
+                  const next = { ...current };
+                  delete next.countName;
+                  return next;
+                });
               }}
               options={countDropdownOptions.map((option) => option.label)}
-              className={styles.select}
+              className={`${styles.select || ""} ${errorClass(errors.countName)}`.trim()}
               placeholder="Select count name"
             />
           </div>
@@ -493,20 +512,28 @@ function DrumWiseAppearance({
             <label>Auto Coner No.</label>
             <SearchableSelect
               value={autoconerNo}
-              onChange={(value) => setAutoconerNo(value)}
+              onChange={(value) => {
+                setAutoconerNo(value);
+                setErrors((current) => {
+                  if (!current.autoconerNo) return current;
+                  const next = { ...current };
+                  delete next.autoconerNo;
+                  return next;
+                });
+              }}
               options={autoconerDropdownOptions.map((option) => option.value)}
-              className={styles.select}
+              className={`${styles.select || ""} ${errorClass(errors.autoconerNo)}`.trim()}
             />
           </div>
 
           <div className={styles.doubleField}>
             <div className={styles.field}>
               <label>Drum From/To</label>
-              <input type="number" min="1" max="100" step="1" inputMode="numeric" value={drumFrom} onChange={(e) => setDrumFrom(sanitizeDrumRangeInput(e.target.value, { min: 1, max: 100, maxDigits: 3 }))} style={errorStyle(errors.drumFrom || errors.rows)} />
+              <input type="number" min="1" max="100" step="1" inputMode="numeric" value={drumFrom} onChange={(e) => setDrumFrom(sanitizeDrumRangeInput(e.target.value, { min: 1, max: 100, maxDigits: 3 }))} className={errorClass(errors.drumFrom || errors.rows)} />
             </div>
             <div className={styles.field}>
               <label className={styles.hiddenLabel}>To</label>
-              <input type="number" min="1" max="100" step="1" inputMode="numeric" value={drumTo} onChange={(e) => setDrumTo(sanitizeDrumRangeInput(e.target.value, { min: 1, max: 100, maxDigits: 3 }))} style={errorStyle(errors.drumTo || errors.rows)} />
+              <input type="number" min="1" max="100" step="1" inputMode="numeric" value={drumTo} onChange={(e) => setDrumTo(sanitizeDrumRangeInput(e.target.value, { min: 1, max: 100, maxDigits: 3 }))} className={errorClass(errors.drumTo || errors.rows)} />
             </div>
           </div>
         </div>
