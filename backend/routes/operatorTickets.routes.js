@@ -1146,12 +1146,32 @@ const runSubmissionFrequencyCheck = async () => {
       // threshold types) - there's nothing configured to derive a due date
       // from, so this stays unset rather than inventing a default.
       const l1TatDueAt = null;
+      // This ticket has no single triggering entry (it's raised over an
+      // absence of submissions, not a specific one), so there's nothing to
+      // point ot.violation_details->>'entry_id' at when actualCount is 0 -
+      // every UI that reads that field already falls back to "-" correctly.
+      // When the user is short but not at zero, surfacing their most recent
+      // submission to this screen still gives L1/L2 a concrete entry to open
+      // instead of always showing nothing.
+      // eslint-disable-next-line no-await-in-loop
+      const lastEntryRow = actualCount > 0
+        ? await client.query(
+            `SELECT entry_id FROM ticketing_system.submitted_notebooks
+             WHERE submitted_by_user_id = $1
+               AND (input_screen = $2 OR notebook = $2)
+             ORDER BY submitted_at DESC
+             LIMIT 1`,
+            [l1UserId, config.screen_name]
+          )
+        : null;
+      const lastEntryId = lastEntryRow?.rows?.[0]?.entry_id || null;
       const violationDetails = {
         category: 'MISSED_FREQUENCY',
         ticket_type: 'SUBMISSION_FREQUENCY',
         screen_name: config.screen_name,
         required_occurrences: requiredCount,
         actual_occurrences: actualCount,
+        entry_id: lastEntryId,
         window_days: windowDays,
         message: `${config.screen_name} requires ${requiredCount} submission(s) every ${windowDays} day(s); only ${actualCount} submitted.`
       };
@@ -2121,7 +2141,8 @@ router.get('/', async (req, res, next) => {
           ot.ticket_type,
           ot.ticket_kind,
           ot.violation_details,
-          ot.tat_current_level
+          ot.tat_current_level,
+          ot.approval_l1_user_ids
       ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\\D', '', 'g'), '')::bigint DESC, ot.created_at DESC;
     `;
 
@@ -3066,7 +3087,7 @@ router.post('/generate', async (req, res, next) => {
 
 router.get('/thresholds/list', async (req, res, next) => {
   try {
-    const { department, sub_department, notebook, field, l1_user_id, status } = req.query;
+    const { department, sub_department, notebook, input_screen, field, l1_user_id, status } = req.query;
     const where = [];
     const values = [];
 
@@ -3078,8 +3099,19 @@ router.get('/thresholds/list', async (req, res, next) => {
       values.push(sub_department);
       where.push(`vt.sub_department = $${values.length}`);
     }
-    if (notebook) {
-      values.push(notebook);
+    // input_screen is accepted as an alias for notebook - createOperatorTicket
+    // (POST /operator-tickets) reads it as body.input_screen, while this list
+    // endpoint historically only recognized `notebook`. thresholdTicketing.js's
+    // createThresholdViolationTickets() calls this endpoint with input_screen,
+    // which silently matched nothing here, so the notebook filter was skipped
+    // entirely and thresholds from OTHER notebooks in the same sub-department
+    // (matched only by normalized field-name text) leaked into the client-side
+    // violation check - producing a "violation" the stricter, correctly-scoped
+    // getValueThresholdRuleMap() then rejected with "No active value threshold
+    // found for this constraint".
+    const notebookFilter = notebook || input_screen;
+    if (notebookFilter) {
+      values.push(notebookFilter);
       where.push(`vt.notebook = $${values.length}`);
     }
     if (field) {
@@ -3405,6 +3437,22 @@ router.delete('/submission-frequency/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
 
+    // operator_tickets.submission_frequency_config_id is a real FK into this
+    // table, so any ticket ever raised from this config (even a long-closed
+    // one) blocks the DELETE below outright with a foreign-key-violation
+    // 500 - this used to try the DELETE first and only close referencing
+    // tickets afterward, meaning a config that had ever fired even once
+    // could never actually be deleted. Closing and detaching the reference
+    // first (any ticket that hasn't already been "wrapped up" some other
+    // way is settled here - the config it tracked no longer exists) clears
+    // the FK before the DELETE runs.
+    await client.query(
+      `UPDATE ticketing_system.operator_tickets
+       SET status = 'Closed', submission_frequency_config_id = NULL
+       WHERE submission_frequency_config_id = $1`,
+      [id]
+    );
+
     const result = await client.query(
       `DELETE FROM ticketing_system.screen_submission_frequency
        WHERE id = $1
@@ -3415,18 +3463,6 @@ router.delete('/submission-frequency/:id', async (req, res, next) => {
     if (!result.rowCount) {
       return res.status(404).json({ message: 'Submission threshold not found' });
     }
-
-    // Deleting the config that raised a ticket shouldn't leave that ticket
-    // open forever with nothing behind it anymore - the requirement it was
-    // tracking no longer exists, so it's no longer actionable. Tickets carry
-    // this config's id directly (submission_frequency_config_id), so this is
-    // an exact match, not a name-based guess.
-    await client.query(
-      `UPDATE ticketing_system.operator_tickets
-       SET status = 'Closed'
-       WHERE submission_frequency_config_id = $1 AND status <> 'Closed'`,
-      [id]
-    );
 
     res.status(200).json({
       message: 'Submission threshold deleted successfully'

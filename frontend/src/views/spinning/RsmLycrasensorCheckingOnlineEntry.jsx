@@ -14,6 +14,7 @@ function RsmLycrasensorCheckingOnlineEntry({
     rhsRemarks,
     setRhsRemarks,
     maxChars,
+    errors = {},
 }) {
     return (
         <div className={styles["comparison-box"]}>
@@ -27,12 +28,12 @@ function RsmLycrasensorCheckingOnlineEntry({
                         <label>LHS (Spindle Number)</label>
                         <span className={styles.required}>REQUIRED</span>
                     </div>
-                    <input type="text" inputMode="decimal" placeholder="Enter value..." value={lhsValue} onChange={(e) => setLhsValue(sanitizeNumericInput(e.target.value, DECIMAL_10_2_CONFIG))} />
+                    <input type="text" inputMode="decimal" placeholder="Enter value..." value={lhsValue} onChange={(e) => setLhsValue(sanitizeNumericInput(e.target.value, DECIMAL_10_2_CONFIG))} className={errors.lhsValue ? styles["input-error"] : ""} />
                     <div className={styles["remarks-header"]}>
                         <span>LHS Remarks</span>
                         <AiOutlineAudio className={styles["mic-icon"]} />
                     </div>
-                    <textarea placeholder="LHS specific notes..." value={lhsRemarks} maxLength={maxChars} onChange={(e) => setLhsRemarks(e.target.value)} />
+                    <textarea placeholder="LHS specific notes..." value={lhsRemarks} maxLength={maxChars} onChange={(e) => setLhsRemarks(e.target.value)} className={errors.lhsRemarks ? styles["input-error"] : ""} />
                     <div className={styles["char-count"]}>{lhsRemarks.length}/{maxChars}</div>
                 </div>
 
@@ -41,12 +42,12 @@ function RsmLycrasensorCheckingOnlineEntry({
                         <label>RHS (Spindle Number)</label>
                         <span className={styles.required}>REQUIRED</span>
                     </div>
-                    <input type="text" inputMode="decimal" placeholder="Enter value..." value={rhsValue} onChange={(e) => setRhsValue(sanitizeNumericInput(e.target.value, DECIMAL_10_2_CONFIG))} />
+                    <input type="text" inputMode="decimal" placeholder="Enter value..." value={rhsValue} onChange={(e) => setRhsValue(sanitizeNumericInput(e.target.value, DECIMAL_10_2_CONFIG))} className={errors.rhsValue ? styles["input-error"] : ""} />
                     <div className={styles["remarks-header"]}>
                         <span>RHS Remarks</span>
                         <AiOutlineAudio className={styles["mic-icon"]} />
                     </div>
-                    <textarea placeholder="RHS specific notes..." value={rhsRemarks} maxLength={maxChars} onChange={(e) => setRhsRemarks(e.target.value)} />
+                    <textarea placeholder="RHS specific notes..." value={rhsRemarks} maxLength={maxChars} onChange={(e) => setRhsRemarks(e.target.value)} className={errors.rhsRemarks ? styles["input-error"] : ""} />
                     <div className={styles["char-count"]}>{rhsRemarks.length}/{maxChars}</div>
                 </div>
             </div>

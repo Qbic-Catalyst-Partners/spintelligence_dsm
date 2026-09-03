@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
+import { FiPlus, FiTrash2 } from "react-icons/fi";
 
 import CustomInput from "@/components/CustomInput";
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import NotebookCustomFields from "@/components/NotebookCustomFields";
+import { fetchCardingMasterMachines } from "@/apis/carding";
 import { fetchCardingDfkPressure, submitCardingDfkPressure } from "@/store/slices/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
@@ -14,7 +16,7 @@ import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import styles from "./cardingdfk.module.css";
 
 const DFK_TYPE = "Card DFK Data";
-const MACHINE_NAMES = Array.from({ length: 27 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
+const FALLBACK_MACHINE_NAMES = Array.from({ length: 27 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
 const TABLE_COLUMNS = [
   { key: "cw", label: "DFK" },
   { key: "ccd", label: "CCD" },
@@ -28,25 +30,15 @@ const TABLE_COLUMNS = [
   { key: "alRh", label: "AL ON" },
 ];
 
+let dfkRowIdCounter = 0;
 const createEmptyRow = () =>
-  TABLE_COLUMNS.reduce((accumulator, column) => {
-    accumulator[column.key] = "";
-    return accumulator;
-  }, {});
-
-const createInitialRows = () =>
-  MACHINE_NAMES.reduce((accumulator, machineName) => {
-    accumulator[machineName] = createEmptyRow();
-    return accumulator;
-  }, {});
-
-const MACHINE_GROUP_SIZE = 5;
-const MACHINE_GROUPS = MACHINE_NAMES.reduce((groups, machineName, index) => {
-  const groupIndex = Math.floor(index / MACHINE_GROUP_SIZE);
-  if (!groups[groupIndex]) groups[groupIndex] = [];
-  groups[groupIndex].push(machineName);
-  return groups;
-}, []);
+  TABLE_COLUMNS.reduce(
+    (accumulator, column) => {
+      accumulator[column.key] = "";
+      return accumulator;
+    },
+    { id: `dfk-row-${Date.now()}-${dfkRowIdCounter++}`, machine: "" }
+  );
 
 function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "", reserveEntryId, user }) {
   const router = useRouter();
@@ -55,14 +47,15 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
     isLoading: false,
   });
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
-  const [rows, setRows] = useState(createInitialRows);
+  const [machineOptions, setMachineOptions] = useState(FALLBACK_MACHINE_NAMES);
+  const [machineOptionsError, setMachineOptionsError] = useState("");
+  const [rows, setRows] = useState(() => [createEmptyRow()]);
   const [errors, setErrors] = useState({});
   const [showPreview, setShowPreview] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [formMessage, setFormMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [openGroup, setOpenGroup] = useState(0);
   const [customFieldValues, setCustomFieldValues] = useState({});
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
   const [showEmptyWarning, setShowEmptyWarning] = useState(false);
@@ -84,33 +77,75 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
     return () => clearTimeout(timer);
   }, [showEmptyWarning]);
 
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadMachines = async () => {
+      setMachineOptionsError("");
+      try {
+        const options = await fetchCardingMasterMachines({ prefix: "CDG" });
+        if (isCancelled) return;
+        if (options.length) setMachineOptions(options);
+      } catch (error) {
+        if (isCancelled) return;
+        setMachineOptionsError(error?.message || "Unable to load machine options.");
+      }
+    };
+
+    loadMachines();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  // Only rows the user actually filled in count toward "has values" and get sent/stored - a row
+  // with a machine picked but every value still blank isn't a real reading yet.
+  const usedMachines = useMemo(
+    () => new Set(rows.map((row) => row.machine).filter(Boolean)),
+    [rows]
+  );
+
   const hasValues = useMemo(
     () =>
-      Object.values(rows).some((machineRow) =>
-        Object.values(machineRow).some((value) => value !== "")
+      rows.some(
+        (row) => row.machine && TABLE_COLUMNS.some((column) => String(row[column.key] || "").trim() !== "")
       ),
     [rows]
   );
 
-  const handleValueChange = (machineName, key, value) => {
-    const nextValue = value;
-    setRows((currentRows) => ({
-      ...currentRows,
-      [machineName]: {
-        ...currentRows[machineName],
-        [key]: nextValue,
-      },
-    }));
+  const canAddRow = rows.length < machineOptions.length;
+
+  const handleMachineChange = (rowId, value) => {
+    setRows((current) => current.map((row) => (row.id === rowId ? { ...row, machine: value } : row)));
     setErrors((current) => {
       const next = { ...current };
-      delete next[`${machineName}-${key}`];
+      delete next[`${rowId}-machine`];
       return next;
     });
   };
 
+  const handleValueChange = (rowId, key, value) => {
+    setRows((current) => current.map((row) => (row.id === rowId ? { ...row, [key]: value } : row)));
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[`${rowId}-${key}`];
+      return next;
+    });
+  };
+
+  const addRow = () => {
+    if (!canAddRow) return;
+    setRows((current) => [...current, createEmptyRow()]);
+  };
+
+  const removeRow = (rowId) => {
+    setRows((current) => (current.length > 1 ? current.filter((row) => row.id !== rowId) : current));
+  };
+
   const handleClear = () => {
     setDate(new Date().toISOString().split("T")[0]);
-    setRows(createInitialRows());
+    setRows([createEmptyRow()]);
+    setErrors({});
     setCustomFieldValues({});
   };
 
@@ -119,23 +154,24 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
     setDate(new Date().toISOString().split("T")[0]);
   };
 
+  // Only rows with a machine picked are real entries - an empty trailing row (the one always left
+  // for the user to fill next) never gets sent, so nothing empty is stored in the database.
+  const filledRows = rows.filter((row) => row.machine);
+
   const handleSave = async () => {
-    const entries = MACHINE_NAMES.map((machineName) => {
-      const row = rows[machineName];
-      return {
-        machine_name: machineName,
-        dfk: row.cw || "0.00",
-        ccd: row.ccd || "0.00",
-        icfd_1: row.hfd1 || "0.00",
-        lt: row.hfd2 || "0.00",
-        cds: row.cgs || "0.00",
-        silver_draft: row.sliverDraft || "0.00",
-        icfd_2: row.kfdDd || "0.00",
-        idf_in: row.dfIn || "0.00",
-        idf_out: row.dfOut || "0.00",
-        al_on: row.alRh || "0.00",
-      };
-    });
+    const entries = filledRows.map((row) => ({
+      machine_name: row.machine,
+      dfk: row.cw || "0.00",
+      ccd: row.ccd || "0.00",
+      icfd_1: row.hfd1 || "0.00",
+      lt: row.hfd2 || "0.00",
+      cds: row.cgs || "0.00",
+      silver_draft: row.sliverDraft || "0.00",
+      icfd_2: row.kfdDd || "0.00",
+      idf_in: row.dfIn || "0.00",
+      idf_out: row.dfOut || "0.00",
+      al_on: row.alRh || "0.00",
+    }));
 
     try {
       const saved = await dispatch(
@@ -235,25 +271,20 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
     })),
   ];
 
-  const previewGroups = MACHINE_GROUPS.map((group) => {
-    const firstMachine = group[0];
-    const lastMachine = group[group.length - 1];
-    return {
-      key: `${firstMachine}-${lastMachine}`,
-      title: `${firstMachine} to ${lastMachine}`,
-      columns: [
-        { key: "machine_name", label: "Machine Name" },
-        ...TABLE_COLUMNS,
-      ],
-      rows: group.map((machineName) => ({
-        machine_name: machineName,
+  const previewGroups = [
+    {
+      key: "dfk-values",
+      title: "DFK Values",
+      columns: [{ key: "machine_name", label: "Machine Name" }, ...TABLE_COLUMNS],
+      rows: filledRows.map((row) => ({
+        machine_name: row.machine,
         ...TABLE_COLUMNS.reduce((acc, column) => {
-          acc[column.key] = rows[machineName][column.key] || "0";
+          acc[column.key] = row[column.key] || "0";
           return acc;
         }, {}),
       })),
-    };
-  });
+    },
+  ];
   const typeSelectStyle = {
     background: "#f1f5f9",
     backgroundColor: "#f1f5f9",
@@ -302,66 +333,93 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
           </div>
         </div>
 
-        <div className={styles.dfkAccordionList}>
-          {MACHINE_GROUPS.map((group, groupIndex) => {
-            const firstMachine = group[0];
-            const lastMachine = group[group.length - 1];
-            const isOpen = openGroup === groupIndex;
+        {machineOptionsError ? (
+          <div className={`${styles.dfkMessage} ${styles.dfkMessageError}`}>{machineOptionsError}</div>
+        ) : null}
 
-            return (
-              <div key={`${firstMachine}-${lastMachine}`} className={styles.dfkSection}>
-                <button
-                  type="button"
-                  className={styles.dfkSectionToggle}
-                  onClick={() => setOpenGroup((current) => (current === groupIndex ? -1 : groupIndex))}
-                  aria-expanded={isOpen}
-                >
-                  <span>{`${firstMachine} to ${lastMachine}`}</span>
-                  <span className={`${styles.dfkChevron} ${isOpen ? styles.dfkChevronOpen : ""}`}>
-                    ˅
-                  </span>
-                </button>
+        <div className={styles.dfkTableCard}>
+          <div className={styles.dfkTableWrap}>
+            <table className={styles.dfkTable}>
+              <thead>
+                <tr>
+                  <th>Machine Name</th>
+                  {TABLE_COLUMNS.map((column) => (
+                    <th key={column.key}>{column.label}</th>
+                  ))}
+                  <th aria-hidden="true" />
+                </tr>
+              </thead>
 
-                {isOpen ? (
-                  <div className={styles.dfkTableCard}>
-                    <div className={styles.dfkTableWrap}>
-                      <table className={styles.dfkTable}>
-                        <thead>
-                          <tr>
-                            <th>Machine Name</th>
-                            {TABLE_COLUMNS.map((column) => (
-                              <th key={column.key}>{column.label}</th>
-                            ))}
-                          </tr>
-                        </thead>
+              <tbody>
+                {rows.map((row, rowIndex) => {
+                  const machineChoices = machineOptions.filter(
+                    (name) => name === row.machine || !usedMachines.has(name)
+                  );
+                  const isLastRow = rowIndex === rows.length - 1;
 
-                        <tbody>
-                          {group.map((machineName) => (
-                            <tr key={machineName}>
-                              <td className={styles.machineCell}>{machineName}</td>
-                              {TABLE_COLUMNS.map((column) => (
-                                <td key={`${machineName}-${column.key}`}>
-                                  <CustomInput
-                                    type="text"
-                                    placeholder="60/100"
-                                    value={rows[machineName][column.key]}
-                                    onChange={(value) => handleValueChange(machineName, column.key, value)}
-                                    onWheel={(event) => event.currentTarget.blur()}
-                                    className={styles.dfkTableInput}
-                                    error={errors[`${machineName}-${column.key}`]}
-                                  />
-                                </td>
-                              ))}
-                            </tr>
+                  return (
+                    <tr key={row.id}>
+                      <td className={styles.machineCell}>
+                        <select
+                          value={row.machine}
+                          onChange={(event) => handleMachineChange(row.id, event.target.value)}
+                          className={`${styles.dfkTableInput}${errors[`${row.id}-machine`] ? ` ${styles.fieldError}` : ""}`}
+                        >
+                          <option value="">Select</option>
+                          {machineChoices.map((name) => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
                           ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
+                        </select>
+                      </td>
+                      {TABLE_COLUMNS.map((column) => (
+                        <td key={`${row.id}-${column.key}`}>
+                          <CustomInput
+                            type="text"
+                            placeholder="60/100"
+                            value={row[column.key]}
+                            onChange={(value) => handleValueChange(row.id, column.key, value)}
+                            onWheel={(event) => event.currentTarget.blur()}
+                            className={styles.dfkTableInput}
+                            error={errors[`${row.id}-${column.key}`]}
+                          />
+                        </td>
+                      ))}
+                      <td>
+                        <div className="flex shrink-0 items-center gap-2">
+                          {isLastRow ? (
+                            <button
+                              type="button"
+                              onClick={addRow}
+                              disabled={!canAddRow}
+                              aria-label="Add row"
+                              title="Add row"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#4f63b6] text-white disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <FiPlus />
+                            </button>
+                          ) : (
+                            <span className="inline-block h-7 w-7" aria-hidden="true" />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeRow(row.id)}
+                            disabled={rows.length <= 1}
+                            aria-label="Delete row"
+                            title="Delete row"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] border border-[#ffcecf] bg-[#fff4f4] text-[#f04f56] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <FiTrash2 />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -427,4 +485,3 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
 }
 
 export default CardingDfk;
-

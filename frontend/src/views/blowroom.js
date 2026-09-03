@@ -321,6 +321,7 @@ function BlowRoom() {
                   onSampleCountChange={setSampleCount}
                   savedVersionsTargetId="blowroom-process-parameter-history"
                   postFooterPortalTargetId="blowroom-post-footer-slot"
+                  showEntryId={false}
                 />
               ) : (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">

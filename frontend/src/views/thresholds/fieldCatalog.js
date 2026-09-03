@@ -655,6 +655,7 @@ export const thresholdFieldCatalog = {
     ],
     "Card DFK Data": [
         "Entry ID",
+        "Machine Name",
         "DFK",
         "CCD",
         "ICFD (1)",

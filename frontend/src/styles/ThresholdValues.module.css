@@ -333,11 +333,20 @@
 
 .ruleRow {
     width: 100%;
+    /* The Typical Value cell's inline Numbers/Percentage radio group
+       (.valueModeGroup) is flex-shrink: 0 by design - it can't compress
+       below its label text, so on narrower screens the row's real content
+       width exceeds the card, and the last column (+/delete action icons)
+       was pushed off-screen with no way to reach it. Scrolling the row
+       itself, rather than letting it silently overflow the page, keeps
+       those icons reachable. */
+    overflow-x: auto;
 }
 
 .ruleFields {
     display: grid;
     gap: 12px;
+    min-width: 760px;
 }
 
 .ruleTopGrid {

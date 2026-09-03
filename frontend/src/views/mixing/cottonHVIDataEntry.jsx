@@ -187,7 +187,6 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
 
     const getPreviewData = () => ([
         { label: "Date", value: date },
-        { label: "Lot No", value: lotNo },
         { label: "Variety", value: formData.variety },
         { label: "Invoice No", value: formData.invoiceNo },
         { label: "Invoice Date", value: formData.invoiceDate },
@@ -215,7 +214,8 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
     const validate = () => {
         const required = [
             "variety","invoiceNo","invoiceDate","sci","spanLength","mic","gtex","maturity",
-            "ur","sfi","elongation","yellowB","trCnt","trAr","trID","invisibleLossPercent","trashContentPercent","rd","colourGrade"
+            "ur","sfi","elongation","yellowB","trCnt","trAr","trID","invisibleLossPercent","trashContentPercent","rd","colourGrade",
+            "moisture","strength","amt"
         ];
         const nextErrors = required.reduce((acc, key) => {
             if (String(formData[key] || "").trim() === "") acc[key] = true;

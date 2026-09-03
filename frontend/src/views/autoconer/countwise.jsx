@@ -141,14 +141,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
   const handleCustomFieldChange = (fieldId, value) => {
     setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
   };
-  const errorStyle = (flag) =>
-    flag
-      ? {
-          borderColor: "#ef4444",
-          backgroundColor: "#fff1f2",
-          boxShadow: "0 0 0 1000px #fff1f2 inset",
-        }
-      : undefined;
+  const errorClass = (flag) => (flag ? styles.errorField : "");
 
   const handleMetricChange = (key, value) => {
     setMetrics((prev) => ({
@@ -362,7 +355,19 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
       <div className={styles.formGrid}>
         <div className={styles.field}>
           <label>Type</label>
-          <select value={selectedType} onChange={(e) => onTypeChange(e.target.value)} style={errorStyle(errors.type)}>
+          <select
+            value={selectedType}
+            onChange={(e) => {
+              onTypeChange(e.target.value);
+              setErrors((current) => {
+                if (!current.type) return current;
+                const next = { ...current };
+                delete next.type;
+                return next;
+              });
+            }}
+            className={errorClass(errors.type)}
+          >
             {types.map((type) => {
               const optionValue =
                 typeof type === "string"
@@ -391,9 +396,17 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
           <label>Machine No.</label>
           <SearchableSelect
             value={machineNo}
-            onChange={(value) => setMachineNo(value)}
+            onChange={(value) => {
+              setMachineNo(value);
+              setErrors((current) => {
+                if (!current.machineNo) return current;
+                const next = { ...current };
+                delete next.machineNo;
+                return next;
+              });
+            }}
             options={machineDropdownOptions.map((option) => option.value)}
-            className={styles.select}
+            className={`${styles.select || ""} ${errorClass(errors.machineNo)}`.trim()}
           />
         </div>
 
@@ -405,26 +418,68 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
               const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
               setCount(selected?.label ?? value);
               setCountCode(selected?.code ?? "");
+              setErrors((current) => {
+                if (!current.count) return current;
+                const next = { ...current };
+                delete next.count;
+                return next;
+              });
             }}
             options={countDropdownOptions.map((option) => option.label)}
-            className={styles.select}
+            className={`${styles.select || ""} ${errorClass(errors.count)}`.trim()}
             placeholder="Select count name"
           />
         </div>
 
         <div className={styles.field}>
           <label>Cone Tip</label>
-          <input value={craneTip} onChange={(e) => setCraneTip(e.target.value)} style={errorStyle(errors.craneTip)} />
+          <input
+            value={craneTip}
+            onChange={(e) => {
+              setCraneTip(e.target.value);
+              setErrors((current) => {
+                if (!current.craneTip) return current;
+                const next = { ...current };
+                delete next.craneTip;
+                return next;
+              });
+            }}
+            className={errorClass(errors.craneTip)}
+          />
         </div>
 
         <div className={styles.field}>
           <label>Lot No.</label>
-          <input value={lotNo} onChange={(e) => setLotNo(e.target.value)} style={errorStyle(errors.lotNo)} />
+          <input
+            value={lotNo}
+            onChange={(e) => {
+              setLotNo(e.target.value);
+              setErrors((current) => {
+                if (!current.lotNo) return current;
+                const next = { ...current };
+                delete next.lotNo;
+                return next;
+              });
+            }}
+            className={errorClass(errors.lotNo)}
+          />
         </div>
 
         <div className={styles.field}>
           <label>Frame No.</label>
-          <input value={frameNo} onChange={(e) => setFrameNo(e.target.value)} style={errorStyle(errors.frameNo)} />
+          <input
+            value={frameNo}
+            onChange={(e) => {
+              setFrameNo(e.target.value);
+              setErrors((current) => {
+                if (!current.frameNo) return current;
+                const next = { ...current };
+                delete next.frameNo;
+                return next;
+              });
+            }}
+            className={errorClass(errors.frameNo)}
+          />
         </div>
       </div>
 
@@ -435,7 +490,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
             <input
               value={metrics[key]}
               onChange={(e) => handleMetricChange(key, e.target.value)}
-              style={errorStyle(errors[`metric-${key}`])}
+              className={errorClass(errors[`metric-${key}`])}
             />
           </div>
         ))}

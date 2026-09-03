@@ -593,7 +593,15 @@ function UPercentParameterEntries({
           <label>Type</label>
           <select
             value={selectedType}
-            onChange={(event) => onTypeChange(event.target.value)}
+            onChange={(event) => {
+              onTypeChange(event.target.value);
+              setErrors((current) => {
+                if (!current.type) return current;
+                const next = { ...current };
+                delete next.type;
+                return next;
+              });
+            }}
             className={`${styles.input} ${styles.topControlInput} ${errors.type ? styles.errorField : ""}`}
           >
             {types.map((type) => {
@@ -630,7 +638,15 @@ function UPercentParameterEntries({
           <label>Count Name</label>
           <SearchableSelect
             value={countName}
-            onChange={(value) => setCountName(value)}
+            onChange={(value) => {
+              setCountName(value);
+              setErrors((current) => {
+                if (!current.countName) return current;
+                const next = { ...current };
+                delete next.countName;
+                return next;
+              });
+            }}
             options={countDropdownOptions}
             className={`${styles.input} ${styles.topControlInput} ${errors.countName ? styles.errorField : ""}`}
             ariaLabel="Count Name"

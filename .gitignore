@@ -8,3 +8,5 @@ node_modules/
 
 # stray local data exports (e.g. psql/Supabase table dumps)
 *.csv
+
+*.py

@@ -319,7 +319,7 @@ export default function RolesPermissions() {
                                                                     JSON.stringify(role)
                                                                 );
                                                             }
-                                                            router.push(`/editrole/${role.id}`);
+                                                            router.push(`/editrole?id=${role.id}`);
                                                         }}
                                                     >
                                                         Edit

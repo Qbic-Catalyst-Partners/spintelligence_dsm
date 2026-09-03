@@ -72,7 +72,7 @@ const normalizeStatus = (value, fallback = true) => {
  */
 
 router.post("/", async (req, res) => {
-  const name = req.body.name || req.body.role_name;
+  const name = String(req.body.name || req.body.role_name || "").trim();
   const description = req.body.description;
   const status = normalizeStatus(req.body.status ?? req.body.is_active, true);
   const department_ids = normalizeIdArray(
@@ -310,7 +310,8 @@ router.get("/", async (req, res) => {
 // System_id should be asked from the user
 router.patch("/:id", async (req, res) => {
   const { id } = req.params;
-  const name = req.body.name || req.body.role_name;
+  const nameRaw = req.body.name || req.body.role_name;
+  const name = nameRaw ? String(nameRaw).trim() : nameRaw;
   const description = req.body.description;
   const screen_ids = normalizeIdArray(
     req.body.screen_ids ||
@@ -327,6 +328,10 @@ router.patch("/:id", async (req, res) => {
 
   if (!id) {
     return res.status(400).json({ error: "Role ID is required" });
+  }
+
+  if (nameRaw && !name) {
+    return res.status(400).json({ error: "Role name is required" });
   }
 
   try {

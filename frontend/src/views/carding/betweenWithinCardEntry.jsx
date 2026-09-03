@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FiCalendar } from "react-icons/fi";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import Footer from "@/components/Footer";
@@ -137,6 +138,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
         error: null,
     });
 
+    const dateInputRef = useRef(null);
     const [inspectionDate, setInspectionDate] = useState("");
     const [inspectionTime, setInspectionTime] = useState("");
     const [testId, setTestId] = useState("");
@@ -189,7 +191,11 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                 const options = await fetchCardingMasterMachines({ prefix: "CDG" });
                 if (options.length) {
                     setMachineOptions(options);
-                    setMcName((current) => (options.includes(current) ? current : ""));
+                    // Never clobber a value the user has already typed or that OCR
+                    // prefill just set, even if it isn't (yet) an exact match in the
+                    // fetched master list - this used to reset mcName to "" whenever
+                    // this fetch resolved after the OCR-prefill effect had already set
+                    // it, making the Machine Name field flash in and then vanish.
                 }
             } catch {
                 setMachineOptions(defaultMachineOptions);
@@ -500,6 +506,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                         <label>Date</label>
                         <div className="bwc-input-icon-wrap">
                             <input
+                                ref={dateInputRef}
                                 type="date"
                                 value={inspectionDate}
                                 onChange={(e) => {
@@ -510,7 +517,13 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                                         return next;
                                     });
                                 }}
-                                className={errors.inspectionDate ? "bwc-error-field" : ""}
+                                onKeyDown={(e) => e.preventDefault()}
+                                onMouseDown={(e) => e.preventDefault()}
+                                className={`bwc-date-input ${errors.inspectionDate ? "bwc-error-field" : ""}`}
+                            />
+                            <FiCalendar
+                                className="bwc-input-icon bwc-date-icon"
+                                onClick={() => dateInputRef.current?.showPicker?.()}
                             />
                         </div>
                     </div>

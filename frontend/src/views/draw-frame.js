@@ -988,10 +988,10 @@ function DrawFrame() {
         : {}),
     }));
     setErrors((prev) => {
-      if (!prev.header?.[field]) return prev;
+      if (!prev.header?.[field] && !prev.formMessage) return prev;
       const nextHeader = { ...(prev.header || {}) };
       delete nextHeader[field];
-      return { ...prev, header: nextHeader };
+      return { ...prev, header: nextHeader, formMessage: "" };
     });
   };
 
@@ -1012,8 +1012,9 @@ function DrawFrame() {
         const nextMachineErr = { ...(machineErrs[index] || {}) };
         delete nextMachineErr[field];
         machineErrs[index] = nextMachineErr;
-        return { ...prev, machines: machineErrs };
+        return { ...prev, machines: machineErrs, formMessage: "" };
       }
+      if (prev.formMessage) return { ...prev, formMessage: "" };
       return prev;
     });
   };
@@ -1028,11 +1029,11 @@ function DrawFrame() {
       const nextHeader = { ...(prev.header || {}) };
       delete nextHeader.calculation;
       const arr = prev[errorKey] ? [...prev[errorKey]] : [];
-      if (!arr[index]?.reading) return { ...prev, header: nextHeader };
+      if (!arr[index]?.reading) return { ...prev, header: nextHeader, formMessage: "" };
       const nextReadingErr = { ...(arr[index] || {}) };
       delete nextReadingErr.reading;
       arr[index] = nextReadingErr;
-      return { ...prev, header: nextHeader, [errorKey]: arr };
+      return { ...prev, header: nextHeader, [errorKey]: arr, formMessage: "" };
     });
   };
 
@@ -1061,10 +1062,10 @@ function DrawFrame() {
       [field]: nextValue,
     }));
     setErrors((prev) => {
-      if (!prev.uPercent?.[field]) return prev;
+      if (!prev.uPercent?.[field] && !prev.formMessage) return prev;
       const nextUPercent = { ...(prev.uPercent || {}) };
       delete nextUPercent[field];
-      return { ...prev, uPercent: nextUPercent };
+      return { ...prev, uPercent: nextUPercent, formMessage: "" };
     });
   };
 
@@ -1076,10 +1077,10 @@ function DrawFrame() {
     setAPercentRawOcrRows([]);
     setAPercentOcrMeta({});
     setErrors((prev) => {
-      if (!prev.aPercent?.file) return prev;
+      if (!prev.aPercent?.file && !prev.formMessage) return prev;
       const nextAPercent = { ...(prev.aPercent || {}) };
       delete nextAPercent.file;
-      return { ...prev, aPercent: nextAPercent };
+      return { ...prev, aPercent: nextAPercent, formMessage: "" };
     });
   };
 
@@ -1093,7 +1094,7 @@ function DrawFrame() {
     if (aPercentFileInputRef.current) {
       aPercentFileInputRef.current.value = "";
     }
-    setErrors((prev) => ({ ...prev, aPercent: {} }));
+    setErrors((prev) => ({ ...prev, aPercent: {}, formMessage: "" }));
   };
 
   const handleAPercentRunOcr = async () => {
@@ -1308,6 +1309,7 @@ function DrawFrame() {
         machines: [],
         oneYard: [],
         halfYard: [],
+        formMessage: hasErrors ? "Please fill all required fields before saving." : "",
       });
 
       return !hasErrors;
@@ -1318,15 +1320,17 @@ function DrawFrame() {
       if (!aPercentFile) aPercentErrors.file = true;
       if (!aPercentOcrRows.length) aPercentErrors.ocrRows = true;
 
+      const isValid = Object.keys(aPercentErrors).length === 0;
+
       setErrors({
         header: {},
         aPercent: aPercentErrors,
         machines: [],
         oneYard: [],
         halfYard: [],
+        formMessage: isValid ? "" : "Please fill all required fields before saving.",
       });
 
-      const isValid = Object.keys(aPercentErrors).length === 0;
       if (!isValid && aPercentFile && !aPercentOcrRows.length) {
         setAPercentOcrMessage("Please run OCR before saving A% data.");
       }
@@ -1334,7 +1338,12 @@ function DrawFrame() {
     }
 
     if (isWheelChangeEntry) {
-      return wheelChangeRef.current?.validate?.() ?? true;
+      const isValid = wheelChangeRef.current?.validate?.() ?? true;
+      setErrors((prev) => ({
+        ...prev,
+        formMessage: isValid ? "" : "Please fill all required fields before saving.",
+      }));
+      return isValid;
     }
 
     if (isHeaderEntry) {
@@ -1391,6 +1400,7 @@ function DrawFrame() {
       machines: machineErrors,
       oneYard: oneErrors,
       halfYard: halfErrors,
+      formMessage: hasErrors ? "Please fill all required fields before saving." : "",
     });
 
     return !hasErrors;
@@ -1800,6 +1810,7 @@ function DrawFrame() {
 
               {error ? <p className={styles.messageError}>{error}</p> : null}
               {errors.wheelChange ? <p className={styles.messageError}>{errors.wheelChange}</p> : null}
+              {errors.formMessage ? <p className={styles.messageError}>{errors.formMessage}</p> : null}
             </div>
 
             <Footer
@@ -1916,6 +1927,8 @@ function DrawFrame() {
               values={customFieldValues}
               onChange={handleCustomFieldChange}
             />
+
+            {errors.formMessage ? <p className={styles.messageError}>{errors.formMessage}</p> : null}
 
             <div className={styles.aPercentFooter}>
               <button
@@ -2425,6 +2438,7 @@ function DrawFrame() {
               />
 
               {error ? <p className={styles.messageError}>{error}</p> : null}
+              {errors.formMessage ? <p className={styles.messageError}>{errors.formMessage}</p> : null}
             </div>
 
             <Footer

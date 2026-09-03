@@ -45,6 +45,7 @@ import {
 import { fetchPpNotebookThresholdsAPI } from "@/apis/ppNotebookThresholdApi";
 import { fetchSupervisorTicketsApi } from "@/apis/supervisorApi";
 import { fetchNextProcessParameterId, fetchProcessParameterMasterStatuses } from "@/apis/processParameter";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import { getColumnForNotebookKey, getColumnForNotebookThresholdLabel } from "@/utils/ppNotebookKeys";
 import styles from "@/styles/processParameterPage.module.css";
 

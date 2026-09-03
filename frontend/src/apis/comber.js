@@ -291,9 +291,9 @@ export const fetchComberRibbonLapMasterMcNos = async ({
 } = {}) => {
     const screenEndpoints = {
         "ribbon-lap": [
-            "/comber/ribbon-lap/master/mc-nos",
-            "/comber/ribbon-lap/master/machine-nos",
-            "/comber/ribbon-lap/master/machine-numbers",
+            "/comber/ribbon-lap-cv/master/mc-nos",
+            "/comber/ribbon-lap-cv/master/machine-nos",
+            "/comber/ribbon-lap-cv/master/machine-numbers",
             "/comber/lap-cv/master/mc-nos",
             "/comber/lap-cv/master/machine-nos",
             "/comber/lap-cv/master/machine-numbers",

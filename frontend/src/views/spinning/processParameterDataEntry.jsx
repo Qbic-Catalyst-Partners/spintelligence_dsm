@@ -275,7 +275,7 @@ const renderFieldInput = (field, form, errors, handleFieldChange, topFieldClass)
   field.inputType === "onOff" ? (
     <div key={field.key} className="flex flex-col gap-1.5">
       <label className="text-[13px] font-semibold text-slate-700">{field.label}</label>
-      <div className={styles.segmentedControl}>
+      <div className={`${styles.segmentedControl} ${errors[field.key] ? styles.segmentedControlError : ""}`}>
         <button
           type="button"
           className={`${styles.segmentButton} ${

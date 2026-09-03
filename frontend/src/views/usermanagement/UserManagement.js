@@ -541,7 +541,7 @@ export default function UserManagement() {
                       <p
                         onClick={() => {
                           setActiveRow(null);
-                          router.push(`/umchangepassword/${u.id}`);
+                          router.push(`/umchangepassword?id=${u.id}`);
                         }}
                       >
                         Change Password

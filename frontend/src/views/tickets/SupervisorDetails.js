@@ -472,14 +472,24 @@ export default function SupervisorDetails() {
   // tickets also carry that same category value, so that check alone misclassified every
   // PP batch ticket as a Submission ticket.
   const isSubmissionTicket = ticketType
-    ? ticketType === "submission"
+    ? String(ticketType).trim().toLowerCase() === "submission"
     : getTicketKind(ticket) === TICKET_KIND.SUBMISSION_FREQUENCY;
   const rawParameterNames = getTicketParameterNames(ticket);
   const submissionParameterNames = rawParameterNames.filter(
     (key) => isSubmissionFrequencyParameterName(key) || isNotebookAcknowledgementParameterName(key)
   );
+  // "ACKNOWLEDGEMENT" only makes sense as a fallback for actual Notebook
+  // Acknowledgement tickets - a Submission Frequency ticket (missed the
+  // required submission count for a screen, no acknowledgement involved)
+  // falling back to that same label was misleading, so it uses the screen
+  // name from violation_details instead when no real parameter matched.
+  const isAcknowledgementTicket = rawParameterNames.some(isNotebookAcknowledgementParameterName);
   const parameterNames = (isSubmissionTicket
-    ? (submissionParameterNames.length ? submissionParameterNames : ["ACKNOWLEDGEMENT"])
+    ? (submissionParameterNames.length
+        ? submissionParameterNames
+        : [isAcknowledgementTicket
+            ? "ACKNOWLEDGEMENT"
+            : ticket?.violation_details?.screen_name || ticket?.machine_name || ticket?.notebook || "SUBMISSION FREQUENCY"])
     : rawParameterNames
   ).filter((key) => {
     if (!/^\d+$/.test(String(key || "").trim())) return true;
@@ -505,19 +515,28 @@ export default function SupervisorDetails() {
         const hours = Math.max(0, Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60)));
         return `${hours} hr${hours === 1 ? "" : "s"}`;
       })()
-    : ticket?.frequency ||
-      ticket?.submission_frequency ||
-      ticket?.check_frequency ||
-      ticket?.threshold_value?.expected_frequency ||
-      "-";
+    : ticket?.violation_details?.window_days
+      ? `Every ${ticket.violation_details.window_days} day${ticket.violation_details.window_days === 1 ? "" : "s"}`
+      : ticket?.frequency ||
+        ticket?.submission_frequency ||
+        ticket?.check_frequency ||
+        ticket?.threshold_value?.expected_frequency ||
+        "-";
+  // runSubmissionFrequencyCheck (operatorTickets.routes.js) stamps
+  // actual_occurrences/required_occurrences directly on violation_details -
+  // the .checks.* paths below never matched any real ticket shape, so this
+  // always fell through to "-" even though the backend sends the real counts.
   const submissionOccurrences = isPpBatchTicket
     ? 1
-    : ticket?.occurrences ??
-      ticket?.occurrence_count ??
-      ticket?.count ??
-      ticket?.violation_details?.checks?.expected_occurrences ??
-      ticket?.violation_details?.checks?.actual_occurrences ??
-      "-";
+    : ticket?.violation_details?.actual_occurrences !== undefined &&
+      ticket?.violation_details?.required_occurrences !== undefined
+      ? `${ticket.violation_details.actual_occurrences} / ${ticket.violation_details.required_occurrences}`
+      : ticket?.occurrences ??
+        ticket?.occurrence_count ??
+        ticket?.count ??
+        ticket?.violation_details?.checks?.expected_occurrences ??
+        ticket?.violation_details?.checks?.actual_occurrences ??
+        "-";
   const isClosedTicket = getSupervisorStatusLabel(ticket.status) === "Closed";
   const isAcknowledgeTicket = isAcknowledgeActionTicket(ticket);
   // Accept/Reject is an L2+ reviewer action - a ticket still sitting at L1 hasn't
@@ -965,7 +984,7 @@ export default function SupervisorDetails() {
                     {visibleParameterNames.map((key, i) => (
                       <tr key={i}>
                         <td>{ticket.notebook || ticket.machine_name || "-"}</td>
-                        <td>{ticket.entry_id || ticket.violation_details?.entry_id || "-"}</td>
+                        <td>{ticket.entry_id || ticket.violation_details?.entry_id || (isSubmissionTicket ? "No entry submitted" : "-")}</td>
                         <td>{key.toUpperCase()}</td>
                         <td style={{ color: "#CA0000" }}>
                           {isSubmissionTicket ? submissionFrequency : getTicketValueForParameter(ticket?.actual_value, key)}
@@ -1175,7 +1194,7 @@ export default function SupervisorDetails() {
 
             <div>
               <span>ENTRY ID</span>
-              <p>{ticket.entry_id || ticket.violation_details?.entry_id || "-"}</p>
+              <p>{ticket.entry_id || ticket.violation_details?.entry_id || (isSubmissionTicket ? "No entry submitted" : "-")}</p>
             </div>
 
             <div>

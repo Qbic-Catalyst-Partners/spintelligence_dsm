@@ -40,6 +40,14 @@ const acknowledgementTicketWhere = `(
   AND (ot.violation_details->>'category') = 'MISSED_FREQUENCY'
   AND COALESCE(ot.violation_details->>'ticket_type', '') IN ('SUBMISSION_ACKNOWLEDGEMENT', 'NOTEBOOK_ACK_OVERDUE')
 )`;
+// Numeric rank of a tat_current_level value ('L1'..'L5', or a terminal state
+// like 'EXPIRED_L5' - the digit is what matters either way). Used to scope
+// Mapped visibility to levels the viewer actually oversees: a reportee's
+// ticket still sitting at or below the viewer's own level (still within
+// their reporting chain's current work), not one that has escalated above
+// it to a tier the viewer has no role in (e.g. an L2 seeing an L1 reportee's
+// ticket that's now sitting with L4 review - not the L2's business anymore).
+const levelRankSql = (column) => `NULLIF(regexp_replace(${column}, '[^0-9]', '', 'g'), '')::int`;
 
 // L1 entry operator, L2 supervisor, L3 sub manager, L4 Quality/Dept Head,
 // L5 Admin/MD - the reviewer/stage levels this ticketing API recognizes.
@@ -394,7 +402,17 @@ router.get('/tickets', async (req, res, next) => {
     if (applyStageFilter) {
       values.push(stageFilter);
       where.push(stageFilter !== 'L1'
-        ? `(${acknowledgementTicketWhere} OR COALESCE(ot.tat_current_level, 'L1') = $${values.length})`
+        // A reportee's ticket is visible once it's at or below the viewer's
+        // own level (still within their reporting chain's current work -
+        // Mapped visibility), not only when it's sitting exactly at their
+        // level. This also caps it the other way: a ticket that's escalated
+        // ABOVE the viewer's level (e.g. an L2's L1 reportee's Acknowledgement
+        // ticket now sitting with L4) drops out of view - it's no longer that
+        // viewer's business once it's past them. The reportee-ownership
+        // clause further down still gates who's allowed to see it at all;
+        // this only bounds which of a visible ticket's escalation states
+        // actually show.
+        ? `${levelRankSql('COALESCE(ot.tat_current_level, \'L1\')')} <= ${levelRankSql(`$${values.length}`)}`
         : `COALESCE(ot.tat_current_level, 'L1') = $${values.length}`);
       // A second, broader exclusion used to run here for the L1 stage only,
       // stripping out ANY ticket with category='MISSED_FREQUENCY' regardless
@@ -885,7 +903,17 @@ router.get('/tickets/timeline/graph', async (req, res, next) => {
     if (applyStageFilter) {
       values.push(stageFilter);
       where.push(stageFilter !== 'L1'
-        ? `(${acknowledgementTicketWhere} OR COALESCE(ot.tat_current_level, 'L1') = $${values.length})`
+        // A reportee's ticket is visible once it's at or below the viewer's
+        // own level (still within their reporting chain's current work -
+        // Mapped visibility), not only when it's sitting exactly at their
+        // level. This also caps it the other way: a ticket that's escalated
+        // ABOVE the viewer's level (e.g. an L2's L1 reportee's Acknowledgement
+        // ticket now sitting with L4) drops out of view - it's no longer that
+        // viewer's business once it's past them. The reportee-ownership
+        // clause further down still gates who's allowed to see it at all;
+        // this only bounds which of a visible ticket's escalation states
+        // actually show.
+        ? `${levelRankSql('COALESCE(ot.tat_current_level, \'L1\')')} <= ${levelRankSql(`$${values.length}`)}`
         : `COALESCE(ot.tat_current_level, 'L1') = $${values.length}`);
       // A second, broader exclusion used to run here for the L1 stage only,
       // stripping out ANY ticket with category='MISSED_FREQUENCY' regardless

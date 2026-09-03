@@ -188,6 +188,11 @@
   left: 0;
   z-index: 2;
   background: #fbfdff;
+  /* table-layout: fixed sizes every column from the <thead> row's cells, not the <tbody> cells -
+     without a width here too, .machineCell's own width below was being ignored entirely and the
+     column stayed at whatever the header cell's auto width happened to be. */
+  width: 130px;
+  min-width: 130px;
 }
 
 .dfkTable tbody tr:nth-child(even) td {
@@ -201,7 +206,11 @@
 }
 
 .machineCell {
-  width: 112px;
+  /* Was 112px, sized for the old plain "CDG-01" text. It now holds a <select> with the
+     dropdown arrow plus longer real machine names, which was clipping/hiding part of the
+     control at that width. */
+  width: 130px;
+  min-width: 130px;
   font-size: 12px;
   font-weight: 700;
   color: #334155;

@@ -7,7 +7,27 @@ const { spawn } = require('child_process');
 const db = require('../connection');
 
 const router = express.Router();
-const upload = multer({ limits: { fileSize: 20 * 1024 * 1024 } });
+// Scanned Between/Within Card CV% reports are often high-DPI multi-page
+// scans that can exceed a few MB - the old 20MB cap meant a routine upload
+// could throw a raw multer error that (unhandled here) fell through to the
+// generic 500 handler in server.js, surfacing as an unexplained "Internal
+// Server Error" instead of a clear "file too large" message.
+const upload = multer({ limits: { fileSize: 50 * 1024 * 1024 } });
+
+// multer's own errors (file too large, wrong field name, etc.) are thrown by
+// the upload.single(...) middleware itself, before any route handler's own
+// try/catch runs - left unhandled, they reach server.js's catch-all
+// middleware and come back as a generic 500. Wrapping it here lets every OCR
+// upload route return a clear, non-500 message instead.
+const uploadSingle = (fieldName) => (req, res, next) => {
+  upload.single(fieldName)(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ detail: 'File is too large. Please upload a file under 50MB.' });
+    }
+    return res.status(400).json({ detail: err.message || 'File upload failed.' });
+  });
+};
 
 const OCR_TIMEOUT_MS = Number(process.env.OCR_UPSTREAM_TIMEOUT_MS || 15000);
 const OCR_LOCAL_TIMEOUT_MS = Number(process.env.OCR_LOCAL_TIMEOUT_MS || 240000);
@@ -458,7 +478,7 @@ router.get('/api/fields', async (req, res) => {
   });
 });
 
-router.post('/api/ocr-json', upload.single('file'), async (req, res) => {
+router.post('/api/ocr-json', uploadSingle('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ detail: 'File is required' });
 
   const docType = getRequestedDocType(req);
@@ -518,7 +538,7 @@ router.post('/api/ocr-json', upload.single('file'), async (req, res) => {
   }
 });
 
-router.post('/api/ocr', upload.single('file'), async (req, res) => {
+router.post('/api/ocr', uploadSingle('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'File is required' });
 
   const docType = getRequestedDocType(req);
