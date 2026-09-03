@@ -4843,12 +4843,20 @@ const runWheelChangeApprovalOverdueCheck = async () => {
       ? Number(approvalConfig.tat_hours)
       : WHEEL_CHANGE_APPROVAL_TAT_HOURS;
 
+    // A Wheel Change row created BEFORE this department's approval config was set up/last edited
+    // was never actually subject to it - approvalConfig always has real l4_user_ids by this point
+    // (the empty-l4_user_ids "not configured at all" case already `continue`d above), so
+    // approvalConfig.updated_at is a genuine "this threshold took its current form" timestamp,
+    // not a placeholder. Without this floor, configuring/editing WC Threshold for a department
+    // would instantly sweep in every already-overdue pending row as soon as the next worker cycle
+    // runs, same reasoning as the Submission/Acknowledgement/PP Threshold fixes.
     // eslint-disable-next-line no-await-in-loop
     const pending = await client.query(
       `SELECT id, created_at, entry_id FROM ${tableName}
        WHERE approval_status = 'pending'
-         AND created_at <= NOW() - ($1 || ' hours')::interval`,
-      [tatHours]
+         AND created_at <= NOW() - ($1 || ' hours')::interval
+         AND ($2::timestamptz IS NULL OR created_at >= $2::timestamptz)`,
+      [tatHours, approvalConfig.updated_at || null]
     );
 
     for (const row of pending.rows) {

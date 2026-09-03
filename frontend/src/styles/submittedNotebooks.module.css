@@ -188,7 +188,7 @@
 
 .rowMeta {
     display: grid;
-    grid-template-columns: 110px 130px 150px;
+    grid-template-columns: 100px 110px 130px 150px;
     align-items: center;
     gap: 20px;
 }
