@@ -224,6 +224,16 @@ const ENTRY_ID_ROUTE_PREFIXES = {
   '/blowroom/header': { prefix: 'PP', width: 4, separator: '-' },
   '/blowroom/process-parameter': { prefix: 'PP', width: 4, separator: '-' },
   '/blowroom/process_parameter': { prefix: 'PP', width: 4, separator: '-' },
+  // getNextEntryIdForRoute/sendNextEntryId (the GET /entry-id/next preview used to reserve and
+  // display an id before submit) never consults PP_MANAGED_ROUTES - only the POST save
+  // middleware does, and only against the bare request path (querystrings aren't part of
+  // req.path there, so /drawframe/header?scope=breaker correctly resolves to PP-managed
+  // /drawframe/header at save time). But draw-frame.js's own ENTRY_ID_CONFIG reserves via
+  // routePath "/drawframe/header?scope=breaker|finisher" verbatim, so without an exact-match
+  // entry here the preview id shown to the user fell through to the bare-number fallback even
+  // though the id actually committed was correctly PP-prefixed.
+  '/drawframe/header?scope=breaker': { prefix: 'PP', width: 4, separator: '-' },
+  '/drawframe/header?scope=finisher': { prefix: 'PP', width: 4, separator: '-' },
   '/autoconer/inspection-data-entry': { prefix: 'ARW', width: 4, separator: '-' },
   '/autoconer/cone-density': { prefix: 'ACD', width: 4, separator: '-' },
   '/autoconer/cone-packing-audit': { prefix: 'ACP', width: 4, separator: '-' },
@@ -250,7 +260,85 @@ const ENTRY_ID_ROUTE_PREFIXES = {
   // interceptor) computes a fresh id keyed by THIS route_path, and without a mapping here it also
   // fell through to the bare-number fallback - the real cause of study_id=11 saving as unprefixed
   // "0007" instead of "SBS-0011" even after the /simplex/list mapping was added.
-  '/simplex/study': { prefix: 'SBS', width: 4, separator: '-' }
+  '/simplex/study': { prefix: 'SBS', width: 4, separator: '-' },
+  // Same missing-mapping bug as above, for every Carding and Mixing screen - none of these
+  // route_paths were registered, so whenever the frontend's reserved id didn't make it into the
+  // POST body (reservation skipped/failed, retry after an error, duplicate-key retry inside this
+  // same middleware), getNextEntryIdForRoute fell through to the bare-number fallback and stored
+  // e.g. "0009" instead of "DFK-0009". Prefixes/widths mirror the frontend's own
+  // CARDING_ENTRY_ID_CONFIG (views/carding.js) and MIXING_ENTRY_ID_CONFIG (views/mixing.js) so
+  // both sides always produce the same id for the same route.
+  '/carding/qc-header': { prefix: 'CPP', width: 4, separator: '-' },
+  '/carding/between-within-card': { prefix: 'BWC', width: 4, separator: '-' },
+  '/carding/card-thick-place': { prefix: 'CTP', width: 4, separator: '-' },
+  '/carding/nre': { prefix: 'CNRE', width: 4, separator: '-' },
+  '/carding/nati-data-entry': { prefix: 'NAT', width: 4, separator: '-' },
+  '/carding/uqc': { prefix: 'CAU', width: 4, separator: '-' },
+  '/carding/dfk-pressure': { prefix: 'DFK', width: 4, separator: '-' },
+  '/carding/change-control': { prefix: 'WHL', width: 4, separator: '-' },
+  '/carding/card-waste-study': { prefix: 'CWS', width: 4, separator: '-' },
+  '/mixing/cotton-hvi': { prefix: 'COT', width: 4, separator: '-' },
+  '/mixing/afis6-cotton': { prefix: 'AFIC', width: 4, separator: '-' },
+  '/mixing/afis6-mmf': { prefix: 'AFIM', width: 4, separator: '-' },
+  // AFIS-6 Cotton/MMF reserve their id via GET /entry-id/next?route_path=<this querystring
+  // form> (mixing.js's MIXING_ENTRY_ID_CONFIG uses routePath for reservation and a separate
+  // fetchPath for reading existing entries) - normalizeEntryRoutePath doesn't strip
+  // querystrings, so without an exact-match entry here the reservation call missed the
+  // /mixing/afis6-cotton|afis6-mmf mappings above entirely and fell through to the bare-number
+  // fallback for the id shown to the user before they even submit.
+  '/mixing?type=AFIS-6%20Cotton%20Data%20Entry': { prefix: 'AFIC', width: 4, separator: '-' },
+  '/mixing?type=AFIS-6%20MMF%20Data%20Entry': { prefix: 'AFIM', width: 4, separator: '-' },
+  '/mixing/fibre': { prefix: 'FIB', width: 4, separator: '-' },
+  '/mixing/afis': { prefix: 'AFI', width: 4, separator: '-' },
+  '/mixing/moisture': { prefix: 'MOI', width: 4, separator: '-' },
+  '/mixing/openness': { prefix: 'OPN', width: 4, separator: '-' },
+  '/mixing/qc': { prefix: 'MIX', width: 4, separator: '-' },
+  // Same missing-mapping bug as Carding/Mixing above, audited across every remaining
+  // sub-department (Blow Room, Comber, Draw Frame, Simplex, Spinning, Individual Card
+  // Performance) - prefixes/widths mirror each screen's own frontend ENTRY_ID_CONFIG
+  // (views/blowroom.js, views/comber.js, views/draw-frame.js, views/simplex.js,
+  // views/spinning.js, views/individualCardPerformance.jsx) so client and server always
+  // agree on the same id for the same route.
+  '/blowroom/sync': { prefix: 'BRS', width: 4, separator: '-' },
+  '/blowroom/br-waste-study': { prefix: 'BWS', width: 4, separator: '-' },
+  '/blowroom/within-lap-cv': { prefix: 'BWL', width: 4, separator: '-' },
+  '/blowroom/between-lap-cv': { prefix: 'BBL', width: 4, separator: '-' },
+  '/comber/lap-cv': { prefix: 'RLC', width: 4, separator: '-' },
+  '/comber/nati-data-entry': { prefix: 'NAT', width: 4, separator: '-' },
+  '/comber/uqc': { prefix: 'COU', width: 4, separator: '-' },
+  '/drawframe/comber-noil-percent': { prefix: 'CNP', width: 4, separator: '-' },
+  '/comber/nre': { prefix: 'CNRE', width: 4, separator: '-' },
+  '/comber/efficiency': { prefix: 'CEFF', width: 4, separator: '-' },
+  '/drawframe/yarn-cv': { prefix: 'YAR', width: 4, separator: '-' },
+  '/drawframe/cots': { prefix: 'DRC', width: 4, separator: '-' },
+  '/drawframe/uqc': { prefix: 'DUP', width: 4, separator: '-' },
+  '/drawframe/a-percent': { prefix: 'DAP', width: 4, separator: '-' },
+  '/drawframe/wheel-change': { prefix: 'DWC', width: 4, separator: '-' },
+  '/drawframe/wheel-change/type1': { prefix: 'DW1', width: 4, separator: '-' },
+  '/drawframe/wheel-change/type2': { prefix: 'DW2', width: 4, separator: '-' },
+  '/drawframe/wheel-change/type3': { prefix: 'DW3', width: 4, separator: '-' },
+  '/drawframe/wheel-change/finisher-type1-lrsb': { prefix: 'DW4', width: 4, separator: '-' },
+  '/drawframe/wheel-change/type2-d40': { prefix: 'DW5', width: 4, separator: '-' },
+  '/drawframe/wheel-change/type3-d50-d55': { prefix: 'DW6', width: 4, separator: '-' },
+  '/drawframe/wheel-change/type4-ldf3s': { prefix: 'DW7', width: 4, separator: '-' },
+  '/simplex/SMXCotsChange': { prefix: 'SCC', width: 4, separator: '-' },
+  '/simplex/uqc': { prefix: 'SUP', width: 4, separator: '-' },
+  '/simplex/wheel-change': { prefix: 'SWC', width: 4, separator: '-' },
+  '/simplex/stretch-percent': { prefix: 'STP', width: 4, separator: '-' },
+  '/spinning/cots-checking': { prefix: 'SCT', width: 4, separator: '-' },
+  '/spinning/count-change': { prefix: 'SCG', width: 4, separator: '-' },
+  '/spinning/ring-frame': { prefix: 'SRF', width: 4, separator: '-' },
+  '/spinning/speed-checking': { prefix: 'SSD', width: 4, separator: '-' },
+  '/spinning/lycra-missing': { prefix: 'SLM', width: 4, separator: '-' },
+  '/spinning/bottom-apron-checking': { prefix: 'SBA', width: 4, separator: '-' },
+  '/spinning/lycra-centering': { prefix: 'SLC', width: 4, separator: '-' },
+  '/spinning/rsm-lycra-online': { prefix: 'SRO', width: 4, separator: '-' },
+  '/spinning/rsm-lycra-offline': { prefix: 'SFO', width: 4, separator: '-' },
+  '/spinning/wheel-change': { prefix: 'SWC', width: 4, separator: '-' },
+  '/spinning/wheel-change/type1': { prefix: 'SW1', width: 4, separator: '-' },
+  '/spinning/wheel-change/type2': { prefix: 'SW2', width: 4, separator: '-' },
+  '/spinning/wheel-change/type3': { prefix: 'SW3', width: 4, separator: '-' },
+  '/trials': { prefix: 'TRI', width: 4, separator: '-' }
 };
 
 // Extract only the TRAILING run of digits (the actual sequence number), not
@@ -372,6 +460,34 @@ app.use(async (req, res, next) => {
       const nextEntry = await getNextEntryIdForRoute({ routePath, moduleName });
       entryId = nextEntry.entry_id;
       req.body.entry_id = entryId;
+    } else {
+      // Whatever the frontend sent is trusted as-is below (it's the id it already reserved
+      // and may have committed elsewhere against), so a bare number here (stale client build,
+      // a reservation call that itself hit the same bug, manual/API submission) would otherwise
+      // be stored unprefixed forever. Re-apply the route's prefix whenever the supplied id
+      // doesn't already carry one, rather than only fixing this at generation time.
+      const routePrefix = ENTRY_ID_ROUTE_PREFIXES[routePath];
+      if (routePrefix && !entryId.startsWith(`${routePrefix.prefix}${routePrefix.separator}`)) {
+        const numericSuffix = entryId.match(/(\d+)\s*$/)?.[1];
+        if (numericSuffix) {
+          entryId = `${routePrefix.prefix}${routePrefix.separator}${numericSuffix.padStart(routePrefix.width, '0')}`;
+          req.body.entry_id = entryId;
+        }
+      }
+    }
+
+    // Final guard: every department route is now mapped in ENTRY_ID_ROUTE_PREFIXES (audited
+    // across Carding/Mixing/Blow Room/Comber/Draw Frame/Simplex/Spinning/Autoconer), so a
+    // bare/unprefixed entry_id reaching this point means either an unmapped route slipped
+    // through or a caller supplied something that isn't a real reservation. Reject rather than
+    // silently store it unprefixed - entry_id must always be PREFIX-NUMBER, no exceptions.
+    // Prefix itself can carry trailing digits (e.g. "SW1-0002", "DW4-0002" for Spinning/Draw
+    // Frame wheel-change sub-types), so this only requires letters-then-optional-digits, a
+    // separator, and a numeric sequence - not a purely alphabetic prefix.
+    if (!/^[A-Za-z]+\d*-\d+$/.test(entryId)) {
+      return res.status(400).json({
+        message: `Invalid entry_id "${entryId}" - entry_id must be in PREFIX-NUMBER format.`,
+      });
     }
 
     // A resubmitted/stale reserved id (double-click, retry, a frontend
