@@ -481,12 +481,6 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
             })}
           </div>
 
-          <p style={{ color: "#7b89a0", fontSize: "12px" }}>
-            Once an L1 user submits a Wheel Change, it goes to L4 and the Approve Within timer starts. If L4 doesn&apos;t
-            act within that time, a ticket is raised. If no specific L4 user is selected, the approval task is raised on
-            every current L4 user.
-          </p>
-
           <div className={styles.formFooter}>
             <div className={styles.actionButtons}>
               <button

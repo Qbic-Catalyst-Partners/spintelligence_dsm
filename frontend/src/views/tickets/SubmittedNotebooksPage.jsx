@@ -9,6 +9,7 @@ import {
 } from "@/apis/submittedNotebooksApi";
 import apiConfig from "@/apis/apiConfig";
 import Pagination from "@/components/Pagination";
+import SearchableSelect from "@/components/SearchableSelect";
 import { fetchUsersAPI } from "@/apis/userApi";
 import {
     hasHierarchyLevel,
@@ -87,7 +88,7 @@ const FIELD_LABELS = {
     rd: "RD",
 };
 
-const FILTER_CASCADE = ["department", "subDepartment", "notebookType", "operator", "supervisor"];
+const FILTER_CASCADE = ["department", "subDepartment", "notebookType", "operator", "supervisor", "entryId"];
 
 const FALLBACK_FIELDS = [
     "date",
@@ -1256,6 +1257,7 @@ const SubmittedNotebooksPage = () => {
         notebookType: "",
         operator: "",
         supervisor: "",
+        entryId: "",
         datePreset: "",
         dateFrom: "",
         dateTo: "",
@@ -1263,6 +1265,12 @@ const SubmittedNotebooksPage = () => {
     const isSupervisor = isSupervisorNavUser(user) && !isFullAccessUser(user);
     const isAdminUser = isFullAccessUser(user);
     const canApproveNotebooks = isSubmittedNotebookApproverUser(user);
+    // L4 is now scoped server-side to only notebooks they were actually assigned to (see
+    // isL4Requester in submittedNotebooks.routes.js) - the "Check by"/"Checked by" filter let
+    // them pick a DIFFERENT L4's name, which no longer means anything since they can't see that
+    // other L4's notebooks anyway. Drop the filter entirely for L4 rather than leave a control
+    // that only ever has one meaningful value (themselves).
+    const isL4User = String(user?.level ?? user?.user_details?.level ?? "").trim().toUpperCase() === "L4" && !isAdminUser;
     const [activeTab, setActiveTab] = useState("pending");
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
@@ -1273,6 +1281,7 @@ const SubmittedNotebooksPage = () => {
         notebookTypes: [],
         operators: [],
         supervisors: [],
+        entryIds: [],
     });
     const PAGE_SIZE_OPTIONS = [5, 10, 25, 50];
     const lastLoadKeyRef = useRef("");
@@ -1291,7 +1300,7 @@ const SubmittedNotebooksPage = () => {
         }
     };
 
-    const loadNotebooks = async () => {
+    const loadNotebooks = async ({ force = false } = {}) => {
         if (!isAuthHydrated) {
             return;
         }
@@ -1310,12 +1319,19 @@ const SubmittedNotebooksPage = () => {
             ...(filters.notebookType ? { notebook_type: filters.notebookType } : {}),
             ...(filters.operator ? { operator: filters.operator } : {}),
             ...(filters.supervisor ? { supervisor: filters.supervisor } : {}),
+            ...(filters.entryId ? { entry_id: filters.entryId } : {}),
             ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
             ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
         };
         const loadKey = `${getUserLoadKey(user)}::${serializeQuery(query)}`;
 
-        if (inFlightLoadKeyRef.current === loadKey || lastLoadKeyRef.current === loadKey) {
+        // Acknowledging a notebook changes its status server-side without changing anything about
+        // *this* query (same tab/filters/page) - the loadKey would be identical to the one already
+        // cached in lastLoadKeyRef, so without `force` this dedup guard (meant to collapse redundant
+        // re-renders/effect-reruns firing the same request) would silently skip the refetch and the
+        // notebook would keep showing under Pending until some unrelated filter change happened to
+        // bust the cache. `force` lets a caller that just changed server state bypass it.
+        if (inFlightLoadKeyRef.current === loadKey || (!force && lastLoadKeyRef.current === loadKey)) {
             return;
         }
 
@@ -1334,6 +1350,7 @@ const SubmittedNotebooksPage = () => {
                 notebookTypes: data?.filter_options?.notebook_types || [],
                 operators: data?.filter_options?.operators || [],
                 supervisors: data?.filter_options?.supervisors || [],
+                entryIds: data?.filter_options?.entry_ids || [],
             });
             lastLoadKeyRef.current = loadKey;
         } catch (err) {
@@ -1382,6 +1399,7 @@ const SubmittedNotebooksPage = () => {
                 return {
                     notebook,
                     id: getNotebookId(notebook),
+                    entryId: notebook?.entry_id || notebook?.entryId || "",
                     department,
                     subDepartment,
                     title: getNotebookTitle(notebook),
@@ -1509,7 +1527,11 @@ const SubmittedNotebooksPage = () => {
             setShowAcknowledgeConfirm(false);
             setReviewNote("");
             setReviewNoteError(false);
-            await loadNotebooks();
+            // The acknowledged notebook's status changed server-side, but nothing about this
+            // query (tab/filters/page) did - force bypasses the stale-request dedup guard so the
+            // Pending list actually drops it right away instead of only refreshing on some later,
+            // unrelated filter/tab change.
+            await loadNotebooks({ force: true });
             // Show "Thanks for Acknowledging" over the detail view for 2s, then close it —
             // closing selectedNotebook immediately (as this used to do) skipped straight past
             // any success feedback, so the reviewer had no confirmation the click registered.
@@ -1599,16 +1621,17 @@ const SubmittedNotebooksPage = () => {
                     </label>
                     <label className={styles.filterField}>
                         <small>Notebook Type</small>
-                        <select
+                        <SearchableSelect
                             className={styles.filterSelect}
                             value={filters.notebookType}
-                            onChange={(event) => handleFilterChange("notebookType", event.target.value)}
-                        >
-                            <option value="">All</option>
-                            {filterOptions.notebookTypes.map((value) => (
-                                <option key={value} value={value}>{value}</option>
-                            ))}
-                        </select>
+                            onChange={(value) => handleFilterChange("notebookType", value)}
+                            options={filterOptions.notebookTypes}
+                            includeEmptyOption
+                            emptyOptionLabel="All"
+                            placeholder="All"
+                            ariaLabel="Notebook Type"
+                            optionVariant="native"
+                        />
                     </label>
                     <label className={styles.filterField}>
                         <small>Submitted by</small>
@@ -1623,22 +1646,38 @@ const SubmittedNotebooksPage = () => {
                             ))}
                         </select>
                     </label>
+                    {isL4User ? null : (
+                        <label className={styles.filterField}>
+                            <small>{activeTab === "closed" ? "Checked by" : "Check by"}</small>
+                            {isSupervisor ? (
+                                <span className={styles.filterLocked}>{getFirstName(user?.full_name || user?.fullName || user?.name) || "You"}</span>
+                            ) : (
+                                <select
+                                    className={styles.filterSelect}
+                                    value={filters.supervisor}
+                                    onChange={(event) => handleFilterChange("supervisor", event.target.value)}
+                                >
+                                    <option value="">All</option>
+                                    {filterOptions.supervisors.map((value) => (
+                                        <option key={value} value={value}>{getFirstName(value)}</option>
+                                    ))}
+                                </select>
+                            )}
+                        </label>
+                    )}
                     <label className={styles.filterField}>
-                        <small>{activeTab === "closed" ? "Checked by" : "Check by"}</small>
-                        {isSupervisor ? (
-                            <span className={styles.filterLocked}>{getFirstName(user?.full_name || user?.fullName || user?.name) || "You"}</span>
-                        ) : (
-                            <select
-                                className={styles.filterSelect}
-                                value={filters.supervisor}
-                                onChange={(event) => handleFilterChange("supervisor", event.target.value)}
-                            >
-                                <option value="">All</option>
-                                {filterOptions.supervisors.map((value) => (
-                                    <option key={value} value={value}>{getFirstName(value)}</option>
-                                ))}
-                            </select>
-                        )}
+                        <small>Entry ID</small>
+                        <SearchableSelect
+                            className={styles.filterSelect}
+                            value={filters.entryId}
+                            onChange={(value) => handleFilterChange("entryId", value)}
+                            options={filterOptions.entryIds}
+                            includeEmptyOption
+                            emptyOptionLabel="All"
+                            placeholder="All"
+                            ariaLabel="Entry ID"
+                            optionVariant="native"
+                        />
                     </label>
                     <label className={styles.filterField}>
                         <small>Date Range</small>
@@ -1711,6 +1750,10 @@ const SubmittedNotebooksPage = () => {
                                     <span>{item.department} &gt; {item.subDepartment}</span>
                                 </span>
                                 <span className={styles.rowMeta}>
+                                    <span className={styles.rowMetaItem}>
+                                        <small>Entry ID</small>
+                                        <strong>{item.entryId || "--"}</strong>
+                                    </span>
                                     <span className={styles.rowMetaItem}>
                                         <small>{activeTab === "closed" ? "Checked by" : "Check by"}</small>
                                         <strong>{getFirstName(item.supervisor)}</strong>

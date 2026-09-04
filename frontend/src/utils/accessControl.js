@@ -50,9 +50,11 @@ export const isSubmittedNotebookManagerUser = (user) =>
 // Submitted Notebooks list itself is visible to the whole L1-L5 hierarchy
 // (not just admin/supervisor) - each level just sees a different scope of
 // rows (L1: own; L2: their mapped L1s; L3: mapped L1s via their mapped L2s;
-// L4/L5: everything), enforced server-side in submittedNotebooks.routes.js
-// (canViewAllSubmissions / canViewSubmission). Only the ability to actually
-// acknowledge is restricted to L4/L5 - see isSubmittedNotebookApproverUser.
+// L4: only notebooks they were actually assigned to acknowledge; L5:
+// everything), enforced server-side in submittedNotebooks.routes.js
+// (canViewAllSubmissions / isL4Requester / canViewSubmission). Only the
+// ability to actually acknowledge is restricted to L4/L5 - see
+// isSubmittedNotebookApproverUser.
 export const isSubmittedNotebookViewerUser = (user) =>
   isSubmittedNotebookManagerUser(user) || hasHierarchyLevel(user);
 

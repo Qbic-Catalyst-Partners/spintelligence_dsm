@@ -222,7 +222,13 @@ const getPpBatchSubDepartmentThresholds = async () => {
   );
   const bySubDepartment = new Map();
   for (const row of result.rows) {
-    bySubDepartment.set(row.sub_department, Number(row.completion_threshold_hours));
+    bySubDepartment.set(row.sub_department, {
+      hours: Number(row.completion_threshold_hours),
+      // No created_at column on this table - updated_at is the closest thing to "when this
+      // threshold took its current form" (set once at creation, moved forward by any later
+      // edit), used the same way as the other thresholds' created_at anchor below.
+      anchoredAt: row.updated_at,
+    });
   }
   return bySubDepartment;
 };
@@ -382,12 +388,23 @@ const runPpBatchCompletionCheck = async () => {
     : 24;
   const subDepartmentThresholds = await getPpBatchSubDepartmentThresholds();
   const notebookThresholds = await getPpNotebookThresholds();
-  const getCompletionThresholdHoursForLabel = (label) => {
+  // Returns both the hours to use AND when the config that supplied them actually took effect,
+  // so a PP entry that started before that specific notebook/sub-department threshold existed
+  // isn't instantly judged against it - same reasoning as the Submission/Acknowledgement
+  // Threshold fixes. The global default (defaultCompletionThresholdHours) has no creation
+  // moment worth anchoring to - it's the always-there baseline, not a threshold someone just
+  // set up - so anchoredAt is null (no floor) whenever nothing more specific is configured.
+  const getCompletionThresholdForLabel = (label) => {
     const notebookRow = notebookThresholds.get(label);
-    if (Number(notebookRow?.completion_threshold_hours) > 0) return Number(notebookRow.completion_threshold_hours);
+    if (Number(notebookRow?.completion_threshold_hours) > 0) {
+      return { hours: Number(notebookRow.completion_threshold_hours), anchoredAt: notebookRow.created_at };
+    }
     const subDepartment = PP_BATCH_LABEL_TO_SUB_DEPARTMENT[label];
-    const perSubDepartmentHours = subDepartmentThresholds.get(subDepartment);
-    return Number(perSubDepartmentHours) > 0 ? Number(perSubDepartmentHours) : defaultCompletionThresholdHours;
+    const perSubDepartment = subDepartmentThresholds.get(subDepartment);
+    if (Number(perSubDepartment?.hours) > 0) {
+      return { hours: Number(perSubDepartment.hours), anchoredAt: perSubDepartment.anchoredAt };
+    }
+    return { hours: defaultCompletionThresholdHours, anchoredAt: null };
   };
 
   const unionSelects = PP_BATCH_NOTEBOOKS.map(
@@ -426,10 +443,16 @@ const runPpBatchCompletionCheck = async () => {
 
     // One ticket per PP ID (entry_id), not per missing department - collect
     // every missing screen whose own sub-department/notebook TAT has already
-    // elapsed and file a single consolidated ticket naming all of them.
-    const overdueScreens = missingScreens.filter(
-      (label) => hoursElapsed >= getCompletionThresholdHoursForLabel(label)
-    );
+    // elapsed and file a single consolidated ticket naming all of them. A
+    // screen is only counted overdue if its threshold's own anchoredAt (when
+    // that specific config was created/last edited) is on/before this PP
+    // entry's first_created_at - a PP entry that started before a
+    // notebook/sub-department threshold existed was never subject to it.
+    const overdueScreens = missingScreens.filter((label) => {
+      const { hours, anchoredAt } = getCompletionThresholdForLabel(label);
+      if (anchoredAt && firstCreatedAt < new Date(anchoredAt)) return false;
+      return hoursElapsed >= hours;
+    });
     if (!overdueScreens.length) continue;
 
     // Guards against ever raising a second open ticket for the same
@@ -470,7 +493,7 @@ const runPpBatchCompletionCheck = async () => {
     const approvalL1UserIds = approvalL1UserIdsSet.size ? Array.from(approvalL1UserIdsSet) : configuredL1UserIds;
 
     const screenThresholds = Object.fromEntries(
-      overdueScreens.map((label) => [label, getCompletionThresholdHoursForLabel(label)])
+      overdueScreens.map((label) => [label, getCompletionThresholdForLabel(label).hours])
     );
 
     const violationDetails = {
@@ -720,7 +743,7 @@ const getSubmissionFrequencyConfigForThreshold = async ({ screenName, department
 const getAcknowledgementThresholdForNotebook = async (submission) => {
   const result = await client.query(
     `SELECT id, screen_name, department, sub_department, acknowledge_within_hours,
-            approval_l4, approval_l4_name, l4_tat_hours, criticality
+            approval_l4, approval_l4_name, l4_tat_hours, criticality, created_at
      FROM ticketing_system.notebook_acknowledgement_threshold
      WHERE is_active = true
        AND LOWER(TRIM(screen_name)) = LOWER(TRIM($1))
@@ -842,19 +865,23 @@ const getRequesterLevel = (req) => String(req.user?.level || '').trim().toUpperC
 // isSubmittedNotebookApproverUser in utils/accessControl.js).
 const canApproveSubmission = (req) => isAdminRequester(req) || ['L4', 'L5'].includes(getRequesterLevel(req));
 
-// L4/L5/admin see every submitted notebook. Everyone else is scoped by
-// getVisibleSubmitterIds below, based on the real users.user_details
-// reports_to_user_id org chart - NOT the l2_approver_user_ids/
-// l3_approver_user_ids columns on submitted_notebooks rows. Those columns
-// are populated per-notebook-type from the manually-configured
-// Acknowledgement Threshold (see the POST '/' handler's
+// L5/admin see every submitted notebook. L4 is scoped to only the notebooks
+// they were actually assigned to acknowledge (l4_approver_user_ids contains
+// their own id) - not every submission system-wide, so one L4 user (e.g.
+// Sneha) never sees notebooks assigned to a different L4 user. Everyone
+// below L4 is scoped by getVisibleSubmitterIds below, based on the real
+// users.user_details reports_to_user_id org chart - NOT the
+// l2_approver_user_ids/l3_approver_user_ids columns on submitted_notebooks
+// rows. Those columns are populated per-notebook-type from the manually-
+// configured Acknowledgement Threshold (see the POST '/' handler's
 // "Notebook approval moved from L2 to L4" comment) - they hold whichever
 // L4 approver was configured for that specific notebook type, and are an
 // empty array for any notebook type with no threshold configured (which is
 // most of them - only Mixing's 8 screens have one at the time of writing).
 // They tell you nothing about a submitter's actual L2/L3 manager, so they
 // can't be used to scope L2/L3 visibility.
-const canViewAllSubmissions = (req) => isAdminRequester(req) || ['L4', 'L5'].includes(getRequesterLevel(req));
+const canViewAllSubmissions = (req) => isAdminRequester(req) || getRequesterLevel(req) === 'L5';
+const isL4Requester = (req) => getRequesterLevel(req) === 'L4';
 
 const getDirectReportIds = async (managerId) => {
   if (!managerId) return [];
@@ -890,6 +917,10 @@ const getVisibleSubmitterIds = async (req) => {
 
 const canViewSubmission = async (req, row) => {
   if (canViewAllSubmissions(req)) return true;
+  if (isL4Requester(req)) {
+    const requesterId = parsePositiveInt(req.user?.id);
+    return Array.isArray(row.l4_approver_user_ids) && row.l4_approver_user_ids.map(Number).includes(requesterId);
+  }
   const visibleIds = await getVisibleSubmitterIds(req);
   return visibleIds.includes(row.submitted_by_user_id);
 };
@@ -1008,6 +1039,15 @@ const processOverdueNotebookSubmission = async (submission, created) => {
     // active, matching notebook_acknowledgement_threshold row is now a hard
     // requirement for a ticket to exist at all, not just for who receives it.
     if (!acknowledgementThreshold) return;
+
+    // A submission made BEFORE this threshold was created/activated was never actually subject
+    // to it - ack_due_at on that row is a flat 24h default computed at submission time (see
+    // recordPpNotebookSubmission), unrelated to whatever threshold happens to exist now. Without
+    // this check, creating a brand new Acknowledgement Threshold for a screen would instantly
+    // sweep in every already-overdue pre-existing submission on that screen (potentially weeks of
+    // backlog) as soon as the next worker cycle runs, rather than only judging submissions made
+    // once the threshold actually existed - same reasoning as the Submission Threshold fix.
+    if (new Date(submission.submitted_at) < new Date(acknowledgementThreshold.created_at)) return;
 
     // Acknowledgement Threshold is L4-only: once the notebook is submitted,
     // the L4 timer starts, and if it is not acknowledged by the due time we
@@ -1804,6 +1844,9 @@ const buildSubmittedNotebookFilterOptions = (enrichedRows, filters) => {
   const byOperator = byNotebookType.filter(
     (item) => !filters.operator || item.operator === filters.operator
   );
+  const bySupervisor = byOperator.filter(
+    (item) => !filters.supervisor || item.supervisor === filters.supervisor
+  );
 
   return {
     departments: uniqueValues(enrichedRows.map((item) => item.department)),
@@ -1811,6 +1854,7 @@ const buildSubmittedNotebookFilterOptions = (enrichedRows, filters) => {
     notebook_types: uniqueValues(bySubDepartment.map((item) => item.title)),
     operators: uniqueValues(byNotebookType.map((item) => item.operator)),
     supervisors: uniqueValues(byOperator.map((item) => item.supervisor)),
+    entry_ids: uniqueValues(bySupervisor.map((item) => item.entry_id)),
   };
 };
 
@@ -1827,20 +1871,28 @@ router.get('/', async (req, res, next) => {
       notebookType: cleanText(req.query.notebook_type || req.query.notebookType) || '',
       operator: cleanText(req.query.operator) || '',
       supervisor: cleanText(req.query.supervisor) || '',
+      entryId: cleanText(req.query.entry_id || req.query.entryId) || '',
     };
     const dateFrom = cleanText(req.query.date_from || req.query.dateFrom);
     const dateTo = cleanText(req.query.date_to || req.query.dateTo);
 
-    // The submitted-notebooks list is restricted to L4/L5 (mirrors frontend
-    // isSubmittedNotebookViewerUser) - everyone else stays scoped to their
-    // own submissions plus their real org-chart reports (see
-    // getVisibleSubmitterIds - based on reports_to_user_id, not the
-    // per-notebook-type l2/l3_approver_user_ids columns). Mirrors
-    // canViewSubmission below, used by GET /:id.
+    // The submitted-notebooks list is restricted to L5/admin (mirrors frontend
+    // isSubmittedNotebookViewerUser) seeing everything; L4 only sees notebooks
+    // they were actually assigned to (l4_approver_user_ids contains their own
+    // id) - not every L4's notebooks; everyone else stays scoped to their own
+    // submissions plus their real org-chart reports (see getVisibleSubmitterIds
+    // - based on reports_to_user_id, not the per-notebook-type l2/l3_approver_
+    // user_ids columns). Mirrors canViewSubmission below, used by GET /:id.
     const canViewAll = canViewAllSubmissions(req);
     const where = [];
     const params = [];
-    if (!canViewAll) {
+    if (canViewAll) {
+      // no restriction - full visibility
+    } else if (isL4Requester(req)) {
+      const requesterId = parsePositiveInt(req.user?.id);
+      params.push(requesterId);
+      where.push(`$${params.length} = ANY(l4_approver_user_ids)`);
+    } else {
       const visibleSubmitterIds = await getVisibleSubmitterIds(req);
       params.push(visibleSubmitterIds);
       where.push(`submitted_by_user_id = ANY($${params.length}::int[])`);
@@ -1938,6 +1990,7 @@ router.get('/', async (req, res, next) => {
       if (filters.notebookType && item.title !== filters.notebookType) return false;
       if (filters.operator && item.operator !== filters.operator) return false;
       if (filters.supervisor && item.supervisor !== filters.supervisor) return false;
+      if (filters.entryId && item.entry_id !== filters.entryId) return false;
       const createdAtTime = item.createdAt ? new Date(item.createdAt).getTime() : 0;
       if (dateFromTime !== null && createdAtTime < dateFromTime) return false;
       if (dateToTime !== null && createdAtTime > dateToTime) return false;

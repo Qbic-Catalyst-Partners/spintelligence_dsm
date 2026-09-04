@@ -339,8 +339,13 @@
        width exceeds the card, and the last column (+/delete action icons)
        was pushed off-screen with no way to reach it. Scrolling the row
        itself, rather than letting it silently overflow the page, keeps
-       those icons reachable. */
+       those icons reachable. overflow-y is set explicitly (not left to the
+       browser's auto-conversion of "visible" alongside overflow-x: auto) so
+       the L1 user multi-select menu (.multiSelectMenu, absolutely positioned
+       under its field) can still drop open below the row instead of being
+       clipped to the row's own height. */
     overflow-x: auto;
+    overflow-y: visible;
 }
 
 .ruleFields {

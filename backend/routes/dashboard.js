@@ -1043,21 +1043,27 @@ const handleOptions = async (req, res, next) => {
         ORDER BY name
       `);
     const { roleRes, userRes } = await getDashboardRolesAndUsers();
+    // threshold_master never existed in production (a stale table left over locally, never
+    // migrated) - this whole "Sub Department" list moved to value_threshold_rules, the same
+    // table Value Threshold's own ticket-raising logic (checkSubmissionFrequencyValueBreach)
+    // reads from, which connection.js's startup self-provisioning already guarantees exists on
+    // every environment (CREATE TABLE IF NOT EXISTS). Its department/sub_department columns are
+    // NOT NULL, so there's no COALESCE-against-a-legacy-alias-column needed here.
     const subDeptRes = selectedDepartment
       ? await client.query(
         `
-        SELECT DISTINCT COALESCE(NULLIF(trim(sub_department), ''), NULLIF(trim(erp_product_code), '')) AS sub_department
-        FROM ticketing_system.threshold_master
-        WHERE COALESCE(NULLIF(trim(department), ''), NULLIF(trim(management_field), '')) = $1
-          AND COALESCE(NULLIF(trim(sub_department), ''), NULLIF(trim(erp_product_code), '')) IS NOT NULL
+        SELECT DISTINCT sub_department
+        FROM ticketing_system.value_threshold_rules
+        WHERE department = $1
+          AND sub_department IS NOT NULL AND trim(sub_department) <> ''
         ORDER BY 1
         `,
         [selectedDepartment]
       )
       : await client.query(`
-        SELECT DISTINCT COALESCE(NULLIF(trim(sub_department), ''), NULLIF(trim(erp_product_code), '')) AS sub_department
-        FROM ticketing_system.threshold_master
-        WHERE COALESCE(NULLIF(trim(sub_department), ''), NULLIF(trim(erp_product_code), '')) IS NOT NULL
+        SELECT DISTINCT sub_department
+        FROM ticketing_system.value_threshold_rules
+        WHERE sub_department IS NOT NULL AND trim(sub_department) <> ''
         ORDER BY 1
       `);
 
