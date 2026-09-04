@@ -15,7 +15,24 @@ function SearchableSelect({
   includeEmptyOption = false,
   emptyOptionLabel = "Select",
   onFocus,
+  // Every existing caller (55+ usages) relies on the default slate hover/selected look, so this
+  // stays opt-in per-instance rather than changing the shared default - callers that want this
+  // menu to match a plain native <select> sitting right next to it (e.g. Submitted Notebooks'
+  // Notebook Type/Entry ID filters, next to the native Department/Sub Department selects) pass
+  // optionVariant="native". Uses the CSS system color keywords "Highlight"/"HighlightText"
+  // instead of a guessed hex - those resolve to the actual OS/browser selection color a real
+  // <select> popup highlights with, so this is a guaranteed exact match rather than an
+  // approximation of whatever blue happens to render on a given machine/theme.
+  optionVariant = "default",
 }) {
+  const optionHoverClassName =
+    optionVariant === "native" ? "hover:bg-[Highlight] hover:text-[HighlightText]" : "hover:bg-slate-100";
+  const selectedOptionClassName =
+    optionVariant === "native" ? "bg-[Highlight] text-[HighlightText]" : "bg-slate-50 font-semibold";
+  // Matches this page's own .filterSelect text styling (12px/#111827, not bold - the closed
+  // input's font-weight:700 is a filter-field-specific look, not something the dropdown's own
+  // option rows should carry) so an option reads the right size/color in this menu.
+  const optionTextClassName = optionVariant === "native" ? "text-[12px] text-[#111827]" : "text-[12px] text-slate-700";
   const containerRef = useRef(null);
   const inputRef = useRef(null);
   const menuRef = useRef(null);
@@ -233,8 +250,8 @@ function SearchableSelect({
                     <li key={`${safeOption.value}-${index}`}>
                       <button
                         type="button"
-                        className={`flex w-full items-center px-3 py-2 text-left text-[12px] text-slate-700 hover:bg-slate-100 ${
-                          safeOption.value === value ? "bg-slate-50 font-semibold" : ""
+                        className={`flex w-full items-center px-3 py-2 text-left ${optionTextClassName} ${optionHoverClassName} ${
+                          safeOption.value === value ? selectedOptionClassName : ""
                         }`}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => handleSelect(safeOption)}

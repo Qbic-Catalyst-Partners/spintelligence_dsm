@@ -1085,17 +1085,37 @@ const runSubmissionFrequencyCheck = async () => {
     const windowDays = Number(config.range) > 0 ? Number(config.range) : 7;
     const requiredCount = Number(config.frequency) > 0 ? Number(config.frequency) : 1;
 
+    // No full day has elapsed since this config was created/last edited yet
+    // - e.g. created today at 11am, so "yesterday" (the only fully completed
+    // day so far) is still pre-config history. Wait for the day after
+    // creation before judging anything, same as the "today isn't judged
+    // until it ends" rule below applied to the config's own creation day.
+    const createdDay = new Date(config.created_at);
+    createdDay.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (createdDay >= today) continue; // eslint-disable-line no-continue
+
     {
       // Only evaluate fully completed days. "Every 1 day" means today's
       // submission is not judged until the day ends.
+      //
+      // The window's lower bound is clamped to this config's created_at day -
+      // without that clamp, a threshold saved today would immediately look
+      // back `range` days into history that predates the threshold entirely
+      // (e.g. a "Days=1" config created today would judge yesterday, before
+      // the config existed, as an instant miss).
       // eslint-disable-next-line no-await-in-loop
       const submissionCount = await client.query(
         `SELECT COUNT(*) FROM ticketing_system.submitted_notebooks
          WHERE submitted_by_user_id = $1
            AND (input_screen = $2 OR notebook = $2)
-           AND submitted_at >= DATE_TRUNC('day', NOW()) - ($3 || ' days')::interval
+           AND submitted_at >= GREATEST(
+                 DATE_TRUNC('day', NOW()) - ($3 || ' days')::interval,
+                 DATE_TRUNC('day', $4::timestamp)
+               )
            AND submitted_at < DATE_TRUNC('day', NOW())`,
-        [l1UserId, config.screen_name, windowDays]
+        [l1UserId, config.screen_name, windowDays, config.created_at]
       );
       const actualCount = Number(submissionCount.rows[0]?.count) || 0;
       if (actualCount >= requiredCount) {

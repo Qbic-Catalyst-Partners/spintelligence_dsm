@@ -1703,18 +1703,15 @@ const normalizeComberNoilRows = (response) =>
 // machines), all sharing the same entry_id — unlike Thick place & CV/Nati Data Entry, the GET
 // endpoint never nests these into an `entries` array, it just returns every machine's row as its
 // own separate record. Group them back into one row per submission (by entry_id) and expose each
-// machine's own 10 metric columns by name (e.g. "CDG-01 - DFK", "CDG-01 - CCD", ...), same
-// reasoning as Thick place & CV's per-machine columns.
-const CARD_DFK_METRIC_KEYS = [
-  "dfk", "ccd", "icfd_1", "lt", "cds", "silver_draft", "icfd_2", "idf_in", "idf_out", "al_on",
+// machine's row as numbered "Row N - <field>" columns (mirroring Ring Frame Log Book's
+// ring_frame_row_<N>_<metric> pattern below) rather than one column set per machine name - a
+// submission's Nth machine row always lands in the same "Row N" columns regardless of which
+// machine it names, same as Ring Frame.
+const CARD_DFK_ROW_METRIC_KEYS = [
+  "machine_name", "dfk", "ccd", "icfd_1", "lt", "cds", "silver_draft", "icfd_2", "idf_in", "idf_out", "al_on",
 ];
-// The form always covers this fixed machine set regardless of what's actually been submitted so
-// far — used so Available Fields lists every machine's columns even before any Card DFK Data
-// row exists yet (dynamic discovery from `rows` alone would show nothing on an empty table).
-const CARD_DFK_MACHINE_SLUGS = Array.from({ length: 27 }, (_, index) =>
-  slugifyMachineName(`CDG-${String(index + 1).padStart(2, "0")}`)
-);
-const CARD_DFK_METRIC_LABELS = {
+const CARD_DFK_ROW_METRIC_LABELS = {
+  machine_name: "Mc.Name",
   dfk: "DFK",
   ccd: "CCD",
   icfd_1: "ICFD (1)",
@@ -1736,17 +1733,36 @@ const normalizeCardingDfkRows = (response) => {
     groups.get(groupId).push(row);
   });
 
-  return Array.from(groups.values()).map((machineRows) => {
+  const submissions = Array.from(groups.values()).map((machineRows) => {
     const first = machineRows[0] || {};
-    const machineColumns = {};
-    machineRows.forEach((machineRow) => {
-      const machineSlug = slugifyMachineName(machineRow?.machine_name);
-      if (!machineSlug) return;
-      CARD_DFK_METRIC_KEYS.forEach((metric) => {
-        machineColumns[`${metric}_${machineSlug}`] = machineRow?.[metric] ?? null;
+    const rowColumns = {};
+    machineRows.forEach((machineRow, index) => {
+      const n = index + 1;
+      CARD_DFK_ROW_METRIC_KEYS.forEach((metric) => {
+        rowColumns[`card_dfk_row_${n}_${metric}`] = machineRow?.[metric] ?? null;
       });
     });
-    return { ...first, ...machineColumns };
+    return { ...first, ...rowColumns };
+  });
+
+  // A double-submit on the Card DFK Data form (no submit-guard there) writes two separate
+  // entry_ids for the exact same machine, same entry_date, same readings - two genuinely
+  // distinct-by-entry_id groups above that are otherwise identical. Report Preview then showed
+  // the same machine's same values twice. Collapse those (same machine + same entry_date + same
+  // metric values) down to one, keeping the earliest entry_id; a real second reading for that
+  // machine on the same day would differ in at least one metric value and is left alone.
+  const seenSubmissionSignatures = new Set();
+  return submissions.filter((submission) => {
+    const signature = [
+      normalizeLookupKey(submission.entry_date),
+      ...Object.keys(submission)
+        .filter((key) => key.startsWith("card_dfk_row_"))
+        .sort()
+        .map((key) => normalizeLookupKey(submission[key])),
+    ].join("|");
+    if (seenSubmissionSignatures.has(signature)) return false;
+    seenSubmissionSignatures.add(signature);
+    return true;
   });
 };
 
@@ -3417,6 +3433,16 @@ const getCellValue = (row, field, operatorByEntryKey = {}, context = {}) => {
       : "-";
   }
 
+  // Same reasoning as the ring_frame_row_ guard above — Card DFK Data's per-machine-row columns
+  // (`card_dfk_row_<N>_<metric>`) only exist on a row up to however many machines that submission
+  // actually had.
+  if (field.key.startsWith("card_dfk_row_")) {
+    const cardDfkRowValue = row?.[field.key];
+    return cardDfkRowValue !== null && typeof cardDfkRowValue !== "undefined" && String(cardDfkRowValue).trim() !== ""
+      ? String(cardDfkRowValue)
+      : "-";
+  }
+
   // Same reasoning as the ring_frame_row_ guard above — Autoconer Rewinding Study's per-reading
   // columns (`rewinding_study_reading_<N>_<metric>`) only exist on a row up to however many drum
   // readings that submission actually had.
@@ -4038,16 +4064,35 @@ function ReportsPage() {
           return set;
         }, new Set())
       : null;
+    // Same "only show what was actually submitted" flow, applied to the per-category Total
+    // Breaks/per-100SH summary columns too - these read from column_total_breaks/
+    // column_breaks_per_100sh rather than `items`, so they need their own category-presence set
+    // derived from the same combos rather than reusing smxBreaksStudyPresentCombos's combo keys
+    // directly.
+    const smxBreaksStudyPresentCategories = smxBreaksStudyPresentCombos
+      ? new Set(
+          Array.from(smxBreaksStudyPresentCombos, (combo) => combo.split("|")[0])
+        )
+      : null;
+    const smxBreaksStudyTotalFieldLabelMatch = (label) =>
+      /^Total Breaks - (.+)$/.exec(label) || /^No\. of Breaks per 100 Spindles \/ Hr - (.+)$/.exec(label);
     const rawCatalogFields = uniqueOptions(getThresholdFieldsForScreen(typeName, subDepartmentName))
       .map(toReportField)
       .filter(Boolean)
       .filter((field) => {
         if (!smxBreaksStudyPresentCombos) return true;
-        const parsed = parseSmxBreaksStudyFieldLabel(field.label || field.key);
-        if (!parsed) return true;
-        return smxBreaksStudyPresentCombos.has(
-          `${normalizeLookupKey(parsed.columnLabel)}|${normalizeLookupKey(parsed.lengthRange)}`
-        );
+        const label = field.label || field.key;
+        const parsed = parseSmxBreaksStudyFieldLabel(label);
+        if (parsed) {
+          return smxBreaksStudyPresentCombos.has(
+            `${normalizeLookupKey(parsed.columnLabel)}|${normalizeLookupKey(parsed.lengthRange)}`
+          );
+        }
+        const totalMatch = smxBreaksStudyTotalFieldLabelMatch(label);
+        if (totalMatch) {
+          return smxBreaksStudyPresentCategories.has(normalizeLookupKey(totalMatch[1]));
+        }
+        return true;
       });
     // getThresholdFieldsForScreen is keyed by type name only, and a few names (e.g. "Process
     // Parameter") are reused across unrelated departments with different field sets — for those,
@@ -4134,9 +4179,23 @@ function ReportsPage() {
     };
     // Card DFK Data's backend-suggested fields include the header's own raw "inspection_type" and
     // "entry_date" columns — drop them for this screen specifically (per user request): Operator
-    // and "Created At" (the row's real submission timestamp) are kept instead.
+    // and "Created At" (the row's real submission timestamp) are kept instead. The catalog's own
+    // generic "Machine Name"/"DFK"/"CCD"/... fields are dropped here too (per user request) - they
+    // only ever reflected the first machine of a multi-machine submission and duplicated exactly
+    // what the "Row N - <field>" columns generated below already show, same reasoning as Thick
+    // place & CV's raw-field exclusion above. This catalog entry is still used as-is by the Value
+    // Threshold field picker (getThresholdFieldsForScreen is shared across both), so the exclusion
+    // is scoped to this Reports-only filter, not the catalog itself.
     const isCardingDfkScreen = subDepartmentName === "Carding" && typeName === "Card DFK Data";
-    const CARD_DFK_EXCLUDED_KEYS = new Set(["inspectiontype", "entrydate"]);
+    const CARD_DFK_EXCLUDED_KEYS = new Set([
+      "inspectiontype", "entrydate",
+      // "Machine Name" canonicalizes to "mcname", not "machinename" - reportFieldAliases has
+      // "MC Name": ["machine_name", "mc_name"], so getCanonicalReportFieldKey resolves it through
+      // that alias table rather than to its own literal normalized text. Resolve it the same way
+      // here instead of hardcoding the wrong guess at what that resolves to.
+      getCanonicalReportFieldKey({ label: "Machine Name" }),
+      ...CARD_DFK_ROW_METRIC_KEYS.map((metric) => getCanonicalReportFieldKey({ label: CARD_DFK_ROW_METRIC_LABELS[metric] })),
+    ]);
     const isRawCardDfkField = (field) => {
       if (!isCardingDfkScreen) return false;
       return CARD_DFK_EXCLUDED_KEYS.has(getCanonicalReportFieldKey(field));
@@ -4402,28 +4461,27 @@ function ReportsPage() {
     const withComberNatiEntryColumns = comberNatiEntryFields.length
       ? [...withNatiEntryColumns, ...comberNatiEntryFields]
       : withNatiEntryColumns;
-    // Card DFK Data typeRows carry one set of 10 metric columns per machine actually present in the
-    // loaded data (up to CDG-27), same reasoning as Thick place & CV's per-machine columns above.
+    // Card DFK Data typeRows carry a submission's machine rows as "Row N - <field>" columns (see
+    // normalizeCardingDfkRows above) - same "Row N" numbering pattern as Ring Frame Log Book
+    // below, per user request, rather than one column set per machine name. Only offer as many
+    // "Row N" groups as the loaded data actually has (mirrors ringFrameRowCount's approach).
     const isCardingDfkReport = subDepartmentName === "Carding" && typeName === "Card DFK Data";
-    const dfkMachineSlugs = isCardingDfkReport
-      ? Array.from(
-          new Set([
-            ...CARD_DFK_MACHINE_SLUGS,
-            ...typeRows.flatMap((row) =>
-              Object.keys(row || {})
-                .filter((key) => key.startsWith("dfk_"))
-                .map((key) => key.slice("dfk_".length))
-            ),
-          ])
-        ).sort()
-      : [];
-    const dfkMachineFields = dfkMachineSlugs.flatMap((slug) => {
-      const label = machineSlugToLabel(slug);
-      return CARD_DFK_METRIC_KEYS.map((metric) => ({
-        key: `${metric}_${slug}`,
-        label: `${label} - ${CARD_DFK_METRIC_LABELS[metric]}`,
+    const cardDfkRowCount = isCardingDfkReport
+      ? typeRows.reduce((max, row) => {
+          let count = 0;
+          while (Object.prototype.hasOwnProperty.call(row || {}, `card_dfk_row_${count + 1}_machine_name`)) {
+            count += 1;
+          }
+          return Math.max(max, count);
+        }, 0)
+      : 0;
+    const dfkMachineFields = Array.from({ length: cardDfkRowCount }, (_, index) => {
+      const n = index + 1;
+      return CARD_DFK_ROW_METRIC_KEYS.map((metric) => ({
+        key: `card_dfk_row_${n}_${metric}`,
+        label: `Row ${n} - ${CARD_DFK_ROW_METRIC_LABELS[metric]}`,
       }));
-    });
+    }).flat();
     const withDfkColumns = dfkMachineFields.length
       ? [...withComberNatiEntryColumns, ...dfkMachineFields]
       : withComberNatiEntryColumns;
@@ -4748,7 +4806,47 @@ function ReportsPage() {
       ? [...withOpennessColumns, ...mixingBlendFields]
       : withOpennessColumns;
     const selectedKeys = new Set(excludeFields.map((field) => field.key));
-    return withBlendColumns.filter((field) => !selectedKeys.has(field.key));
+    const beforeBlankColumnPrune = withBlendColumns.filter((field) => !selectedKeys.has(field.key));
+
+    // Card DFK Data, SMX Breaks Study Report, and Ring Frame Log Book (per user request) all
+    // generate a wide set of dynamic per-row/per-category columns that are only ever filled in on
+    // SOME of the loaded entries - a column with real data on entry 2 but nothing on entries 1/3
+    // should still show (with "-" on the entries that didn't use it), but a column that's
+    // genuinely blank across every single loaded entry (e.g. "No. of Breaks per 100 Spindles/Hr -
+    // Top Roller Lapping" when nothing ever fed that category) is dead weight, not useful data -
+    // its heading shouldn't even be offered. The presence-set filters above (smxBreaksStudyPresentCombos,
+    // cardDfkRowCount, ringFrameRowCount) only narrow candidates upfront from what some row's shape
+    // suggests might exist; this is the final check that a column actually resolves to a real value
+    // somewhere, so it's scoped to just these 3 types since it's a second full field x row scan.
+    const shouldPruneAllBlankColumns =
+      typeRows.length > 0 &&
+      ((subDepartmentName === "Carding" && typeName === "Card DFK Data") ||
+        (subDepartmentName === "Simplex" && typeName === "SMX Breaks Study Report") ||
+        (subDepartmentName === "Spinning" && typeName === "Ring Frame Log Book"));
+    if (!shouldPruneAllBlankColumns) return beforeBlankColumnPrune;
+
+    const alwaysKeptFieldKeys = new Set(
+      [ENTRY_ID_FIELD, OPERATOR_FIELD, CREATED_AT_FIELD].map((keptField) => getCanonicalReportFieldKey(keptField))
+    );
+    // A metric column left at its default "0.00" on every single loaded entry (e.g. Card DFK's
+    // "ICFD (1)" when nobody ever actually recorded a reading for it) is just as much "nothing was
+    // ever entered here" as a blank "-" column, and gets the same treatment (per user request) -
+    // "0"/"0.00"/"0.0000" etc. all count as unfilled, but a genuinely non-numeric value ("Yes",
+    // "R/F NO 13") never matches this and is left alone.
+    const isZeroLikeValue = (value) => /^0+(\.0+)?$/.test(String(value).trim());
+    return beforeBlankColumnPrune.filter((field) => {
+      if (alwaysKeptFieldKeys.has(getCanonicalReportFieldKey(field))) return true;
+      return typeRows.some((row) => {
+        const value = getCellValue(row, field, {}, { subDepartment: subDepartmentName, reportType: typeName });
+        return (
+          value !== null &&
+          typeof value !== "undefined" &&
+          value !== "-" &&
+          String(value).trim() !== "" &&
+          !isZeroLikeValue(value)
+        );
+      });
+    });
   };
 
   const availableFields = useMemo(

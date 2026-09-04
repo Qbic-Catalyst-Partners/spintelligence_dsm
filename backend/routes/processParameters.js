@@ -562,9 +562,24 @@ const runPpApprovalOverdueCheck = async () => {
     const notebookConfig = notebookThresholds?.get(notebookLabel) || null;
     // eslint-disable-next-line no-await-in-loop
     const approvalConfig = await getPpApprovalConfig();
-    const tatHours = Number(notebookConfig?.approve_within_hours) > 0
+    const usingNotebookConfig = Number(notebookConfig?.approve_within_hours) > 0;
+    const usingApprovalConfig = !usingNotebookConfig && Number(approvalConfig.tat_hours) > 0;
+    const tatHours = usingNotebookConfig
       ? Number(notebookConfig.approve_within_hours)
-      : (Number(approvalConfig.tat_hours) > 0 ? Number(approvalConfig.tat_hours) : PP_APPROVAL_TAT_HOURS);
+      : (usingApprovalConfig ? Number(approvalConfig.tat_hours) : PP_APPROVAL_TAT_HOURS);
+    // Whichever config actually supplied tatHours, above - PP_APPROVAL_TAT_HOURS (the constant
+    // fallback) has no creation moment worth anchoring to, same reasoning as PP Threshold's own
+    // default fallback.
+    const anchoredAt = usingNotebookConfig
+      ? notebookConfig.created_at
+      : (usingApprovalConfig ? approvalConfig.updated_at : null);
+
+    // A PP id that entered pending_approval BEFORE this specific notebook/global approval
+    // threshold was created/last edited was never actually subject to it - without this check,
+    // configuring a brand new PP Approval threshold would instantly sweep in every already-
+    // pending-too-long PP id as soon as this worker's next cycle runs, same reasoning as the
+    // Submission/Acknowledgement/PP Threshold fixes.
+    if (anchoredAt && new Date(row.updated_at) < new Date(anchoredAt)) continue; // eslint-disable-line no-continue
 
     const dueAt = new Date(row.updated_at).getTime() + tatHours * 60 * 60 * 1000;
     if (Date.now() < dueAt) continue; // eslint-disable-line no-continue
