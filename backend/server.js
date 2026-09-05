@@ -105,6 +105,15 @@ const PP_MANAGED_ROUTES = new Set([
   '/autoconer/q3'
 ]);
 
+// Config/admin routes that happen to sit under a department prefix (e.g. '/spinning') but
+// aren't data-entry screens - their POST bodies have no entry_id concept at all
+// ({department, severity, l4_user_ids, tat_hours} for Wheel Change Approval config). Without
+// this exclusion the generic auto-entry-id middleware below still tried to mint/validate an
+// entry_id for them, failing every save with "Invalid entry_id" or "Duplicate entry_id".
+const NON_ENTRY_DEPARTMENT_ROUTES = new Set([
+  '/spinning/wheel-change/approval-config'
+]);
+
 const normalizeEntryRoutePath = (value) => {
   const text = String(value || '').trim();
   if (!text) return '';
@@ -450,6 +459,7 @@ app.use(async (req, res, next) => {
 
     const routePath = getRequestRoutePath(req);
     if (PP_MANAGED_ROUTES.has(routePath)) return next();
+    if (NON_ENTRY_DEPARTMENT_ROUTES.has(routePath)) return next();
 
     const isDepartmentRoute = DEPARTMENT_ROUTE_PREFIXES.some((prefix) => routePath.startsWith(prefix));
     if (!isDepartmentRoute) return next();
