@@ -1936,15 +1936,13 @@ router.get('/', async (req, res, next) => {
     const allUsersResult = await client.query(`SELECT id, employee_id, full_name FROM users.user_details`);
     const allUsers = allUsersResult.rows;
 
-    // ticketing_system.submitted_notebooks.status defaults to 'PENDING_ACK'
-    // for EVERY submission (recordPpNotebookSubmission never overrides it) -
-    // that column only ever meant "hasn't been acknowledged yet", not
-    // "acknowledgement is actually required for this screen". Without this,
-    // every single submitted notebook showed up in the Pending tab as
-    // needing acknowledgement, even ones with no Acknowledgement Threshold
-    // configured at all (generateOverdueNotebookTickets already gets this
-    // right - it silently skips raising a ticket when no threshold/L4
-        // resolves - this list just never matched that same rule).
+    // requiresAcknowledgement only gates whether an overdue ticket gets raised
+    // (see generateOverdueNotebookTickets, which skips that when no
+    // threshold/L4 resolves) - it must NOT also gate which tab a submission
+    // shows under, or notebooks from screens with no configured threshold
+    // silently fall into "Closed" while still unacknowledged. isPending
+    // reflects acknowledgement state alone; requiresAcknowledgement is kept
+    // on the row for the frontend to use for ticket-related UI.
 
     const activeThresholdsResult = await client.query(
       `SELECT screen_name FROM ticketing_system.notebook_acknowledgement_threshold WHERE is_active = true`
@@ -1974,7 +1972,7 @@ router.get('/', async (req, res, next) => {
         supervisor: getNotebookSupervisorNameText(withAssignments),
         createdAt: getNotebookCreatedAt(row),
         requiresAcknowledgement,
-        isPending: requiresAcknowledgement && isNotebookPendingAcknowledgementRow(row),
+        isPending: isNotebookPendingAcknowledgementRow(row),
       };
     });
 
