@@ -66,6 +66,10 @@ app.use(db.withRequestContext);
 
 app.use(express.json({ limit: '10mb' }));
 
+// Liveness/readiness probe target for Kubernetes — no auth, no DB dependency,
+// so the pod isn't marked unhealthy by an external Postgres blip.
+app.get('/healthz', (req, res) => res.status(200).json({ status: 'ok' }));
+
 const DEPARTMENT_ROUTE_PREFIXES = [
   '/spinning',
   '/mixing',
