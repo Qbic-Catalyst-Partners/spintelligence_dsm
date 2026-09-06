@@ -50,17 +50,29 @@ In Jenkins, add a Username/Password credential with ID `ghcr-creds`
 (a GitHub PAT with `write:packages` scope) — used by the `Login to GHCR`
 stage in the Jenkinsfile to push images.
 
-If the Jenkins agent runs on the VPS itself, no extra kubeconfig is needed —
-just make sure the Jenkins user can read k3s's kubeconfig:
+If the Jenkins agent runs on the VPS itself, k3s's own `kubectl` defaults to
+`/etc/rancher/k3s/k3s.yaml`, which is root-only (mode 600) — the `jenkins`
+user can't read it, and pipeline `sh` steps run non-interactively so
+anything exported in `~/.bashrc` wouldn't apply anyway. Copy it somewhere
+`jenkins` can read instead:
 
 ```bash
-sudo mkdir -p /var/lib/jenkins/.kube
-sudo cp /etc/rancher/k3s/k3s.yaml /var/lib/jenkins/.kube/config
-sudo chown jenkins:jenkins /var/lib/jenkins/.kube/config
+mkdir -p /var/lib/jenkins/.kube
+cp /etc/rancher/k3s/k3s.yaml /var/lib/jenkins/.kube/config
+chown -R jenkins:jenkins /var/lib/jenkins/.kube
+chmod 600 /var/lib/jenkins/.kube/config
 ```
 
-If Jenkins runs elsewhere, add a "Secret file" credential holding the
-kubeconfig and wrap the deploy stage in `withKubeConfig` instead.
+The Jenkinsfile sets `KUBECONFIG=/var/lib/jenkins/.kube/config` in its
+`environment` block so every pipeline step points at that copy — nothing
+else to configure. Verify it works before running the pipeline:
+
+```bash
+sudo -u jenkins env KUBECONFIG=/var/lib/jenkins/.kube/config kubectl get nodes
+```
+
+If Jenkins runs elsewhere (not on the VPS), add a "Secret file" credential
+holding the kubeconfig and wrap the deploy stage in `withKubeConfig` instead.
 
 ## 5. First deploy
 
