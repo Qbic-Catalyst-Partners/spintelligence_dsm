@@ -9,6 +9,10 @@ pipeline {
         NAMESPACE       = "spintelligence-dsm"
         // Source of truth for both apps' env vars — placed here by hand (WinSCP), never in git.
         ENV_FILES_DIR   = "/var/lib/jenkins/env_files"
+        // k3s's kubectl defaults to /etc/rancher/k3s/k3s.yaml (root-only) unless told
+        // otherwise; pipeline `sh` steps run non-interactively so ~/.bashrc exports don't
+        // apply — this has to be set here. See k8s/README.md for the one-time copy step.
+        KUBECONFIG      = "/var/lib/jenkins/.kube/config"
     }
 
     stages {
