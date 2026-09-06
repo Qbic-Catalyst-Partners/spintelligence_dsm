@@ -9,23 +9,27 @@ Everything after this is automated by the root `Jenkinsfile`.
 kubectl apply -f k8s/namespace.yaml
 ```
 
-## 2. Backend env vars (Secret)
+## 2. Env files
 
-The backend reads all its config from env vars (see `backend/.env`). Load it
-straight into a Secret instead of hand-copying each key into a manifest:
+Both apps' env vars are gitignored on purpose — real secrets never go
+through git — so they're placed on the VPS by hand (WinSCP or scp) into a
+location the Jenkins job reads from on every build:
 
-```bash
-kubectl create secret generic backend-env \
-  --from-env-file=backend/.env \
-  -n spintelligence-dsm
+```
+/var/lib/jenkins/env_files/env_backend.txt
+/var/lib/jenkins/env_files/env_frontend.txt
 ```
 
-Re-run with `kubectl delete secret backend-env -n spintelligence-dsm` first
-whenever `.env` changes, then re-create it and restart the deployment:
+This is **outside** the Jenkins workspace on purpose: a clean checkout
+(`git clean -fdx`) doesn't know these files are supposed to survive and
+would delete them if they lived inside the repo checkout.
 
-```bash
-kubectl rollout restart deployment/backend -n spintelligence-dsm
-```
+The Jenkinsfile's `Load env files` stage copies these into `backend/.env`
+and `frontend/.env` at the start of every run, and the `Deploy to
+Kubernetes` stage re-creates the `backend-env` Secret from `backend/.env`
+each time — so editing `env_backend.txt` and re-running the Jenkins job is
+enough to roll out a config change. Nothing to do here manually beyond
+keeping those two files up to date.
 
 ## 3. GHCR pull secret
 
