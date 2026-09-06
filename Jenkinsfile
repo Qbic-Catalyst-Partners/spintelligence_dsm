@@ -7,14 +7,23 @@ pipeline {
         FRONTEND_IMAGE  = "${REGISTRY}/spintelligence_dsm-frontend"
         IMAGE_TAG       = "${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
         NAMESPACE       = "spintelligence-dsm"
-        // Public IP of the VPS; the frontend calls the backend at this address on port 4000.
-        VPS_PUBLIC_IP   = "200.141.4.6"
+        // Source of truth for both apps' env vars — placed here by hand (WinSCP), never in git.
+        ENV_FILES_DIR   = "/var/lib/jenkins/env_files"
     }
 
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
+            }
+        }
+
+        stage('Load env files') {
+            steps {
+                sh """
+                    cp ${ENV_FILES_DIR}/env_backend.txt backend/.env
+                    cp ${ENV_FILES_DIR}/env_frontend.txt frontend/.env
+                """
             }
         }
 
@@ -41,9 +50,10 @@ pipeline {
         stage('Build & Push Frontend') {
             steps {
                 dir('frontend') {
+                    // .env (copied above) is picked up by `next build` automatically and
+                    // baked into the JS bundle as NEXT_PUBLIC_API_URL — no build-arg needed.
                     sh """
                         docker build \
-                          --build-arg NEXT_PUBLIC_API_URL=http://${VPS_PUBLIC_IP}:4000 \
                           -f dockerfile \
                           -t ${FRONTEND_IMAGE}:${IMAGE_TAG} -t ${FRONTEND_IMAGE}:latest .
                         docker push ${FRONTEND_IMAGE}:${IMAGE_TAG}
@@ -57,6 +67,15 @@ pipeline {
             steps {
                 sh """
                     kubectl apply -f k8s/namespace.yaml
+
+                    # Refresh the backend Secret from backend/.env on every deploy, so
+                    # editing env_backend.txt on the VPS is enough to roll out changes —
+                    # create-or-update, since the Secret already exists after the first run.
+                    kubectl create secret generic backend-env \
+                      --from-env-file=backend/.env \
+                      -n ${NAMESPACE} \
+                      --dry-run=client -o yaml | kubectl apply -f -
+
                     kubectl apply -f k8s/backend-pvc.yaml
                     kubectl apply -f k8s/backend-deployment.yaml
                     kubectl apply -f k8s/backend-service.yaml
