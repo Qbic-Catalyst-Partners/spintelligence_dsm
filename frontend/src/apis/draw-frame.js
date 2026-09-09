@@ -14,12 +14,6 @@ const COTS_BASE_URL =
 const UQC_BASE_URL =
     process.env.NEXT_PUBLIC_DRAWFRAME_UQC_URL ||
     `${API_BASE_URL}/drawframe/uqc`;
-const MACHINE_MASTER_BASE_URL =
-    process.env.NEXT_PUBLIC_DRAWFRAME_MACHINE_MASTER_URL ||
-    `${API_BASE_URL}/drawframe/yarn-cv/machine-numbers`;
-const MACHINE_MASTER_FALLBACK_URL =
-    process.env.NEXT_PUBLIC_DRAWFRAME_MACHINE_MASTER_FALLBACK_URL ||
-    `${API_BASE_URL}/drawframe/machine-numbers`;
 const COTS_MACHINE_MASTER_URL =
     process.env.NEXT_PUBLIC_DRAWFRAME_COTS_MACHINE_MASTER_URL ||
     `${API_BASE_URL}/drawframe/cots/machine-numbers`;
@@ -66,14 +60,6 @@ const DRAW_FRAME_WHEEL_CHANGE_PREP_VARIETY_ENDPOINTS = [
     "/drawframe/wheel-change/master/mixing-dropdown",
     "/drawframe/master/varieties",
 ];
-const DRAW_FRAME_MACHINE_MASTER_ENDPOINTS = [
-    "/drawframe/master/mc-nos",
-    "/drawframe/master/machine-nos",
-    "/drawframe/master/machine-numbers",
-    "/drawframe/uqc/master/mc-nos",
-    "/drawframe/uqc/master/machine-nos",
-];
-
 const normalizeMachineName = (item = {}) => {
     const fallback = String(
         item?.machine_number ??
@@ -743,66 +729,6 @@ export const fetchDrawFrameWheelChangeEntries = async ({
     } catch (error) {
         throw new Error(extractApiError(error, "Failed to fetch draw frame wheel change entries"));
     }
-};
-
-export const fetchDrawFrameMachineMaster = async ({ prefix = "", departmentCode = "", deptCode = "" } = {}) => {
-    const params = {
-        prefix,
-        mc_no_prefix: prefix,
-        machine_prefix: prefix,
-        ...(departmentCode ? { dept_code: departmentCode } : {}),
-        ...(deptCode ? { department_code: deptCode } : {}),
-    };
-    const queryParams = new URLSearchParams();
-    if (prefix) queryParams.set("prefix", prefix);
-    if (departmentCode) queryParams.set("dept_code", departmentCode);
-    if (deptCode) queryParams.set("department_code", deptCode);
-    const query = queryParams.toString() ? `?${queryParams.toString()}` : "";
-    let lastError = null;
-
-    for (const endpoint of DRAW_FRAME_MACHINE_MASTER_ENDPOINTS) {
-        try {
-            const response = await apiConfig.get(endpoint, params, { skipGlobalErrorModal: true });
-            const rows = normalizeMachineMasterRows(response?.data);
-            if (rows.length) return rows;
-        } catch (error) {
-            lastError = error;
-            if (error.response?.status && error.response.status !== 404) break;
-        }
-    }
-
-    const candidateUrls = [MACHINE_MASTER_BASE_URL, MACHINE_MASTER_FALLBACK_URL];
-
-    for (const baseUrl of candidateUrls) {
-        try {
-            const response = await fetch(`${baseUrl}${query}`, {
-                method: "GET",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...getAuthHeaders(),
-                },
-            });
-            const data = await parseJson(response);
-            if (!response.ok) {
-                lastError = new Error(data?.message || "Failed to fetch draw frame machine master");
-                continue;
-            }
-            if (Array.isArray(data?.data)) return data.data;
-            const normalizedRows = normalizeMachineMasterRows(data);
-            if (normalizedRows.length) return normalizedRows;
-            if (Array.isArray(data?.machine_numbers)) {
-                return data.machine_numbers.map((machineNumber) => ({
-                    machine_number: String(machineNumber || "").trim(),
-                    mc_name: cleanMcNoLabel(machineNumber),
-                }));
-            }
-            return [];
-        } catch (error) {
-            lastError = error;
-        }
-    }
-
-    throw new Error(extractApiError(lastError, "Failed to fetch draw frame machine master"));
 };
 
 export const fetchDrawFrameCotsMachineMaster = async ({ prefix = "", subType = "" } = {}) => {

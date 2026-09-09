@@ -38,6 +38,7 @@ const mixingDepartmentTypes = [
             "Mixing QC",
             "Mixing QC Data Entry",
             "Mixing Qc Data Entry",
+            "Mixing - PP",
         ],
         component: ProcessParameterDataEntry,
         needsLotNo: false,

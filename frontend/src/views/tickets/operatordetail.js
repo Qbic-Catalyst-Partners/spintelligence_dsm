@@ -296,18 +296,18 @@ export default function TicketDetails() {
   };
 
   // Once L1 has submitted (Submit) or L2 has closed it (Closed), the ticket is
-  // locked from the L1 side - no re-entering the detail/fix screen.
+  // locked from the L1 side - no re-entering the FIX screen (the Fix & Submit
+  // action below is hidden for it). This used to also redirect straight back
+  // to /operator the instant the page mounted for a locked ticket, which
+  // made a closed ticket un-viewable at all - clicking one looked like the
+  // page glitching/refreshing and never opening, since the detail view
+  // rendered for an instant and then immediately bounced away. A closed
+  // ticket should stay viewable (read-only) the same way a closed Value
+  // Threshold ticket already is - only the fix action itself is locked out.
   const isLockedForOperator = isTicketLockedForOperator(resolvedTicket?.status);
-
-  useEffect(() => {
-    if (isLockedForOperator) {
-      router.replace("/operator");
-    }
-  }, [isLockedForOperator, router]);
 
   if (loading && !resolvedTicket) return <p>Loading...</p>;
   if (!resolvedTicket) return <p>No ticket found</p>;
-  if (isLockedForOperator) return null;
 
   return (
     <div className={styles.page}>
@@ -471,13 +471,15 @@ export default function TicketDetails() {
                   </div>
                 )}
               </div>
-              <button
-                className={styles["fix-btn"]}
-                onClick={() => setIsPopupOpen(true)}
-              >
-                <img src={fixImgSrc} alt="" aria-hidden="true" />
-                Fix & Submit
-              </button>
+              {!isLockedForOperator && (
+                <button
+                  className={styles["fix-btn"]}
+                  onClick={() => setIsPopupOpen(true)}
+                >
+                  <img src={fixImgSrc} alt="" aria-hidden="true" />
+                  Fix & Submit
+                </button>
+              )}
             </div>
           </div>
 
@@ -626,15 +628,17 @@ export default function TicketDetails() {
         </section>
       </main>
 
-      <div className={styles["mobile-action-bar"]}>
-        <button
-          className={styles["fix-btn"]}
-          onClick={() => setIsPopupOpen(true)}
-        >
-          <img src={fixImgSrc} alt="" aria-hidden="true" />
-          Fix & Submit
-        </button>
-      </div>
+      {!isLockedForOperator && (
+        <div className={styles["mobile-action-bar"]}>
+          <button
+            className={styles["fix-btn"]}
+            onClick={() => setIsPopupOpen(true)}
+          >
+            <img src={fixImgSrc} alt="" aria-hidden="true" />
+            Fix & Submit
+          </button>
+        </div>
+      )}
 
       {isPopupOpen && (
         <div className={styles["popup-overlay"]}>

@@ -249,7 +249,7 @@ function Comber() {
                                 showForm={Boolean(checkingType)}
                             />
 
-                            <div style={{ margin: "0 -24px -20px -24px" }}>
+                            <div style={{ marginTop: "0" }}>
                                     <Footer
                                         onBack={() => router.push("/departments/quality-control")}
                                         onClear={handleClear}
@@ -269,7 +269,7 @@ function Comber() {
                                 onTypeChange={handleTypeChange}
                             />
 
-                            <div style={{ margin: "0 -24px -20px -24px" }}>
+                            <div style={{ marginTop: "0" }}>
                                     <Footer
                                         onBack={() => router.push("/departments/quality-control")}
                                         onClear={handleClear}
@@ -289,7 +289,7 @@ function Comber() {
                                 onTypeChange={handleTypeChange}
                             />
 
-                            <div style={{ margin: "24px -24px -20px -24px" }}>
+                            <div style={{ marginTop: "24px" }}>
                                     <Footer
                                         onBack={() => router.push("/departments/quality-control")}
                                         onClear={handleClear}
@@ -309,7 +309,7 @@ function Comber() {
                                 onTypeChange={handleTypeChange}
                             />
 
-                            <div style={{ margin: "24px -24px -20px -24px" }}>
+                            <div style={{ marginTop: "24px" }}>
                                     <Footer
                                         onBack={() => router.push("/departments/quality-control")}
                                         onClear={handleClear}
@@ -331,7 +331,7 @@ function Comber() {
                                 reserveEntryId={reserveEntryId}
                             />
 
-                            <div style={{ margin: "0 -24px -20px -24px" }}>
+                            <div style={{ marginTop: "0" }}>
                                     <Footer
                                         onBack={() => router.push("/departments/quality-control")}
                                         onClear={handleClear}
@@ -352,7 +352,7 @@ function Comber() {
                                 submitHandler={(payload) => dispatch(submitComberUqc(payload)).unwrap()}
                             />
 
-                            <div style={{ margin: "16px -24px 0 -24px" }}>
+                            <div style={{ marginTop: "16px" }}>
                                     <Footer
                                         onBack={() => router.push("/departments/quality-control")}
                                         onClear={handleClear}

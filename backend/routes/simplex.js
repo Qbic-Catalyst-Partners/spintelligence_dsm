@@ -465,7 +465,7 @@ const saveWrappingSimplexNotebook = async (req, res, next) => {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         RETURNING *`,
         [
-          submissionId,
+          rows.length > 1 ? `${submissionId}-${index + 1}` : submissionId,
           row.entry_id ?? row.id_no ?? row.sourceId ?? row.ID ?? row.id_value ?? row.notebook_id ?? null,
           toNullableNumber(row.serial_no ?? row.s_no ?? row.sno ?? row['S.No'] ?? row.SNo ?? (index + 1)),
           dateText || null,

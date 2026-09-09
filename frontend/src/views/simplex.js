@@ -32,7 +32,7 @@ const SIMPLEX_TYPES_WITH_OWN_TICKETING = new Set([
   "SMX Breaks Study Report",
 ]);
 const simplexTypes = [
-  { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameterDataEntry },
+  { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry", "Simplex - PP"], component: ProcessParameterDataEntry },
   { id: 1, name: "SMXCots Checking Data Entry", aliases: ["SMXCots Checking Data Entry", "SMXCots Change Data Entry", "SMX Cots Change Data Entry", "SMX Cots Checking Data Entry"], component: SMXCotsChangeDataEntry },
   { id: 2, name: "SMX Breaks Study Report", aliases: ["SMX Breaks Study Report", "Breaks Study Report"], component: SMXBreaksStudyReport },
   { id: 3, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U% Checking"], component: UPercentDataEntry },
@@ -243,12 +243,7 @@ function Simplex() {
     childRef.current?.clear?.();
     dispatch(clearSimplexState());
     successHandledRef.current = false;
-    if (selectedTypeName === "U% Data Entry") {
-      dispatch(getSimplexUqcEntries({ page: 1, limit: 10 }));
-    }
-    if (selectedTypeName === "SMXCots Checking Data Entry") {
-      dispatch(getSimplexCotsChangeEntries({ page: 1, limit: 10 }));
-    }
+    window.location.reload();
   };
 
   const showUqcEntries = selectedTypeName === "U% Data Entry";
@@ -557,7 +552,7 @@ function Simplex() {
           </div>
         )}
 
-        <div className="mt-5 px-7">
+        <div className="mt-5">
           <Footer
             variant="tall"
             onBack={() => router.push("/departments/quality-control")}

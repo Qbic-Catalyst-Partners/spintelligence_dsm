@@ -1,25 +1,23 @@
+/* Fixed width/padding/min-height so every notebook's footer renders at the same
+   size everywhere, instead of each page bleeding it out by its own hardcoded
+   negative margin to reach its card's edge (which went wrong whenever a page's
+   real padding didn't match, clipping the far side of the footer against
+   overflow-x: hidden). The footer now just fills its parent at a constant size;
+   pages that want it flush with a card's edge should give the *wrapper*, not the
+   footer, zero padding there. */
 .footer-container {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0;
-  /* Bleeds the bar out to the edges of the parent card by however much horizontal padding that
-     parent has (--footer-bleed-x), so the bar's background/border spans edge-to-edge instead of
-     stopping short or overflowing past a rounded corner. --footer-pad-x is separate because a
-     parent with zero padding of its own (bleed 0) can still want inset button padding. Both
-     default to 28px, the original hardcoded value, so pages that already have 28px of parent
-     padding are unaffected. Pages with different padding (or none, sitting outside the padded
-     content box) must set these on an ancestor of this component — custom properties inherit,
-     so setting them once on the card wrapper covers it. */
-  --footer-bleed-x: 28px;
-  --footer-pad-x: var(--footer-bleed-x);
-  padding: 10px var(--footer-pad-x);
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 64px;
+  padding: 14px 24px;
   border-top: 1px solid #e6edf7;
   border-radius: 0 0 10px 10px;
   background: #f4f8fd;
-  margin: 20px calc(-1 * var(--footer-bleed-x)) -20px;
-  width: calc(100% + (var(--footer-bleed-x) * 2));
-
+  margin-top: 20px;
   flex-wrap: wrap;
 }
 
