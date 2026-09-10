@@ -401,14 +401,29 @@ function MultiSelectDropdown({
     emptyLabel = "No users available",
 }) {
     const containerRef = useRef(null);
+    const menuRef = useRef(null);
     const [isOpen, setIsOpen] = useState(false);
     const [searchText, setSearchText] = useState("");
+    const [menuRect, setMenuRect] = useState(null);
+
+    // Rendered via portal (see below) so this menu can drop open below any
+    // ancestor - a rule row that needs horizontal scroll (overflow-x: auto)
+    // unavoidably clips vertical overflow too per the CSS spec's auto
+    // visible->auto conversion, so an absolutely-positioned menu nested
+    // inside it gets cut off no matter what overflow-y is set to on that
+    // same element. Same fixed-position-via-portal approach as the existing
+    // row action menu below.
+    const updateMenuRect = () => {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        setMenuRect({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+    };
 
     useEffect(() => {
         const handleOutsideClick = (event) => {
-            if (!containerRef.current?.contains(event.target)) {
-                setIsOpen(false);
-            }
+            if (containerRef.current?.contains(event.target)) return;
+            if (menuRef.current?.contains(event.target)) return;
+            setIsOpen(false);
         };
 
         document.addEventListener("mousedown", handleOutsideClick);
@@ -420,7 +435,17 @@ function MultiSelectDropdown({
     useEffect(() => {
         if (!isOpen) {
             setSearchText("");
+            return;
         }
+
+        updateMenuRect();
+        const handleReposition = () => updateMenuRect();
+        window.addEventListener("scroll", handleReposition, true);
+        window.addEventListener("resize", handleReposition);
+        return () => {
+            window.removeEventListener("scroll", handleReposition, true);
+            window.removeEventListener("resize", handleReposition);
+        };
     }, [isOpen]);
 
     const selectedValues = Array.isArray(values) ? values : [];
@@ -474,24 +499,36 @@ function MultiSelectDropdown({
                 </span>
             </div>
 
-            {isOpen ? (
-                <div className={styles.multiSelectMenu}>
-                    {filteredOptions.length ? (
-                        filteredOptions.map((option) => (
-                            <label key={option.id} className={styles.multiSelectOption}>
-                                <input
-                                    type="checkbox"
-                                    checked={selectedValues.includes(option.name)}
-                                    onChange={() => toggleValue(option.name)}
-                                />
-                                <span>{option.name}</span>
-                            </label>
-                        ))
-                    ) : (
-                        <div className={styles.multiSelectEmpty}>{emptyLabel}</div>
-                    )}
-                </div>
-            ) : null}
+            {isOpen && menuRect && typeof document !== "undefined"
+                ? createPortal(
+                    <div
+                        ref={menuRef}
+                        className={styles.multiSelectMenu}
+                        style={{
+                            position: "fixed",
+                            top: menuRect.top,
+                            left: menuRect.left,
+                            width: menuRect.width,
+                        }}
+                    >
+                        {filteredOptions.length ? (
+                            filteredOptions.map((option) => (
+                                <label key={option.id} className={styles.multiSelectOption}>
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedValues.includes(option.name)}
+                                        onChange={() => toggleValue(option.name)}
+                                    />
+                                    <span>{option.name}</span>
+                                </label>
+                            ))
+                        ) : (
+                            <div className={styles.multiSelectEmpty}>{emptyLabel}</div>
+                        )}
+                    </div>,
+                    document.body
+                )
+                : null}
         </div>
     );
 }

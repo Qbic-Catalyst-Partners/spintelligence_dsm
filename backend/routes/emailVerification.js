@@ -59,9 +59,9 @@ router.post('/send', async (req, res, next) => {
     const existingLog = await findLogByEmail(email);
 
     if (existingLog) {
-      await updateLog({email, verificationId, verified: false, createdAt: new Date() });
+      await updateLog({ email, verificationId, isVerified: false });
     } else {
-      await createLog({ email, verificationId, verified: false, createdAt: new Date() });
+      await createLog({ email, verificationId, isVerified: false });
     }
 
 
@@ -178,9 +178,9 @@ router.post('/resend', async (req, res, next) => {
     const existingLog = await findLogByEmail(email);
 
     if (existingLog) {
-      await updateLog({email, verificationId, verified: false, createdAt: new Date() });
+      await updateLog({ email, verificationId, isVerified: false });
     } else {
-      await createLog({ email, verificationId, verified: false, createdAt: new Date() });
+      await createLog({ email, verificationId, isVerified: false });
     }
 
 

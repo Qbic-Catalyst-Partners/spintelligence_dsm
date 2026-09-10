@@ -143,17 +143,6 @@ const normalizeWasteType = (value) => {
   return text || null;
 };
 
-const BR_WASTE_TYPE_CLEANUP_PREFIXES = ['fla', 'flat str', 'flat stri'];
-
-const BR_WASTE_TYPE_DEFAULTS = [
-  'Dropping waste in MO',
-  'Dropping waste in RK',
-  'Dropping waste in flexi clean',
-  'Dropping waste in KB',
-  'Dropping waste in Vario clean',
-  'Dropping waste in GBR',
-];
-
 const upsertBlowroomWasteType = async (wasteType) => {
   const normalizedWasteType = normalizeWasteType(wasteType);
   if (!normalizedWasteType) return null;
@@ -582,12 +571,10 @@ router.post('/sync', async (req, res, next) => {
 router.get('/sync', async (req, res, next) => {
   try {
     const result = await client.query(`
-      SELECT s.*, st.*, t.total_run_time, t.total_idle_time, t.total_sub_total_time, t.total_sync_percentage
+      SELECT s.*, st.*
       FROM blowroom.blow_room_sync s
       LEFT JOIN blowroom.sync_stats st
       ON s.id = st.sync_id
-      LEFT JOIN blowroom.blow_room_sync_totals t
-      ON s.id = t.sync_id
       ORDER BY s.inspection_date DESC
     `);
 

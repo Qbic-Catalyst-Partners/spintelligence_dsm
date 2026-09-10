@@ -1,0 +1,4631 @@
+{
+  "tablesOnlyInSupabase": [],
+  "tablesOnlyInLocal": [
+    "autoconer.machine",
+    "blowroom.blow_room_sync_totals",
+    "carding.card_thick_place",
+    "public.hvi_records",
+    "rbac.permissions",
+    "rbac.role_permissions",
+    "ticketing_system.entry_id_sequences",
+    "ticketing_system.pp_notebook_batch_config",
+    "ticketing_system.threshold_master",
+    "ticketing_system.threshold_master_l1_approvers",
+    "ticketing_system.threshold_master_l2_approvers",
+    "ticketing_system.threshold_master_l3_approvers",
+    "users.phone_verification_logs"
+  ],
+  "columnsMissingInLocal": [
+    {
+      "key": "autoconer.cone_packing_audit.cntcode",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "cone_packing_audit",
+        "column_name": "cntcode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 28
+      }
+    },
+    {
+      "key": "autoconer.count_wise_cuts.i1",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "count_wise_cuts",
+        "column_name": "i1",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 2,
+        "ordinal_position": 47
+      }
+    },
+    {
+      "key": "autoconer.count_wise_cuts.i2",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "count_wise_cuts",
+        "column_name": "i2",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 2,
+        "ordinal_position": 48
+      }
+    },
+    {
+      "key": "autoconer.count_wise_cuts.cntcode",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "count_wise_cuts",
+        "column_name": "cntcode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 58
+      }
+    },
+    {
+      "key": "autoconer.drum_wise.cntcode",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "drum_wise",
+        "column_name": "cntcode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 19
+      }
+    },
+    {
+      "key": "autoconer.inspections.cntcode",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "inspections",
+        "column_name": "cntcode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 23
+      }
+    },
+    {
+      "key": "autoconer.lycra_checking_inspections.cntcode",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "lycra_checking_inspections",
+        "column_name": "cntcode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 19
+      }
+    },
+    {
+      "key": "carding.nre.operator",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "nre",
+        "column_name": "operator",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 27
+      }
+    },
+    {
+      "key": "comber.efficiency_data_entry.operator",
+      "def": {
+        "table_schema": "comber",
+        "table_name": "efficiency_data_entry",
+        "column_name": "operator",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 13
+      }
+    },
+    {
+      "key": "comber.nre_data_entry.operator",
+      "def": {
+        "table_schema": "comber",
+        "table_name": "nre_data_entry",
+        "column_name": "operator",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 16
+      }
+    },
+    {
+      "key": "drawframe.cots_finisher_data.mass_thick_place",
+      "def": {
+        "table_schema": "drawframe",
+        "table_name": "cots_finisher_data",
+        "column_name": "mass_thick_place",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 10
+      }
+    },
+    {
+      "key": "mixing.afis_data_entry.id",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "afis_data_entry",
+        "column_name": "id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "nextval('mixing.afis_data_entry_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 26
+      }
+    },
+    {
+      "key": "mixing.cotton_hvi_data_entry.id",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "cotton_hvi_data_entry",
+        "column_name": "id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "nextval('mixing.cotton_hvi_data_entry_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 41
+      }
+    },
+    {
+      "key": "mixing.fibre_data_entry.id",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "fibre_data_entry",
+        "column_name": "id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "nextval('mixing.fibre_data_entry_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 24
+      }
+    },
+    {
+      "key": "mixing.moisture_data_entry.id",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "moisture_data_entry",
+        "column_name": "id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "nextval('mixing.moisture_data_entry_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 29
+      }
+    },
+    {
+      "key": "mixing.openness_entries.avg_weight",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "openness_entries",
+        "column_name": "avg_weight",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 2,
+        "ordinal_position": 15
+      }
+    },
+    {
+      "key": "mixing.openness_entries.avg_volume",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "openness_entries",
+        "column_name": "avg_volume",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 2,
+        "ordinal_position": 16
+      }
+    },
+    {
+      "key": "mixing.openness_entries.avg_apparent_specific_volume",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "openness_entries",
+        "column_name": "avg_apparent_specific_volume",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 2,
+        "ordinal_position": 17
+      }
+    },
+    {
+      "key": "mixing.openness_entries.avg_actual_op_value",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "openness_entries",
+        "column_name": "avg_actual_op_value",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 2,
+        "ordinal_position": 18
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.study_type",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "study_type",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 7
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.end_time",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "end_time",
+        "data_type": "time without time zone",
+        "udt_name": "time",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 8
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.total_minutes",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "total_minutes",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 9
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.start_hk",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "start_hk",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 10
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.finish_hk",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "finish_hk",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 11
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.hank",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "hank",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 12
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.total_spdl",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "total_spdl",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 13
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.idle_spindles",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "idle_spindles",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 14
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.running_spdl",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "running_spdl",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 15
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.tpi",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "tpi",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 16
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.tpm",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "tpm",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 17
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.average_speed",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "average_speed",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 18
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.mixing",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "mixing",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 19
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.roving_hk",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "roving_hk",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 20
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.doff_length",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "doff_length",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 21
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.rh_percent",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "rh_percent",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 22
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.temp_percent",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "column_name": "temp_percent",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 23
+      }
+    },
+    {
+      "key": "simplex.u_data_entry.operator",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "u_data_entry",
+        "column_name": "operator",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 20
+      }
+    },
+    {
+      "key": "spinning.cots_checking.id",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "cots_checking",
+        "column_name": "id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": "nextval('spinning.cots_checking_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 22
+      }
+    },
+    {
+      "key": "spinning.lycra_centering.id",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "lycra_centering",
+        "column_name": "id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": "nextval('spinning.lycra_centering_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 24
+      }
+    },
+    {
+      "key": "spinning.lycra_missing.id",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "lycra_missing",
+        "column_name": "id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": "nextval('spinning.lycra_missing_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 13
+      }
+    },
+    {
+      "key": "spinning.ring_frame_summary.guide_roll_total",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "ring_frame_summary",
+        "column_name": "guide_roll_total",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 16
+      }
+    },
+    {
+      "key": "spinning.ring_frame_summary.others_total",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "ring_frame_summary",
+        "column_name": "others_total",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 17
+      }
+    },
+    {
+      "key": "spinning.rsm_and_lycrasensor_cheking_offline.id",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "rsm_and_lycrasensor_cheking_offline",
+        "column_name": "id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": "nextval('spinning.rsm_and_lycrasensor_cheking_offline_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 23
+      }
+    },
+    {
+      "key": "spinning.rsm_and_lycrasensor_cheking_online.id",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "rsm_and_lycrasensor_cheking_online",
+        "column_name": "id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": "nextval('spinning.rsm_and_lycrasensor_cheking_online_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 23
+      }
+    },
+    {
+      "key": "spinning.speed_checking.id",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "speed_checking",
+        "column_name": "id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": "nextval('spinning.speed_checking_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 25
+      }
+    },
+    {
+      "key": "spinning.spinning_qc_header.id",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "spinning_qc_header",
+        "column_name": "id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": "nextval('spinning.spinning_qc_header_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 40
+      }
+    },
+    {
+      "key": "trials.trials.created_at",
+      "def": {
+        "table_schema": "trials",
+        "table_name": "trials",
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 96
+      }
+    },
+    {
+      "key": "trials.trials.operator",
+      "def": {
+        "table_schema": "trials",
+        "table_name": "trials",
+        "column_name": "operator",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 97
+      }
+    },
+    {
+      "key": "wrapping.a_percent.operator",
+      "def": {
+        "table_schema": "wrapping",
+        "table_name": "a_percent",
+        "column_name": "operator",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 13
+      }
+    },
+    {
+      "key": "wrapping.drawframe_notebook.serial_no",
+      "def": {
+        "table_schema": "wrapping",
+        "table_name": "drawframe_notebook",
+        "column_name": "serial_no",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 43
+      }
+    },
+    {
+      "key": "wrapping.stretch_percent.operator",
+      "def": {
+        "table_schema": "wrapping",
+        "table_name": "stretch_percent",
+        "column_name": "operator",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 13
+      }
+    },
+    {
+      "key": "wrapping.stretch_percent.tables",
+      "def": {
+        "table_schema": "wrapping",
+        "table_name": "stretch_percent",
+        "column_name": "tables",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "NO",
+        "column_default": "'[]'::jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 14
+      }
+    }
+  ],
+  "columnsExtraInLocal": [
+    {
+      "key": "autoconer.autoconer_process_parameter.ins_code",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "autoconer_process_parameter",
+        "column_name": "ins_code",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": "('PP'::text || lpad((nextval('autoconer.autoconer_ins_seq'::regclass))::text, 3, '0'::text))",
+        "character_maximum_length": 15,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "autoconer.autoconer_process_parameter.entry_pool",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "autoconer_process_parameter",
+        "column_name": "entry_pool",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": "'process'::text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 29
+      }
+    },
+    {
+      "key": "autoconer.autoconer_q2_inspection.ins_code",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "autoconer_q2_inspection",
+        "column_name": "ins_code",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": "('PP'::text || lpad((nextval('autoconer.autoconer_q2_seq'::regclass))::text, 3, '0'::text))",
+        "character_maximum_length": 15,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "autoconer.autoconer_q3_inspection.ins_code",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "autoconer_q3_inspection",
+        "column_name": "ins_code",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": "('PP'::text || lpad((nextval('autoconer.autoconer_q3_seq'::regclass))::text, 3, '0'::text))",
+        "character_maximum_length": 15,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "autoconer.count_wise_cuts.drum_from",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "count_wise_cuts",
+        "column_name": "drum_from",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 2,
+        "ordinal_position": 6
+      }
+    },
+    {
+      "key": "autoconer.count_wise_cuts.drum_to",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "count_wise_cuts",
+        "column_name": "drum_to",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 2,
+        "ordinal_position": 7
+      }
+    },
+    {
+      "key": "autoconer.count_wise_cuts.l1",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "count_wise_cuts",
+        "column_name": "l1",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 2,
+        "ordinal_position": 47
+      }
+    },
+    {
+      "key": "autoconer.count_wise_cuts.l2",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "count_wise_cuts",
+        "column_name": "l2",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 2,
+        "ordinal_position": 48
+      }
+    },
+    {
+      "key": "autoconer.drum_wise.machine_id",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "drum_wise",
+        "column_name": "machine_id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 5
+      }
+    },
+    {
+      "key": "autoconer.drum_wise.count_id",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "drum_wise",
+        "column_name": "count_id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 6
+      }
+    },
+    {
+      "key": "autoconer.inspection_data_entry.remarks_optional",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "inspection_data_entry",
+        "column_name": "remarks_optional",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 13
+      }
+    },
+    {
+      "key": "autoconer.lycra_checking_inspections.test_no",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "lycra_checking_inspections",
+        "column_name": "test_no",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "autoconer.machine.id",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "machine",
+        "column_name": "id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "nextval('autoconer.machine_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 1
+      }
+    },
+    {
+      "key": "autoconer.machine.machine_code",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "machine",
+        "column_name": "machine_code",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": 20,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "autoconer.machine.description",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "machine",
+        "column_name": "description",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "blowroom.blow_room_sync_totals.id",
+      "def": {
+        "table_schema": "blowroom",
+        "table_name": "blow_room_sync_totals",
+        "column_name": "id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": "nextval('blowroom.blow_room_sync_totals_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 1
+      }
+    },
+    {
+      "key": "blowroom.blow_room_sync_totals.sync_id",
+      "def": {
+        "table_schema": "blowroom",
+        "table_name": "blow_room_sync_totals",
+        "column_name": "sync_id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "blowroom.blow_room_sync_totals.total_run_time",
+      "def": {
+        "table_schema": "blowroom",
+        "table_name": "blow_room_sync_totals",
+        "column_name": "total_run_time",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 12,
+        "numeric_scale": 2,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "blowroom.blow_room_sync_totals.total_idle_time",
+      "def": {
+        "table_schema": "blowroom",
+        "table_name": "blow_room_sync_totals",
+        "column_name": "total_idle_time",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 12,
+        "numeric_scale": 2,
+        "ordinal_position": 4
+      }
+    },
+    {
+      "key": "blowroom.blow_room_sync_totals.total_sub_total_time",
+      "def": {
+        "table_schema": "blowroom",
+        "table_name": "blow_room_sync_totals",
+        "column_name": "total_sub_total_time",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 12,
+        "numeric_scale": 2,
+        "ordinal_position": 5
+      }
+    },
+    {
+      "key": "blowroom.blow_room_sync_totals.total_sync_percentage",
+      "def": {
+        "table_schema": "blowroom",
+        "table_name": "blow_room_sync_totals",
+        "column_name": "total_sync_percentage",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 12,
+        "numeric_scale": 2,
+        "ordinal_position": 6
+      }
+    },
+    {
+      "key": "blowroom.blow_room_sync_totals.created_at",
+      "def": {
+        "table_schema": "blowroom",
+        "table_name": "blow_room_sync_totals",
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 7
+      }
+    },
+    {
+      "key": "blowroom.blowroom_header.br_code",
+      "def": {
+        "table_schema": "blowroom",
+        "table_name": "blowroom_header",
+        "column_name": "br_code",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": "('PP'::text || lpad((nextval('blowroom.br_seq'::regclass))::text, 3, '0'::text))",
+        "character_maximum_length": 10,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "blowroom.br_waste_study.waste_study_id",
+      "def": {
+        "table_schema": "blowroom",
+        "table_name": "br_waste_study",
+        "column_name": "waste_study_id",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "carding.card_thick_place.id",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "card_thick_place",
+        "column_name": "id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "nextval('carding.card_thick_place_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 1
+      }
+    },
+    {
+      "key": "carding.card_thick_place.entry_date",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "card_thick_place",
+        "column_name": "entry_date",
+        "data_type": "date",
+        "udt_name": "date",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "carding.card_thick_place.entry_time",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "card_thick_place",
+        "column_name": "entry_time",
+        "data_type": "time without time zone",
+        "udt_name": "time",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "carding.card_thick_place.machine",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "card_thick_place",
+        "column_name": "machine",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 4
+      }
+    },
+    {
+      "key": "carding.card_thick_place.cv_value",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "card_thick_place",
+        "column_name": "cv_value",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 6,
+        "numeric_scale": 3,
+        "ordinal_position": 5
+      }
+    },
+    {
+      "key": "carding.card_thick_place.unit",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "card_thick_place",
+        "column_name": "unit",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": 20,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 6
+      }
+    },
+    {
+      "key": "carding.card_thick_place_header.remarks",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "card_thick_place_header",
+        "column_name": "remarks",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 6
+      }
+    },
+    {
+      "key": "carding.card_thick_place_values.unit",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "card_thick_place_values",
+        "column_name": "unit",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 6
+      }
+    },
+    {
+      "key": "carding.card_waste_study.waste_study_id",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "card_waste_study",
+        "column_name": "waste_study_id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "carding.carding_change_request.test_no",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "carding_change_request",
+        "column_name": "test_no",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "carding.carding_change_request.speed_existing",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "carding_change_request",
+        "column_name": "speed_existing",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 2,
+        "ordinal_position": 17
+      }
+    },
+    {
+      "key": "carding.carding_change_request.speed_proposed",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "carding_change_request",
+        "column_name": "speed_proposed",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 2,
+        "ordinal_position": 18
+      }
+    },
+    {
+      "key": "carding.carding_qc_header.qc_code",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "carding_qc_header",
+        "column_name": "qc_code",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": "('PP'::text || lpad((nextval('carding.qc_seq'::regclass))::text, 3, '0'::text))",
+        "character_maximum_length": 10,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "carding.carding_qc_header.setting",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "carding_qc_header",
+        "column_name": "setting",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 15
+      }
+    },
+    {
+      "key": "comber.u_data_entry.department",
+      "def": {
+        "table_schema": "comber",
+        "table_name": "u_data_entry",
+        "column_name": "department",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 6
+      }
+    },
+    {
+      "key": "drawframe.cots_breaker_data.thick_place",
+      "def": {
+        "table_schema": "drawframe",
+        "table_name": "cots_breaker_data",
+        "column_name": "thick_place",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 7
+      }
+    },
+    {
+      "key": "drawframe.cots_breaker_data.operator",
+      "def": {
+        "table_schema": "drawframe",
+        "table_name": "cots_breaker_data",
+        "column_name": "operator",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 9
+      }
+    },
+    {
+      "key": "drawframe.cots_finisher_data.main_tin",
+      "def": {
+        "table_schema": "drawframe",
+        "table_name": "cots_finisher_data",
+        "column_name": "main_tin",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 10
+      }
+    },
+    {
+      "key": "drawframe.cots_finisher_data.operator",
+      "def": {
+        "table_schema": "drawframe",
+        "table_name": "cots_finisher_data",
+        "column_name": "operator",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 13
+      }
+    },
+    {
+      "key": "drawframe.drawframe_qc_header.ins_code",
+      "def": {
+        "table_schema": "drawframe",
+        "table_name": "drawframe_qc_header",
+        "column_name": "ins_code",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": "('PP'::text || lpad((nextval('drawframe.ins_seq'::regclass))::text, 3, '0'::text))",
+        "character_maximum_length": 10,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "drawframe.u_data_entry.department",
+      "def": {
+        "table_schema": "drawframe",
+        "table_name": "u_data_entry",
+        "column_name": "department",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 6
+      }
+    },
+    {
+      "key": "drawframe.wheel_change.remarks",
+      "def": {
+        "table_schema": "drawframe",
+        "table_name": "wheel_change",
+        "column_name": "remarks",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 12
+      }
+    },
+    {
+      "key": "drawframe.yarn_cv_yard_results.operator",
+      "def": {
+        "table_schema": "drawframe",
+        "table_name": "yarn_cv_yard_results",
+        "column_name": "operator",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 12
+      }
+    },
+    {
+      "key": "mixing.afis6_cotton_data_entry.sc_nep_count_g",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "afis6_cotton_data_entry",
+        "column_name": "sc_nep_count_g",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 25
+      }
+    },
+    {
+      "key": "mixing.afis6_cotton_data_entry.crimp_percent",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "afis6_cotton_data_entry",
+        "column_name": "crimp_percent",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 26
+      }
+    },
+    {
+      "key": "mixing.afis6_mmf_data_entry.cut_length_l_n_cv_percent",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "afis6_mmf_data_entry",
+        "column_name": "cut_length_l_n_cv_percent",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 41
+      }
+    },
+    {
+      "key": "mixing.afis6_mmf_data_entry.cut_length_sfc_w_percent",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "afis6_mmf_data_entry",
+        "column_name": "cut_length_sfc_w_percent",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 42
+      }
+    },
+    {
+      "key": "mixing.afis6_mmf_data_entry.crimp_percent",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "afis6_mmf_data_entry",
+        "column_name": "crimp_percent",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 44
+      }
+    },
+    {
+      "key": "mixing.openness_inspection.br_line_no",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "openness_inspection",
+        "column_name": "br_line_no",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 10
+      }
+    },
+    {
+      "key": "public.hvi_records.id",
+      "def": {
+        "table_schema": "public",
+        "table_name": "hvi_records",
+        "column_name": "id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "nextval('hvi_records_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 1
+      }
+    },
+    {
+      "key": "public.hvi_records.doc_type",
+      "def": {
+        "table_schema": "public",
+        "table_name": "hvi_records",
+        "column_name": "doc_type",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": "'hvi'::text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "public.hvi_records.filename",
+      "def": {
+        "table_schema": "public",
+        "table_name": "hvi_records",
+        "column_name": "filename",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "public.hvi_records.ocr_json",
+      "def": {
+        "table_schema": "public",
+        "table_name": "hvi_records",
+        "column_name": "ocr_json",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 4
+      }
+    },
+    {
+      "key": "public.hvi_records.manual_json",
+      "def": {
+        "table_schema": "public",
+        "table_name": "hvi_records",
+        "column_name": "manual_json",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 5
+      }
+    },
+    {
+      "key": "public.hvi_records.created_at",
+      "def": {
+        "table_schema": "public",
+        "table_name": "hvi_records",
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": "now()",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 6
+      }
+    },
+    {
+      "key": "rbac.permissions.id",
+      "def": {
+        "table_schema": "rbac",
+        "table_name": "permissions",
+        "column_name": "id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "nextval('rbac.permissions_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 1
+      }
+    },
+    {
+      "key": "rbac.permissions.key",
+      "def": {
+        "table_schema": "rbac",
+        "table_name": "permissions",
+        "column_name": "key",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "rbac.permissions.name",
+      "def": {
+        "table_schema": "rbac",
+        "table_name": "permissions",
+        "column_name": "name",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "rbac.permissions.screen_name",
+      "def": {
+        "table_schema": "rbac",
+        "table_name": "permissions",
+        "column_name": "screen_name",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 4
+      }
+    },
+    {
+      "key": "rbac.permissions.description",
+      "def": {
+        "table_schema": "rbac",
+        "table_name": "permissions",
+        "column_name": "description",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 5
+      }
+    },
+    {
+      "key": "rbac.permissions.created_at",
+      "def": {
+        "table_schema": "rbac",
+        "table_name": "permissions",
+        "column_name": "created_at",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": "now()",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 6
+      }
+    },
+    {
+      "key": "rbac.role_permissions.role_id",
+      "def": {
+        "table_schema": "rbac",
+        "table_name": "role_permissions",
+        "column_name": "role_id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 1
+      }
+    },
+    {
+      "key": "rbac.role_permissions.permission_id",
+      "def": {
+        "table_schema": "rbac",
+        "table_name": "role_permissions",
+        "column_name": "permission_id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "rbac.role_permissions.created_at",
+      "def": {
+        "table_schema": "rbac",
+        "table_name": "role_permissions",
+        "column_name": "created_at",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": "now()",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "spinning.bottom_apron_checking.type2",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "bottom_apron_checking",
+        "column_name": "type2",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 11
+      }
+    },
+    {
+      "key": "spinning.count_change_inspections.test_no",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "count_change_inspections",
+        "column_name": "test_no",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 4
+      }
+    },
+    {
+      "key": "spinning.lycra_centering.type2",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "lycra_centering",
+        "column_name": "type2",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 11
+      }
+    },
+    {
+      "key": "spinning.ring_frame_rows.bobbin_checked",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "ring_frame_rows",
+        "column_name": "bobbin_checked",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 16
+      }
+    },
+    {
+      "key": "spinning.ring_frame_summary.lycra_missing_ac",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "ring_frame_summary",
+        "column_name": "lycra_missing_ac",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 10
+      }
+    },
+    {
+      "key": "spinning.rsm_and_lycrasensor_cheking_offline.type2",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "rsm_and_lycrasensor_cheking_offline",
+        "column_name": "type2",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 11
+      }
+    },
+    {
+      "key": "spinning.rsm_and_lycrasensor_cheking_online.type2",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "rsm_and_lycrasensor_cheking_online",
+        "column_name": "type2",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 11
+      }
+    },
+    {
+      "key": "spinning.spinning_qc_header.param_id",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "spinning_qc_header",
+        "column_name": "param_id",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": "('PP'::text || lpad((nextval('spinning.param_seq'::regclass))::text, 3, '0'::text))",
+        "character_maximum_length": 10,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "spinning.spinning_qc_header.slub_partcy_code",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "spinning_qc_header",
+        "column_name": "slub_partcy_code",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 32
+      }
+    },
+    {
+      "key": "spinning.wheel_change.ins_code",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change",
+        "column_name": "ins_code",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": "('WC'::text || lpad((nextval('spinning.wheel_change_seq'::regclass))::text, 3, '0'::text))",
+        "character_maximum_length": 15,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "spinning.wheel_change_inspection.ins_code",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change_inspection",
+        "column_name": "ins_code",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": "('WC'::text || lpad((nextval('spinning.wheel_change_seq'::regclass))::text, 3, '0'::text))",
+        "character_maximum_length": 15,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "spinning.wheel_change_inspection.bdw_existing",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change_inspection",
+        "column_name": "bdw_existing",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 61
+      }
+    },
+    {
+      "key": "spinning.wheel_change_inspection.bdw_proposed",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change_inspection",
+        "column_name": "bdw_proposed",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 62
+      }
+    },
+    {
+      "key": "spinning.wheel_change_inspection.bd_existing",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change_inspection",
+        "column_name": "bd_existing",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 63
+      }
+    },
+    {
+      "key": "spinning.wheel_change_inspection.bd_proposed",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change_inspection",
+        "column_name": "bd_proposed",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 64
+      }
+    },
+    {
+      "key": "spinning.wheel_change_inspection.winding_e_existing",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change_inspection",
+        "column_name": "winding_e_existing",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 65
+      }
+    },
+    {
+      "key": "spinning.wheel_change_inspection.winding_e_proposed",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change_inspection",
+        "column_name": "winding_e_proposed",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 66
+      }
+    },
+    {
+      "key": "spinning.wheel_change_inspection.winding_f_existing",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change_inspection",
+        "column_name": "winding_f_existing",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 67
+      }
+    },
+    {
+      "key": "spinning.wheel_change_inspection.winding_f_proposed",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change_inspection",
+        "column_name": "winding_f_proposed",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 68
+      }
+    },
+    {
+      "key": "spinning.wheel_change_inspection.winding_length_existing",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change_inspection",
+        "column_name": "winding_length_existing",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 69
+      }
+    },
+    {
+      "key": "spinning.wheel_change_inspection.winding_length_proposed",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change_inspection",
+        "column_name": "winding_length_proposed",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 70
+      }
+    },
+    {
+      "key": "spinning.wheel_change_v2.ins_code",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change_v2",
+        "column_name": "ins_code",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": "('WC'::text || lpad((nextval('spinning.wheel_change_v2_seq'::regclass))::text, 3, '0'::text))",
+        "character_maximum_length": 15,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "ticketing_system.entry_id_sequences.sequence_key",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "entry_id_sequences",
+        "column_name": "sequence_key",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 1
+      }
+    },
+    {
+      "key": "ticketing_system.entry_id_sequences.prefix",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "entry_id_sequences",
+        "column_name": "prefix",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "ticketing_system.entry_id_sequences.next_number",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "entry_id_sequences",
+        "column_name": "next_number",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": "1",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "ticketing_system.entry_id_sequences.updated_at",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "entry_id_sequences",
+        "column_name": "updated_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 4
+      }
+    },
+    {
+      "key": "ticketing_system.notebook_acknowledgement_threshold.notebook",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "notebook_acknowledgement_threshold",
+        "column_name": "notebook",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 11
+      }
+    },
+    {
+      "key": "ticketing_system.notebook_acknowledgement_threshold.approval_l2",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "notebook_acknowledgement_threshold",
+        "column_name": "approval_l2",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 12
+      }
+    },
+    {
+      "key": "ticketing_system.notebook_acknowledgement_threshold.approval_l2_name",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "notebook_acknowledgement_threshold",
+        "column_name": "approval_l2_name",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 13
+      }
+    },
+    {
+      "key": "ticketing_system.operator_tickets.description",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "operator_tickets",
+        "column_name": "description",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 30
+      }
+    },
+    {
+      "key": "ticketing_system.operator_tickets.source",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "operator_tickets",
+        "column_name": "source",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 32
+      }
+    },
+    {
+      "key": "ticketing_system.pp_notebook_batch_config.config_key",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "pp_notebook_batch_config",
+        "column_name": "config_key",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": "'global'::text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 1
+      }
+    },
+    {
+      "key": "ticketing_system.pp_notebook_batch_config.completion_threshold_hours",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "pp_notebook_batch_config",
+        "column_name": "completion_threshold_hours",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "24",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "ticketing_system.pp_notebook_batch_config.l2_tat_hours",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "pp_notebook_batch_config",
+        "column_name": "l2_tat_hours",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "ticketing_system.pp_notebook_batch_config.is_active",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "pp_notebook_batch_config",
+        "column_name": "is_active",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "true",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 4
+      }
+    },
+    {
+      "key": "ticketing_system.pp_notebook_batch_config.updated_at",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "pp_notebook_batch_config",
+        "column_name": "updated_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 5
+      }
+    },
+    {
+      "key": "ticketing_system.pp_notebook_batch_config.approval_l1_user_ids",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "pp_notebook_batch_config",
+        "column_name": "approval_l1_user_ids",
+        "data_type": "ARRAY",
+        "udt_name": "_int4",
+        "is_nullable": "NO",
+        "column_default": "ARRAY[]::integer[]",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 6
+      }
+    },
+    {
+      "key": "ticketing_system.pp_notebook_batch_config.approval_l2_user_ids",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "pp_notebook_batch_config",
+        "column_name": "approval_l2_user_ids",
+        "data_type": "ARRAY",
+        "udt_name": "_int4",
+        "is_nullable": "NO",
+        "column_default": "ARRAY[]::integer[]",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 7
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.occurrences",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "occurrences",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 11
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.approval_l1_name",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "approval_l1_name",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 12
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.approval_l2",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "approval_l2",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 13
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.approval_l2_name",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "approval_l2_name",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 14
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.approval_l3_name",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "approval_l3_name",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 16
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.l1_tat_hours",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "l1_tat_hours",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 17
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.l2_tat_hours",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "l2_tat_hours",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 18
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.tracked_l1_user_ids",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "tracked_l1_user_ids",
+        "data_type": "ARRAY",
+        "udt_name": "_int4",
+        "is_nullable": "NO",
+        "column_default": "ARRAY[]::integer[]",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 22
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.input_field",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "input_field",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 23
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.actual_value",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "actual_value",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 25
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.value_mode",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "value_mode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 26
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.plus_threshold",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "plus_threshold",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 27
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.minus_threshold",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "minus_threshold",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 28
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.positive_tolerance_percent",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "positive_tolerance_percent",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 29
+      }
+    },
+    {
+      "key": "ticketing_system.screen_submission_frequency.negative_tolerance_percent",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "screen_submission_frequency",
+        "column_name": "negative_tolerance_percent",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 30
+      }
+    },
+    {
+      "key": "ticketing_system.submitted_notebooks.l2_approver_user_names",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "submitted_notebooks",
+        "column_name": "l2_approver_user_names",
+        "data_type": "ARRAY",
+        "udt_name": "_text",
+        "is_nullable": "NO",
+        "column_default": "ARRAY[]::text[]",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 27
+      }
+    },
+    {
+      "key": "ticketing_system.submitted_notebooks.l3_approver_user_names",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "submitted_notebooks",
+        "column_name": "l3_approver_user_names",
+        "data_type": "ARRAY",
+        "udt_name": "_text",
+        "is_nullable": "NO",
+        "column_default": "ARRAY[]::text[]",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 28
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.id",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": "nextval('ticketing_system.threshold_master_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 1
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.is_active",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "is_active",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "true",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.created_at",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.updated_at",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "updated_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 4
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.department",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "department",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 5
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.sub_department",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "sub_department",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 6
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.input_screen",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "input_screen",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 150,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 7
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.input_field",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "input_field",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 8
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.condition_level",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "condition_level",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": "'More Than'::character varying",
+        "character_maximum_length": 30,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 9
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.plus_threshold",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "plus_threshold",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 10
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.minus_threshold",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "minus_threshold",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 11
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.approval_l2_user_id",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "approval_l2_user_id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 12
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.approval_l1_user_id",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "approval_l1_user_id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 13
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.approval_l3_user_id",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "approval_l3_user_id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 14
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.l1_tat_hours",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "l1_tat_hours",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 15
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.l2_tat_hours",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "l2_tat_hours",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 16
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.l3_tat_hours",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "l3_tat_hours",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 17
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.actual_value",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "actual_value",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 18
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.criticality",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "criticality",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 20,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 19
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.management_field",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "management_field",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 20
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.erp_product_code",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "erp_product_code",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 21
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.machine_name",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "machine_name",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 22
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.parameter_name",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "parameter_name",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 23
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master.threshold_value",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master",
+        "column_name": "threshold_value",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 24
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master_l1_approvers.id",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master_l1_approvers",
+        "column_name": "id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": "nextval('ticketing_system.threshold_master_l1_approvers_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 1
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master_l1_approvers.threshold_master_id",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master_l1_approvers",
+        "column_name": "threshold_master_id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master_l1_approvers.approver_user_id",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master_l1_approvers",
+        "column_name": "approver_user_id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master_l1_approvers.created_at",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master_l1_approvers",
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 4
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master_l2_approvers.id",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master_l2_approvers",
+        "column_name": "id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": "nextval('ticketing_system.threshold_master_l2_approvers_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 1
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master_l2_approvers.threshold_master_id",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master_l2_approvers",
+        "column_name": "threshold_master_id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master_l2_approvers.approver_user_id",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master_l2_approvers",
+        "column_name": "approver_user_id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master_l2_approvers.created_at",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master_l2_approvers",
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 4
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master_l3_approvers.id",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master_l3_approvers",
+        "column_name": "id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": "nextval('ticketing_system.threshold_master_l3_approvers_id_seq'::regclass)",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 1
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master_l3_approvers.threshold_master_id",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master_l3_approvers",
+        "column_name": "threshold_master_id",
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master_l3_approvers.approver_user_id",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master_l3_approvers",
+        "column_name": "approver_user_id",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master_l3_approvers.created_at",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master_l3_approvers",
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 4
+      }
+    },
+    {
+      "key": "ticketing_system.ticket_logs.notes",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "ticket_logs",
+        "column_name": "notes",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 7
+      }
+    },
+    {
+      "key": "users.phone_verification_logs.phone",
+      "def": {
+        "table_schema": "users",
+        "table_name": "phone_verification_logs",
+        "column_name": "phone",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": 150,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 1
+      }
+    },
+    {
+      "key": "users.phone_verification_logs.verification_id",
+      "def": {
+        "table_schema": "users",
+        "table_name": "phone_verification_logs",
+        "column_name": "verification_id",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "NO",
+        "column_default": null,
+        "character_maximum_length": 255,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 2
+      }
+    },
+    {
+      "key": "users.phone_verification_logs.is_verified",
+      "def": {
+        "table_schema": "users",
+        "table_name": "phone_verification_logs",
+        "column_name": "is_verified",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 3
+      }
+    },
+    {
+      "key": "users.phone_verification_logs.verified_at",
+      "def": {
+        "table_schema": "users",
+        "table_name": "phone_verification_logs",
+        "column_name": "verified_at",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": "CURRENT_TIMESTAMP",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 4
+      }
+    },
+    {
+      "key": "users.supervisor_assignments.supervisor_employee_id",
+      "def": {
+        "table_schema": "users",
+        "table_name": "supervisor_assignments",
+        "column_name": "supervisor_employee_id",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 7
+      }
+    },
+    {
+      "key": "users.supervisor_assignments.supervisor_name",
+      "def": {
+        "table_schema": "users",
+        "table_name": "supervisor_assignments",
+        "column_name": "supervisor_name",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 150,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 8
+      }
+    },
+    {
+      "key": "users.supervisor_assignments.employee_employee_id",
+      "def": {
+        "table_schema": "users",
+        "table_name": "supervisor_assignments",
+        "column_name": "employee_employee_id",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 9
+      }
+    },
+    {
+      "key": "users.supervisor_assignments.employee_name",
+      "def": {
+        "table_schema": "users",
+        "table_name": "supervisor_assignments",
+        "column_name": "employee_name",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 150,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 10
+      }
+    },
+    {
+      "key": "users.supervisor_assignments.remarks",
+      "def": {
+        "table_schema": "users",
+        "table_name": "supervisor_assignments",
+        "column_name": "remarks",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": 255,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 11
+      }
+    },
+    {
+      "key": "wrapping.carding_notebook.source_id",
+      "def": {
+        "table_schema": "wrapping",
+        "table_name": "carding_notebook",
+        "column_name": "source_id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "ordinal_position": 17
+      }
+    }
+  ],
+  "columnsDifferent": [],
+  "constraintsMissingInLocal": [
+    {
+      "key": "autoconer.cone_packing_audit.cone_packing_audit_pkey",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "cone_packing_audit",
+        "constraint_name": "cone_packing_audit_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "autoconer.drum_entries.drum_entries_pkey",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "drum_entries",
+        "constraint_name": "drum_entries_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "autoconer.drum_inspection.drum_inspection_pkey",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "drum_inspection",
+        "constraint_name": "drum_inspection_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "autoconer.drum_readings.drum_readings_pkey",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "drum_readings",
+        "constraint_name": "drum_readings_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "autoconer.lycra_checking_readings.lycra_checking_readings_pkey",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "lycra_checking_readings",
+        "constraint_name": "lycra_checking_readings_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "autoconer.parameter_entries.parameter_entries_pkey",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "parameter_entries",
+        "constraint_name": "parameter_entries_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "autoconer.yarn_readings.yarn_readings_pkey",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "yarn_readings",
+        "constraint_name": "yarn_readings_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "blowroom.blow_room_sync_entries.blow_room_sync_entries_pkey",
+      "def": {
+        "table_schema": "blowroom",
+        "table_name": "blow_room_sync_entries",
+        "constraint_name": "blow_room_sync_entries_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "blowroom.drop_test.drop_test_pkey",
+      "def": {
+        "table_schema": "blowroom",
+        "table_name": "drop_test",
+        "constraint_name": "drop_test_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "carding.carding_change_request.carding_change_request_pkey",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "carding_change_request",
+        "constraint_name": "carding_change_request_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "carding.hanks.hanks_pkey",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "hanks",
+        "constraint_name": "hanks_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "carding.sample_weights.sample_weights_pkey",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "sample_weights",
+        "constraint_name": "sample_weights_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "carding.u_data_entry.u_data_entry_pkey",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "u_data_entry",
+        "constraint_name": "u_data_entry_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "comber.neps_details.neps_details_pkey",
+      "def": {
+        "table_schema": "comber",
+        "table_name": "neps_details",
+        "constraint_name": "neps_details_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "comber.ribbon_lap_samples.ribbon_lap_samples_pkey",
+      "def": {
+        "table_schema": "comber",
+        "table_name": "ribbon_lap_samples",
+        "constraint_name": "ribbon_lap_samples_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "comber.u_data_entry.u_data_entry_pkey",
+      "def": {
+        "table_schema": "comber",
+        "table_name": "u_data_entry",
+        "constraint_name": "u_data_entry_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "drawframe.cots_breaker_data.cots_breaker_data_pkey",
+      "def": {
+        "table_schema": "drawframe",
+        "table_name": "cots_breaker_data",
+        "constraint_name": "cots_breaker_data_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "drawframe.cots_finisher_data.cots_finisher_data_pkey",
+      "def": {
+        "table_schema": "drawframe",
+        "table_name": "cots_finisher_data",
+        "constraint_name": "cots_finisher_data_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "drawframe.u_data_entry.u_data_entry_pkey",
+      "def": {
+        "table_schema": "drawframe",
+        "table_name": "u_data_entry",
+        "constraint_name": "u_data_entry_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "mixing.afis_data_entry.afis_data_entry_pkey",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "afis_data_entry",
+        "constraint_name": "afis_data_entry_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "mixing.cotton_hvi_data_entry.cotton_hvi_data_entry_pkey",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "cotton_hvi_data_entry",
+        "constraint_name": "cotton_hvi_data_entry_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "mixing.fibre_data_entry.fibre_data_entry_pkey",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "fibre_data_entry",
+        "constraint_name": "fibre_data_entry_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "mixing.mixing_qc_blends.mixing_qc_blends_pkey",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "mixing_qc_blends",
+        "constraint_name": "mixing_qc_blends_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "blend_id"
+      }
+    },
+    {
+      "key": "mixing.moisture_data_entry.moisture_data_entry_pkey",
+      "def": {
+        "table_schema": "mixing",
+        "table_name": "moisture_data_entry",
+        "constraint_name": "moisture_data_entry_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "rbac.departments.departments_pkey",
+      "def": {
+        "table_schema": "rbac",
+        "table_name": "departments",
+        "constraint_name": "departments_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "rbac.role_details.role_details_pkey",
+      "def": {
+        "table_schema": "rbac",
+        "table_name": "role_details",
+        "constraint_name": "role_details_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "rbac.screens.screens_pkey",
+      "def": {
+        "table_schema": "rbac",
+        "table_name": "screens",
+        "constraint_name": "screens_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "simplex.simplex_inspection_details.simplex_inspection_details_pkey",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "simplex_inspection_details",
+        "constraint_name": "simplex_inspection_details_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "simplex.simplex_inspections.simplex_inspections_pkey",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "simplex_inspections",
+        "constraint_name": "simplex_inspections_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "simplex.simplex_process_parameter.simplex_process_parameter_pkey",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "simplex_process_parameter",
+        "constraint_name": "simplex_process_parameter_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "simplex.smx_breaks_inspection_items.smx_breaks_inspection_items_pkey",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_breaks_inspection_items",
+        "constraint_name": "smx_breaks_inspection_items_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "simplex.smx_breaks_study_header.smx_breaks_study_header_pkey",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_breaks_study_header",
+        "constraint_name": "smx_breaks_study_header_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "simplex.smx_epi_parameters.smx_epi_parameters_pkey",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_epi_parameters",
+        "constraint_name": "smx_epi_parameters_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "simplex.smx_other_field_values.smx_other_field_values_pkey",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_other_field_values",
+        "constraint_name": "smx_other_field_values_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "simplex.smx_user_fiber_parameters.smx_user_fiber_parameters_pkey",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "smx_user_fiber_parameters",
+        "constraint_name": "smx_user_fiber_parameters_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "simplex.u_data_entry.u_data_entry_pkey",
+      "def": {
+        "table_schema": "simplex",
+        "table_name": "u_data_entry",
+        "constraint_name": "u_data_entry_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "spinning.cots_checking.cots_checking_pkey",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "cots_checking",
+        "constraint_name": "cots_checking_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "spinning.lycra_centering.lycra_centering_pkey",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "lycra_centering",
+        "constraint_name": "lycra_centering_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "spinning.lycra_missing.lycra_missing_pkey",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "lycra_missing",
+        "constraint_name": "lycra_missing_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "spinning.ring_frame_checkers.ring_frame_checkers_pkey",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "ring_frame_checkers",
+        "constraint_name": "ring_frame_checkers_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "spinning.rsm_and_lycrasensor_cheking_offline.rsm_and_lycrasensor_cheking_offline_pkey",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "rsm_and_lycrasensor_cheking_offline",
+        "constraint_name": "rsm_and_lycrasensor_cheking_offline_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "spinning.rsm_and_lycrasensor_cheking_online.rsm_and_lycrasensor_cheking_online_pkey",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "rsm_and_lycrasensor_cheking_online",
+        "constraint_name": "rsm_and_lycrasensor_cheking_online_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "spinning.speed_checking.speed_checking_pkey",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "speed_checking",
+        "constraint_name": "speed_checking_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "spinning.spinning_qc_header.spinning_qc_header_pkey",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "spinning_qc_header",
+        "constraint_name": "spinning_qc_header_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "spinning.wheel_change.wheel_change_pkey",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change",
+        "constraint_name": "wheel_change_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "ticketing_system.analysis_notification_subscriptions.analysis_notification_subscriptions_pkey",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "analysis_notification_subscriptions",
+        "constraint_name": "analysis_notification_subscriptions_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "ticketing_system.frontend_entry_registry.frontend_entry_registry_pkey",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "frontend_entry_registry",
+        "constraint_name": "frontend_entry_registry_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "ticketing_system.ocr_machine_records.ocr_machine_records_pkey",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "ocr_machine_records",
+        "constraint_name": "ocr_machine_records_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "ticketing_system.operator_tickets.operator_tickets_approval_l1_user_id_fkey",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "operator_tickets",
+        "constraint_name": "operator_tickets_approval_l1_user_id_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "columns": "approval_l1_user_id"
+      }
+    },
+    {
+      "key": "ticketing_system.operator_tickets.operator_tickets_approval_l2_user_id_fkey",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "operator_tickets",
+        "constraint_name": "operator_tickets_approval_l2_user_id_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "columns": "approval_l2_user_id"
+      }
+    },
+    {
+      "key": "ticketing_system.submitted_notebooks.submitted_notebooks_pkey",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "submitted_notebooks",
+        "constraint_name": "submitted_notebooks_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "ticketing_system.ticket_logs.ticket_logs_pkey",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "ticket_logs",
+        "constraint_name": "ticket_logs_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "trials.trials.trials_pkey",
+      "def": {
+        "table_schema": "trials",
+        "table_name": "trials",
+        "constraint_name": "trials_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "users.supervisor_assignments.supervisor_assignments_pkey",
+      "def": {
+        "table_schema": "users",
+        "table_name": "supervisor_assignments",
+        "constraint_name": "supervisor_assignments_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "users.user_dashboard_pages.user_dashboard_pages_pkey",
+      "def": {
+        "table_schema": "users",
+        "table_name": "user_dashboard_pages",
+        "constraint_name": "user_dashboard_pages_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "wrapping.a_percent.a_percent_pkey",
+      "def": {
+        "table_schema": "wrapping",
+        "table_name": "a_percent",
+        "constraint_name": "a_percent_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "wrapping.comber_noil_percent.comber_noil_percent_pkey",
+      "def": {
+        "table_schema": "wrapping",
+        "table_name": "comber_noil_percent",
+        "constraint_name": "comber_noil_percent_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    }
+  ],
+  "constraintsExtraInLocal": [
+    {
+      "key": "autoconer.autoconer_process_parameter.autoconer_process_parameter_ins_code_key",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "autoconer_process_parameter",
+        "constraint_name": "autoconer_process_parameter_ins_code_key",
+        "constraint_type": "UNIQUE",
+        "columns": "ins_code"
+      }
+    },
+    {
+      "key": "autoconer.autoconer_q2_inspection.autoconer_q2_inspection_ins_code_key",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "autoconer_q2_inspection",
+        "constraint_name": "autoconer_q2_inspection_ins_code_key",
+        "constraint_type": "UNIQUE",
+        "columns": "ins_code"
+      }
+    },
+    {
+      "key": "autoconer.autoconer_q3_inspection.autoconer_q3_inspection_ins_code_key",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "autoconer_q3_inspection",
+        "constraint_name": "autoconer_q3_inspection_ins_code_key",
+        "constraint_type": "UNIQUE",
+        "columns": "ins_code"
+      }
+    },
+    {
+      "key": "autoconer.drum_wise.drum_wise_count_id_fkey",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "drum_wise",
+        "constraint_name": "drum_wise_count_id_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "columns": "count_id"
+      }
+    },
+    {
+      "key": "autoconer.drum_wise.drum_wise_machine_id_fkey",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "drum_wise",
+        "constraint_name": "drum_wise_machine_id_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "columns": "machine_id"
+      }
+    },
+    {
+      "key": "autoconer.machine.machine_machine_code_key",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "machine",
+        "constraint_name": "machine_machine_code_key",
+        "constraint_type": "UNIQUE",
+        "columns": "machine_code"
+      }
+    },
+    {
+      "key": "autoconer.machine.machine_pkey",
+      "def": {
+        "table_schema": "autoconer",
+        "table_name": "machine",
+        "constraint_name": "machine_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "blowroom.blow_room_sync_totals.blow_room_sync_totals_pkey",
+      "def": {
+        "table_schema": "blowroom",
+        "table_name": "blow_room_sync_totals",
+        "constraint_name": "blow_room_sync_totals_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "blowroom.blow_room_sync_totals.blow_room_sync_totals_sync_id_fkey",
+      "def": {
+        "table_schema": "blowroom",
+        "table_name": "blow_room_sync_totals",
+        "constraint_name": "blow_room_sync_totals_sync_id_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "columns": "sync_id"
+      }
+    },
+    {
+      "key": "carding.carding_qc_header.carding_qc_header_qc_code_key",
+      "def": {
+        "table_schema": "carding",
+        "table_name": "carding_qc_header",
+        "constraint_name": "carding_qc_header_qc_code_key",
+        "constraint_type": "UNIQUE",
+        "columns": "qc_code"
+      }
+    },
+    {
+      "key": "rbac.role_permissions.role_permissions_pkey",
+      "def": {
+        "table_schema": "rbac",
+        "table_name": "role_permissions",
+        "constraint_name": "role_permissions_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "role_id,permission_id"
+      }
+    },
+    {
+      "key": "spinning.wheel_change_inspection.wheel_change_inspection_ins_code_key",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change_inspection",
+        "constraint_name": "wheel_change_inspection_ins_code_key",
+        "constraint_type": "UNIQUE",
+        "columns": "ins_code"
+      }
+    },
+    {
+      "key": "spinning.wheel_change_v2.wheel_change_v2_ins_code_key",
+      "def": {
+        "table_schema": "spinning",
+        "table_name": "wheel_change_v2",
+        "constraint_name": "wheel_change_v2_ins_code_key",
+        "constraint_type": "UNIQUE",
+        "columns": "ins_code"
+      }
+    },
+    {
+      "key": "ticketing_system.entry_id_sequences.entry_id_sequences_pkey",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "entry_id_sequences",
+        "constraint_name": "entry_id_sequences_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "sequence_key"
+      }
+    },
+    {
+      "key": "ticketing_system.pp_notebook_batch_config.pp_notebook_batch_config_pkey",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "pp_notebook_batch_config",
+        "constraint_name": "pp_notebook_batch_config_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "config_key"
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master_l3_approvers.threshold_master_l3_approvers_pkey",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master_l3_approvers",
+        "constraint_name": "threshold_master_l3_approvers_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "columns": "id"
+      }
+    },
+    {
+      "key": "ticketing_system.threshold_master_l3_approvers.threshold_master_l3_approvers_threshold_master_id_approver__key",
+      "def": {
+        "table_schema": "ticketing_system",
+        "table_name": "threshold_master_l3_approvers",
+        "constraint_name": "threshold_master_l3_approvers_threshold_master_id_approver__key",
+        "constraint_type": "UNIQUE",
+        "columns": "threshold_master_id,approver_user_id"
+      }
+    }
+  ],
+  "indexesMissingInLocal": [
+    {
+      "key": "autoconer.cone_packing_audit.cone_packing_audit_pkey",
+      "def": "CREATE UNIQUE INDEX cone_packing_audit_pkey ON autoconer.cone_packing_audit USING btree (id)"
+    },
+    {
+      "key": "autoconer.drum_entries.drum_entries_pkey",
+      "def": "CREATE UNIQUE INDEX drum_entries_pkey ON autoconer.drum_entries USING btree (id)"
+    },
+    {
+      "key": "autoconer.drum_inspection.drum_inspection_pkey",
+      "def": "CREATE UNIQUE INDEX drum_inspection_pkey ON autoconer.drum_inspection USING btree (id)"
+    },
+    {
+      "key": "autoconer.drum_readings.drum_readings_pkey",
+      "def": "CREATE UNIQUE INDEX drum_readings_pkey ON autoconer.drum_readings USING btree (id)"
+    },
+    {
+      "key": "autoconer.lycra_checking_readings.lycra_checking_readings_pkey",
+      "def": "CREATE UNIQUE INDEX lycra_checking_readings_pkey ON autoconer.lycra_checking_readings USING btree (id)"
+    },
+    {
+      "key": "autoconer.parameter_entries.parameter_entries_pkey",
+      "def": "CREATE UNIQUE INDEX parameter_entries_pkey ON autoconer.parameter_entries USING btree (id)"
+    },
+    {
+      "key": "autoconer.yarn_readings.yarn_readings_pkey",
+      "def": "CREATE UNIQUE INDEX yarn_readings_pkey ON autoconer.yarn_readings USING btree (id)"
+    },
+    {
+      "key": "blowroom.blow_room_sync_entries.blow_room_sync_entries_pkey",
+      "def": "CREATE UNIQUE INDEX blow_room_sync_entries_pkey ON blowroom.blow_room_sync_entries USING btree (id)"
+    },
+    {
+      "key": "blowroom.drop_test.drop_test_pkey",
+      "def": "CREATE UNIQUE INDEX drop_test_pkey ON blowroom.drop_test USING btree (id)"
+    },
+    {
+      "key": "carding.carding_change_request.carding_change_request_pkey",
+      "def": "CREATE UNIQUE INDEX carding_change_request_pkey ON carding.carding_change_request USING btree (id)"
+    },
+    {
+      "key": "carding.hanks.hanks_pkey",
+      "def": "CREATE UNIQUE INDEX hanks_pkey ON carding.hanks USING btree (id)"
+    },
+    {
+      "key": "carding.sample_weights.sample_weights_pkey",
+      "def": "CREATE UNIQUE INDEX sample_weights_pkey ON carding.sample_weights USING btree (id)"
+    },
+    {
+      "key": "carding.u_data_entry.u_data_entry_pkey",
+      "def": "CREATE UNIQUE INDEX u_data_entry_pkey ON carding.u_data_entry USING btree (id)"
+    },
+    {
+      "key": "comber.neps_details.neps_details_pkey",
+      "def": "CREATE UNIQUE INDEX neps_details_pkey ON comber.neps_details USING btree (id)"
+    },
+    {
+      "key": "comber.ribbon_lap_samples.ribbon_lap_samples_pkey",
+      "def": "CREATE UNIQUE INDEX ribbon_lap_samples_pkey ON comber.ribbon_lap_samples USING btree (id)"
+    },
+    {
+      "key": "comber.u_data_entry.u_data_entry_pkey",
+      "def": "CREATE UNIQUE INDEX u_data_entry_pkey ON comber.u_data_entry USING btree (id)"
+    },
+    {
+      "key": "drawframe.cots_breaker_data.cots_breaker_data_pkey",
+      "def": "CREATE UNIQUE INDEX cots_breaker_data_pkey ON drawframe.cots_breaker_data USING btree (id)"
+    },
+    {
+      "key": "drawframe.cots_finisher_data.cots_finisher_data_pkey",
+      "def": "CREATE UNIQUE INDEX cots_finisher_data_pkey ON drawframe.cots_finisher_data USING btree (id)"
+    },
+    {
+      "key": "drawframe.u_data_entry.u_data_entry_pkey",
+      "def": "CREATE UNIQUE INDEX u_data_entry_pkey ON drawframe.u_data_entry USING btree (id)"
+    },
+    {
+      "key": "mixing.afis_data_entry.afis_data_entry_pkey",
+      "def": "CREATE UNIQUE INDEX afis_data_entry_pkey ON mixing.afis_data_entry USING btree (id)"
+    },
+    {
+      "key": "mixing.cotton_hvi_data_entry.cotton_hvi_data_entry_pkey",
+      "def": "CREATE UNIQUE INDEX cotton_hvi_data_entry_pkey ON mixing.cotton_hvi_data_entry USING btree (id)"
+    },
+    {
+      "key": "mixing.fibre_data_entry.fibre_data_entry_pkey",
+      "def": "CREATE UNIQUE INDEX fibre_data_entry_pkey ON mixing.fibre_data_entry USING btree (id)"
+    },
+    {
+      "key": "mixing.mixing_qc_blends.mixing_qc_blends_pkey",
+      "def": "CREATE UNIQUE INDEX mixing_qc_blends_pkey ON mixing.mixing_qc_blends USING btree (blend_id)"
+    },
+    {
+      "key": "mixing.moisture_data_entry.moisture_data_entry_pkey",
+      "def": "CREATE UNIQUE INDEX moisture_data_entry_pkey ON mixing.moisture_data_entry USING btree (id)"
+    },
+    {
+      "key": "rbac.departments.departments_pkey",
+      "def": "CREATE UNIQUE INDEX departments_pkey ON rbac.departments USING btree (id)"
+    },
+    {
+      "key": "rbac.role_details.role_details_pkey",
+      "def": "CREATE UNIQUE INDEX role_details_pkey ON rbac.role_details USING btree (id)"
+    },
+    {
+      "key": "rbac.screens.screens_pkey",
+      "def": "CREATE UNIQUE INDEX screens_pkey ON rbac.screens USING btree (id)"
+    },
+    {
+      "key": "simplex.simplex_inspection_details.simplex_inspection_details_pkey",
+      "def": "CREATE UNIQUE INDEX simplex_inspection_details_pkey ON simplex.simplex_inspection_details USING btree (id)"
+    },
+    {
+      "key": "simplex.simplex_inspections.simplex_inspections_pkey",
+      "def": "CREATE UNIQUE INDEX simplex_inspections_pkey ON simplex.simplex_inspections USING btree (id)"
+    },
+    {
+      "key": "simplex.simplex_process_parameter.simplex_process_parameter_pkey",
+      "def": "CREATE UNIQUE INDEX simplex_process_parameter_pkey ON simplex.simplex_process_parameter USING btree (id)"
+    },
+    {
+      "key": "simplex.smx_breaks_inspection_items.smx_breaks_inspection_items_pkey",
+      "def": "CREATE UNIQUE INDEX smx_breaks_inspection_items_pkey ON simplex.smx_breaks_inspection_items USING btree (id)"
+    },
+    {
+      "key": "simplex.smx_breaks_study_header.smx_breaks_study_header_pkey",
+      "def": "CREATE UNIQUE INDEX smx_breaks_study_header_pkey ON simplex.smx_breaks_study_header USING btree (id)"
+    },
+    {
+      "key": "simplex.smx_epi_parameters.smx_epi_parameters_pkey",
+      "def": "CREATE UNIQUE INDEX smx_epi_parameters_pkey ON simplex.smx_epi_parameters USING btree (id)"
+    },
+    {
+      "key": "simplex.smx_other_field_values.smx_other_field_values_pkey",
+      "def": "CREATE UNIQUE INDEX smx_other_field_values_pkey ON simplex.smx_other_field_values USING btree (id)"
+    },
+    {
+      "key": "simplex.smx_user_fiber_parameters.smx_user_fiber_parameters_pkey",
+      "def": "CREATE UNIQUE INDEX smx_user_fiber_parameters_pkey ON simplex.smx_user_fiber_parameters USING btree (id)"
+    },
+    {
+      "key": "simplex.u_data_entry.u_data_entry_pkey",
+      "def": "CREATE UNIQUE INDEX u_data_entry_pkey ON simplex.u_data_entry USING btree (id)"
+    },
+    {
+      "key": "spinning.cots_checking.cots_checking_pkey",
+      "def": "CREATE UNIQUE INDEX cots_checking_pkey ON spinning.cots_checking USING btree (id)"
+    },
+    {
+      "key": "spinning.lycra_centering.lycra_centering_pkey",
+      "def": "CREATE UNIQUE INDEX lycra_centering_pkey ON spinning.lycra_centering USING btree (id)"
+    },
+    {
+      "key": "spinning.lycra_missing.lycra_missing_pkey",
+      "def": "CREATE UNIQUE INDEX lycra_missing_pkey ON spinning.lycra_missing USING btree (id)"
+    },
+    {
+      "key": "spinning.ring_frame_checkers.ring_frame_checkers_pkey",
+      "def": "CREATE UNIQUE INDEX ring_frame_checkers_pkey ON spinning.ring_frame_checkers USING btree (id)"
+    },
+    {
+      "key": "spinning.rsm_and_lycrasensor_cheking_offline.rsm_and_lycrasensor_cheking_offline_pkey",
+      "def": "CREATE UNIQUE INDEX rsm_and_lycrasensor_cheking_offline_pkey ON spinning.rsm_and_lycrasensor_cheking_offline USING btree (id)"
+    },
+    {
+      "key": "spinning.rsm_and_lycrasensor_cheking_online.rsm_and_lycrasensor_cheking_online_pkey",
+      "def": "CREATE UNIQUE INDEX rsm_and_lycrasensor_cheking_online_pkey ON spinning.rsm_and_lycrasensor_cheking_online USING btree (id)"
+    },
+    {
+      "key": "spinning.speed_checking.speed_checking_pkey",
+      "def": "CREATE UNIQUE INDEX speed_checking_pkey ON spinning.speed_checking USING btree (id)"
+    },
+    {
+      "key": "spinning.spinning_qc_header.spinning_qc_header_pkey",
+      "def": "CREATE UNIQUE INDEX spinning_qc_header_pkey ON spinning.spinning_qc_header USING btree (id)"
+    },
+    {
+      "key": "spinning.wheel_change.wheel_change_pkey",
+      "def": "CREATE UNIQUE INDEX wheel_change_pkey ON spinning.wheel_change USING btree (id)"
+    },
+    {
+      "key": "ticketing_system.analysis_notification_subscriptions.analysis_notification_subscriptions_pkey",
+      "def": "CREATE UNIQUE INDEX analysis_notification_subscriptions_pkey ON ticketing_system.analysis_notification_subscriptions USING btree (id)"
+    },
+    {
+      "key": "ticketing_system.frontend_entry_registry.frontend_entry_registry_pkey",
+      "def": "CREATE UNIQUE INDEX frontend_entry_registry_pkey ON ticketing_system.frontend_entry_registry USING btree (id)"
+    },
+    {
+      "key": "ticketing_system.ocr_machine_records.ocr_machine_records_pkey",
+      "def": "CREATE UNIQUE INDEX ocr_machine_records_pkey ON ticketing_system.ocr_machine_records USING btree (id)"
+    },
+    {
+      "key": "ticketing_system.submitted_notebooks.submitted_notebooks_pkey",
+      "def": "CREATE UNIQUE INDEX submitted_notebooks_pkey ON ticketing_system.submitted_notebooks USING btree (id)"
+    },
+    {
+      "key": "ticketing_system.ticket_logs.ticket_logs_pkey",
+      "def": "CREATE UNIQUE INDEX ticket_logs_pkey ON ticketing_system.ticket_logs USING btree (id)"
+    },
+    {
+      "key": "trials.trials.trials_pkey",
+      "def": "CREATE UNIQUE INDEX trials_pkey ON trials.trials USING btree (id)"
+    },
+    {
+      "key": "users.supervisor_assignments.supervisor_assignments_pkey",
+      "def": "CREATE UNIQUE INDEX supervisor_assignments_pkey ON users.supervisor_assignments USING btree (id)"
+    },
+    {
+      "key": "users.user_dashboard_pages.user_dashboard_pages_pkey",
+      "def": "CREATE UNIQUE INDEX user_dashboard_pages_pkey ON users.user_dashboard_pages USING btree (id)"
+    },
+    {
+      "key": "wrapping.a_percent.a_percent_pkey",
+      "def": "CREATE UNIQUE INDEX a_percent_pkey ON wrapping.a_percent USING btree (id)"
+    },
+    {
+      "key": "wrapping.comber_noil_percent.comber_noil_percent_pkey",
+      "def": "CREATE UNIQUE INDEX comber_noil_percent_pkey ON wrapping.comber_noil_percent USING btree (id)"
+    }
+  ],
+  "indexesExtraInLocal": [
+    {
+      "key": "autoconer.autoconer_process_parameter.autoconer_process_parameter_entry_pool_entry_id_uq",
+      "def": "CREATE UNIQUE INDEX autoconer_process_parameter_entry_pool_entry_id_uq ON autoconer.autoconer_process_parameter USING btree (entry_pool, entry_id) WHERE (entry_id IS NOT NULL)"
+    },
+    {
+      "key": "autoconer.autoconer_process_parameter.autoconer_process_parameter_ins_code_key",
+      "def": "CREATE UNIQUE INDEX autoconer_process_parameter_ins_code_key ON autoconer.autoconer_process_parameter USING btree (ins_code)"
+    },
+    {
+      "key": "autoconer.autoconer_q2_inspection.autoconer_q2_inspection_ins_code_key",
+      "def": "CREATE UNIQUE INDEX autoconer_q2_inspection_ins_code_key ON autoconer.autoconer_q2_inspection USING btree (ins_code)"
+    },
+    {
+      "key": "autoconer.autoconer_q3_inspection.autoconer_q3_inspection_ins_code_key",
+      "def": "CREATE UNIQUE INDEX autoconer_q3_inspection_ins_code_key ON autoconer.autoconer_q3_inspection USING btree (ins_code)"
+    },
+    {
+      "key": "autoconer.machine.machine_machine_code_key",
+      "def": "CREATE UNIQUE INDEX machine_machine_code_key ON autoconer.machine USING btree (machine_code)"
+    },
+    {
+      "key": "autoconer.machine.machine_pkey",
+      "def": "CREATE UNIQUE INDEX machine_pkey ON autoconer.machine USING btree (id)"
+    },
+    {
+      "key": "blowroom.blow_room_sync_totals.blow_room_sync_totals_pkey",
+      "def": "CREATE UNIQUE INDEX blow_room_sync_totals_pkey ON blowroom.blow_room_sync_totals USING btree (id)"
+    },
+    {
+      "key": "blowroom.blow_room_sync_totals.blow_room_sync_totals_sync_id_uq",
+      "def": "CREATE UNIQUE INDEX blow_room_sync_totals_sync_id_uq ON blowroom.blow_room_sync_totals USING btree (sync_id)"
+    },
+    {
+      "key": "blowroom.br_waste_study.br_waste_study_waste_study_id_uq",
+      "def": "CREATE UNIQUE INDEX br_waste_study_waste_study_id_uq ON blowroom.br_waste_study USING btree (waste_study_id) WHERE (waste_study_id IS NOT NULL)"
+    },
+    {
+      "key": "carding.card_waste_study.card_waste_study_waste_study_id_uq",
+      "def": "CREATE UNIQUE INDEX card_waste_study_waste_study_id_uq ON carding.card_waste_study USING btree (waste_study_id) WHERE (waste_study_id IS NOT NULL)"
+    },
+    {
+      "key": "carding.carding_qc_header.carding_qc_header_qc_code_key",
+      "def": "CREATE UNIQUE INDEX carding_qc_header_qc_code_key ON carding.carding_qc_header USING btree (qc_code)"
+    },
+    {
+      "key": "rbac.role_permissions.role_permissions_pkey",
+      "def": "CREATE UNIQUE INDEX role_permissions_pkey ON rbac.role_permissions USING btree (role_id, permission_id)"
+    },
+    {
+      "key": "spinning.wheel_change_inspection.wheel_change_inspection_ins_code_key",
+      "def": "CREATE UNIQUE INDEX wheel_change_inspection_ins_code_key ON spinning.wheel_change_inspection USING btree (ins_code)"
+    },
+    {
+      "key": "spinning.wheel_change_v2.wheel_change_v2_ins_code_key",
+      "def": "CREATE UNIQUE INDEX wheel_change_v2_ins_code_key ON spinning.wheel_change_v2 USING btree (ins_code)"
+    },
+    {
+      "key": "ticketing_system.entry_id_sequences.entry_id_sequences_pkey",
+      "def": "CREATE UNIQUE INDEX entry_id_sequences_pkey ON ticketing_system.entry_id_sequences USING btree (sequence_key)"
+    },
+    {
+      "key": "ticketing_system.operator_tickets.operator_tickets_value_threshold_open_uq",
+      "def": "CREATE UNIQUE INDEX operator_tickets_value_threshold_open_uq ON ticketing_system.operator_tickets USING btree (machine_name, ((violation_details ->> 'entry_id'::text))) WHERE ((ticket_type = 'VALUE_THRESHOLD'::text) AND ((status)::text <> 'Closed'::text) AND (NULLIF((violation_details ->> 'entry_id'::text), ''::text) IS NOT NULL))"
+    },
+    {
+      "key": "ticketing_system.pp_notebook_batch_config.pp_notebook_batch_config_pkey",
+      "def": "CREATE UNIQUE INDEX pp_notebook_batch_config_pkey ON ticketing_system.pp_notebook_batch_config USING btree (config_key)"
+    },
+    {
+      "key": "ticketing_system.threshold_master_l1_approvers.threshold_master_l1_approvers_threshold_user_uq",
+      "def": "CREATE UNIQUE INDEX threshold_master_l1_approvers_threshold_user_uq ON ticketing_system.threshold_master_l1_approvers USING btree (threshold_master_id, approver_user_id)"
+    },
+    {
+      "key": "ticketing_system.threshold_master_l2_approvers.threshold_master_l2_approvers_threshold_user_uq",
+      "def": "CREATE UNIQUE INDEX threshold_master_l2_approvers_threshold_user_uq ON ticketing_system.threshold_master_l2_approvers USING btree (threshold_master_id, approver_user_id)"
+    },
+    {
+      "key": "ticketing_system.threshold_master_l3_approvers.threshold_master_l3_approvers_pkey",
+      "def": "CREATE UNIQUE INDEX threshold_master_l3_approvers_pkey ON ticketing_system.threshold_master_l3_approvers USING btree (id)"
+    },
+    {
+      "key": "ticketing_system.threshold_master_l3_approvers.threshold_master_l3_approvers_threshold_master_id_approver__key",
+      "def": "CREATE UNIQUE INDEX threshold_master_l3_approvers_threshold_master_id_approver__key ON ticketing_system.threshold_master_l3_approvers USING btree (threshold_master_id, approver_user_id)"
+    },
+    {
+      "key": "ticketing_system.threshold_master_l3_approvers.threshold_master_l3_approvers_threshold_user_uq",
+      "def": "CREATE UNIQUE INDEX threshold_master_l3_approvers_threshold_user_uq ON ticketing_system.threshold_master_l3_approvers USING btree (threshold_master_id, approver_user_id)"
+    }
+  ]
+}

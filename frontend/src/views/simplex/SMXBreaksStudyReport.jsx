@@ -1,5 +1,6 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { FiPlus, FiTrash2 } from "react-icons/fi";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchSimplexStudyMachineNames } from "@/apis/simplex";
 import SearchableSelect from "@/components/SearchableSelect";
@@ -86,9 +87,6 @@ const getTotalBreakPercentages = (breakMatrix) => {
   return { columnTotals, grandTotal, percentages };
 };
 
-const getBreakCellValue = (breakMatrix, rowLabel, columnLabel) =>
-  breakMatrix?.[rowLabel]?.[columnLabel] || "0";
-
 const createInitialForm = () => ({
   type: "SMX Breaks Study Report",
   simplexNo: "",
@@ -112,14 +110,18 @@ const createInitialForm = () => ({
   sName: "",
 });
 
-const createInitialBreakMatrix = () =>
-  breakRows.reduce((rowAccumulator, rowLabel) => {
-    rowAccumulator[rowLabel] = breakColumns.reduce((columnAccumulator, columnLabel) => {
-      columnAccumulator[columnLabel] = "";
-      return columnAccumulator;
-    }, {});
-    return rowAccumulator;
+const createEmptyRowValues = () =>
+  breakColumns.reduce((accumulator, columnLabel) => {
+    accumulator[columnLabel] = "";
+    return accumulator;
   }, {});
+
+let matrixRowIdCounter = 0;
+const createMatrixRow = () => ({
+  id: `row-${Date.now()}-${matrixRowIdCounter++}`,
+  length: "",
+  values: createEmptyRowValues(),
+});
 
 const errorClass = (flag) =>
   flag ? " border-red-500 bg-rose-50 focus:border-red-500 focus:ring-red-200" : "";
@@ -154,10 +156,26 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
   const dispatch = useDispatch();
   const { isLoading } = useSelector((state) => state.simplex ?? {});
   const [form, setForm] = useState(createInitialForm);
-  const [breakMatrix, setBreakMatrix] = useState(createInitialBreakMatrix);
+  const [matrixRows, setMatrixRows] = useState(() => [createMatrixRow()]);
+  // Derived, sparse (only-added-rows) matrix in the same {[length]: {[column]: value}}
+  // shape the totals/percentage math below already expects - keeps that math unchanged
+  // while the table itself moved from 13 always-rendered rows to user-added ones.
+  const breakMatrix = useMemo(() => {
+    const result = {};
+    matrixRows.forEach((row) => {
+      if (row.length) result[row.length] = row.values;
+    });
+    return result;
+  }, [matrixRows]);
+  const usedLengths = useMemo(
+    () => new Set(matrixRows.map((row) => row.length).filter(Boolean)),
+    [matrixRows]
+  );
   const [errors, setErrors] = useState({ form: {}, matrix: {} });
   const [portalReady, setPortalReady] = useState(false);
   const [simplexNoOptions, setSimplexNoOptions] = useState([]);
+  const [machineNamesError, setMachineNamesError] = useState("");
+  const [machineNamesReloadKey, setMachineNamesReloadKey] = useState(0);
   const { employeeOptions, employeeOptionsError, loadingEmployeeOptions } = useEmployeeOptions("simplex");
   const [customFieldValues, setCustomFieldValues] = useState({});
 
@@ -173,6 +191,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     let isCancelled = false;
 
     const loadSimplexNos = async () => {
+      setMachineNamesError("");
       try {
         const response = await fetchSimplexStudyMachineNames();
         if (isCancelled) return;
@@ -190,8 +209,15 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           .filter(Boolean);
 
         setSimplexNoOptions(cleaned);
-      } catch (_error) {
-        if (!isCancelled) setSimplexNoOptions([]);
+      } catch (error) {
+        if (isCancelled) return;
+        setSimplexNoOptions([]);
+        // Previously failed silently, leaving the Simplex No. dropdown permanently empty with no
+        // indication anything went wrong - the request now also times out (apiConfig's default
+        // timeout) instead of hanging forever, so this always resolves one way or the other.
+        setMachineNamesError(
+          error?.message || "Unable to load Simplex No. options. Check your connection and retry."
+        );
       }
     };
 
@@ -199,7 +225,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     return () => {
       isCancelled = true;
     };
-  }, []);
+  }, [machineNamesReloadKey]);
 
   const totalTime = useMemo(() => {
     if (!form.startTime || !form.endTime) return "";
@@ -308,30 +334,47 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     });
   };
 
-  const handleMatrixChange = (rowLabel, columnLabel, value) => {
+  const handleRowLengthChange = (rowId, nextLength) => {
+    setMatrixRows((current) =>
+      current.map((row) => (row.id === rowId ? { ...row, length: nextLength } : row))
+    );
+  };
+
+  const handleRowValueChange = (rowId, columnLabel, value) => {
     const sanitized = value === "" ? "" : value.replace(/[^\d,\s]/g, "");
 
-    setBreakMatrix((current) => ({
-      ...current,
-      [rowLabel]: {
-        ...current[rowLabel],
-        [columnLabel]: sanitized,
-      },
-    }));
+    setMatrixRows((current) =>
+      current.map((row) =>
+        row.id === rowId
+          ? { ...row, values: { ...row.values, [columnLabel]: sanitized } }
+          : row
+      )
+    );
 
     setErrors((previous) => {
-      if (!previous.matrix?.[rowLabel]?.[columnLabel]) return previous;
+      if (!previous.matrix?.[rowId]?.[columnLabel]) return previous;
       const nextMatrix = { ...(previous.matrix || {}) };
-      const nextRow = { ...(nextMatrix[rowLabel] || {}) };
+      const nextRow = { ...(nextMatrix[rowId] || {}) };
       delete nextRow[columnLabel];
-      nextMatrix[rowLabel] = nextRow;
+      nextMatrix[rowId] = nextRow;
       return { ...previous, matrix: nextMatrix };
     });
   };
 
+  const addMatrixRow = () => {
+    if (matrixRows.length >= breakRows.length) return;
+    setMatrixRows((current) => [...current, createMatrixRow()]);
+  };
+
+  const removeMatrixRow = (rowId) => {
+    setMatrixRows((current) =>
+      current.length > 1 ? current.filter((row) => row.id !== rowId) : current
+    );
+  };
+
   const clear = () => {
     setForm(createInitialForm());
-    setBreakMatrix(createInitialBreakMatrix());
+    setMatrixRows([createMatrixRow()]);
     setErrors({ form: {}, matrix: {} });
     setCustomFieldValues({});
   };
@@ -372,11 +415,14 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
       { label: "Total Minutes", value: totalTime || "-" },
     ];
 
-    breakRows.forEach((rowLabel) => {
+    matrixRows.forEach((row) => {
+      if (!row.length) return;
       breakColumns.forEach((columnLabel) => {
+        const value = row.values[columnLabel];
+        if (String(value ?? "").trim() === "") return;
         items.push({
-          label: `${rowLabel} - ${columnLabel}`,
-          value: breakMatrix[rowLabel]?.[columnLabel] || "",
+          label: `${row.length} - ${columnLabel}`,
+          value,
         });
       });
     });
@@ -452,41 +498,87 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           const { columnTotals: totalCounts, grandTotal: totalCount, percentages } = getTotalBreakPercentages(breakMatrix);
           return (
             <>
-        <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] gap-x-3 gap-y-4 text-[11px] font-semibold uppercase tracking-[0.01em] text-slate-600">
-          <div className="flex items-end pb-2">Length</div>
-          {breakColumns.map((columnLabel) => (
-            <div key={columnLabel} className="flex items-end pb-2 leading-5">
-              {columnLabel}
-            </div>
-          ))}
+        <div className="flex items-end gap-3">
+          <div className="grid flex-1 grid-cols-[100px_repeat(9,minmax(0,1fr))] gap-x-3 gap-y-4 text-[10px] font-semibold uppercase tracking-[0.01em] text-slate-600">
+            <div className="flex items-end pb-2">Length</div>
+            {breakColumns.map((columnLabel) => (
+              <div key={columnLabel} className="flex items-end pb-2 leading-4">
+                {columnLabel}
+              </div>
+            ))}
+          </div>
+          <div className="h-0 w-[64px] shrink-0" aria-hidden="true" />
         </div>
 
         <div className="mt-1 flex flex-col gap-3">
-          {breakRows.map((rowLabel) => (
-            <div
-              key={rowLabel}
-              className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3"
-            >
-              <div className="text-[12px] font-semibold uppercase text-slate-700">
-                {rowLabel}
-              </div>
+          {matrixRows.map((row, rowIndex) => {
+            const lengthOptions = breakRows.filter(
+              (label) => label === row.length || !usedLengths.has(label)
+            );
+            const isLastRow = rowIndex === matrixRows.length - 1;
+            const canAddRow = matrixRows.length < breakRows.length;
+            return (
+              <div key={row.id} className="flex items-center gap-3">
+                <div className="grid flex-1 grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
+                  <select
+                    className={`${tableFieldClass}${errorClass(errors.matrix?.[row.id]?.length)}`}
+                    style={getFieldStyle(errors.matrix?.[row.id]?.length, "table")}
+                    value={row.length}
+                    onChange={(event) => handleRowLengthChange(row.id, event.target.value)}
+                  >
+                    <option value="">Select</option>
+                    {lengthOptions.map((label) => (
+                      <option key={label} value={label}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
 
-              {breakColumns.map((columnLabel) => (
-                <input
-                  key={`${rowLabel}-${columnLabel}`}
-                  type="text"
-                  inputMode="text"
-                  placeholder="1,2,3"
-                  className={`${tableFieldClass}${errorClass(errors.matrix?.[rowLabel]?.[columnLabel])}`}
-                  style={getFieldStyle(errors.matrix?.[rowLabel]?.[columnLabel], "table")}
-                  value={breakMatrix[rowLabel]?.[columnLabel] ?? ""}
-                  onChange={(event) =>
-                    handleMatrixChange(rowLabel, columnLabel, event.target.value)
-                  }
-                />
-              ))}
-            </div>
-          ))}
+                  {breakColumns.map((columnLabel) => (
+                    <input
+                      key={`${row.id}-${columnLabel}`}
+                      type="text"
+                      inputMode="text"
+                      placeholder="1,2,3"
+                      className={`${tableFieldClass}${errorClass(errors.matrix?.[row.id]?.[columnLabel])}`}
+                      style={getFieldStyle(errors.matrix?.[row.id]?.[columnLabel], "table")}
+                      value={row.values[columnLabel] ?? ""}
+                      onChange={(event) =>
+                        handleRowValueChange(row.id, columnLabel, event.target.value)
+                      }
+                    />
+                  ))}
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2">
+                  {isLastRow ? (
+                    <button
+                      type="button"
+                      onClick={addMatrixRow}
+                      disabled={!canAddRow}
+                      aria-label="Add row"
+                      title="Add row"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#4f63b6] text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <FiPlus />
+                    </button>
+                  ) : (
+                    <span className="inline-block h-7 w-7" aria-hidden="true" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeMatrixRow(row.id)}
+                    disabled={matrixRows.length <= 1}
+                    aria-label="Delete row"
+                    title="Delete row"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] border border-[#ffcecf] bg-[#fff4f4] text-[#f04f56] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <FiTrash2 />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         <div className="mt-4 border-t border-slate-200 pt-4">
@@ -573,18 +665,21 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     idle_spindles: form.ideals,
     ideals: form.ideals,
     s_name: form.sName,
-    // One item per (length range x break type) cell, so each of the 13 length ranges keeps its
-    // own values per column instead of being flattened together — Custom Report resolves these
-    // back out by matching on both item_name and length_range (see getSmxBreaksStudyCellValue
-    // in ReportsPage.jsx).
-    items: breakRows.flatMap((rowLabel) =>
-      breakColumns.map((columnLabel) => ({
-        item_name: columnLabel,
-        length_range: rowLabel,
-        status_value: getBreakCellValue(breakMatrix, rowLabel, columnLabel),
-        remarks: "",
-      }))
-    ),
+    // One item per (length range x break type) cell the user actually filled in, not every
+    // combination across all 13 length ranges - getSmxBreaksStudyCellValue in ReportsPage.jsx
+    // already looks these up by matching item_name + length_range and treats a missing match
+    // as blank, so a sparse list here (only the rows/cells that were added) is safe to send.
+    items: matrixRows.flatMap((row) => {
+      if (!row.length) return [];
+      return breakColumns
+        .filter((columnLabel) => String(row.values[columnLabel] ?? "").trim() !== "")
+        .map((columnLabel) => ({
+          item_name: columnLabel,
+          length_range: row.length,
+          status_value: row.values[columnLabel],
+          remarks: "",
+        }));
+    }),
     other_field_values: {
       start_time: form.startTime,
       end_time: form.endTime,
@@ -598,6 +693,23 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
       s_name: form.sName,
       sider_name: form.sName,
       break_count: parseNumber(grandTotal),
+      // Send the same Grand Total Breakage % this screen already shows (TOTAL No. OF
+      // BREAKS/100SH, formatPercentage's own 2-decimal rounding) - the backend stores this
+      // as-is now instead of recomputing its own copy from the raw cells, so what's saved
+      // always matches exactly what the user saw on screen when they submitted.
+      overall_breakage_percent: grandTotalBreakPercent || null,
+      // Same reasoning as break_count/overall_breakage_percent above, for the two per-column
+      // summary rows (TOTAL BREAKS and NO. OF BREAKS 100 SPINDLES/HR) this screen shows - sent
+      // as {columnLabel: value} objects matching this screen's own columnTotals/
+      // noOfBreaksPer100Spindles state exactly, formatted to the same 2 decimals the UI displays.
+      column_total_breaks: columnTotals,
+      // "No. of breaks 100 spindles/hr" only ever shows percentageBreakColumns (up through
+      // SLIVER BREAKS) on screen - Can Exhaust/Unknown Stop have no input for this row at all
+      // (see the table render below), so they shouldn't be sent/stored here either.
+      column_breaks_per_100sh: percentageBreakColumns.reduce((accumulator, columnLabel) => {
+        accumulator[columnLabel] = Number(formatPercentage(noOfBreaksPer100Spindles[columnLabel]));
+        return accumulator;
+      }, {}),
       study_type: selectedTypeName || form.type,
       tpi: form.tpi,
       tpm: form.tpm,
@@ -607,24 +719,12 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
       doff_length: form.doffLength,
       rh_percent: form.rhPercent,
       temp_percent: form.tempPercent,
-      remarks: JSON.stringify({
-        type: selectedTypeName || form.type,
-        tpi: form.tpi,
-        tpm: form.tpm,
-        average_speed: form.averageSpeed,
-        mixing: form.mixing,
-        roving_hk: form.rovingHk,
-        doff_length: form.doffLength,
-        rh_percent: form.rhPercent,
-        temp_percent: form.tempPercent,
-        end_time: form.endTime,
-        total_time: totalTime,
-        total_time_in_mins: totalTime,
-        total_spdl: form.ttSpdl,
-        idle_spindles: form.ideals,
-        running_spdl: calculatedRunningSpdl,
-        hank: calculatedHank,
-      }),
+      // No JSON blob here anymore - every field it used to duplicate (type/tpi/tpm/
+      // average_speed/mixing/roving_hk/doff_length/rh_percent/temp_percent/end_time/total_spdl/
+      // idle_spindles/running_spdl/hank) is already sent above as its own dedicated key, and the
+      // backend's parseSmxOtherFieldsRemarks() never read this JSON blob in the first place (it
+      // only ever extracts S.NAME/START/END/TOTAL_MINUTES from the plain delimited remarks text) -
+      // it was purely dead duplication.
     },
   });
 
@@ -683,8 +783,20 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
   return (
     <>
+      {machineNamesError ? (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-[10px] border border-red-200 bg-red-50 px-4 py-2.5 text-[13px] text-red-700 print:hidden">
+          <span>{machineNamesError}</span>
+          <button
+            type="button"
+            className="shrink-0 rounded-[8px] border border-red-300 bg-white px-3 py-1 font-semibold text-red-700 hover:bg-red-100"
+            onClick={() => setMachineNamesReloadKey((key) => key + 1)}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
       <div className="grid grid-cols-1 gap-x-4 gap-y-5 md:grid-cols-2 xl:grid-cols-3 print:grid-cols-3">
-        {formFields.map(({ label, field, type, options = [], placeholder, value }) => {
+        {formFields.map(({ label, field, type, options = [], placeholder, value, dropUp = false }) => {
           const fieldValue = value ?? form[field] ?? "";
 
           return (
@@ -716,6 +828,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
                   options={options}
                   placeholder={placeholder}
                   ariaLabel={label}
+                  dropUp={dropUp}
                 />
               ) : (
                 <input

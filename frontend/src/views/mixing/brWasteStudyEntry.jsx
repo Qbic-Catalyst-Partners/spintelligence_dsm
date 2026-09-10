@@ -135,7 +135,6 @@ const buildBrWastePayload = ({ date, entryId, formData, type1Rows, type2Rows, ty
     return {
         type: entryTypeLabel,
         entry_id: entryId || null,
-        waste_study_id: entryId || null,
         date,
         variety: formData.variety || null,
         study_type: formData.studyType,
@@ -446,6 +445,13 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
             field === "wasteType"
                 ? value
                 : sanitizeNumericInput(value, { precision: 10, scale: 4 });
+        setErrors((prev) => {
+            const key = `waste-${index}-${field}`;
+            if (!prev[key]) return prev;
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
         setWasteKgRows((prev) => {
             const updated = [...prev];
             updated[index] = { ...updated[index], [field]: nextValue };
@@ -653,6 +659,12 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                 TYPE_3_COLUMNS.forEach(col=>{
                     if (String(row[col.key]||"").trim()==="") nextErrors[`t3-${idx}-${col.key}`]=true;
                 });
+            });
+        }
+        if (studyType) {
+            wasteKgRows.forEach((row, idx) => {
+                if (String(row.wasteType || "").trim() === "") nextErrors[`waste-${idx}-wasteType`] = true;
+                if (String(row.wasteKgValue || "").trim() === "") nextErrors[`waste-${idx}-wasteKgValue`] = true;
             });
         }
         setErrors(nextErrors);
@@ -1031,7 +1043,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                             <div className={styles['mixx-group']}>
                                 <label>Waste Type</label>
                                 <SearchableSelect
-                                    className={styles['mixx-input']}
+                                    className={`${styles['mixx-input']} ${errors[`waste-${i}-wasteType`] ? styles['mixx-error'] : ''}`}
                                     value={row.wasteType}
                                     onChange={(value) => handleWasteKgRowChange(i, "wasteType", value)}
                                     options={wasteTypeOptions}
@@ -1056,7 +1068,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                             <div className={styles['mixx-group']}>
                                 <label>Waste KGs Value</label>
                                 <input
-                                    className={styles['mixx-input']}
+                                    className={`${styles['mixx-input']} ${errors[`waste-${i}-wasteKgValue`] ? styles['mixx-error'] : ''}`}
                                     placeholder="0.0000"
                                     value={row.wasteKgValue}
                                     onChange={(e) => handleWasteKgRowChange(i, "wasteKgValue", e.target.value)}

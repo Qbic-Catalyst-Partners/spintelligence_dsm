@@ -16,6 +16,7 @@ import {
   submitCardingChangeControlEntry,
 } from "@/apis/carding";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "./cardingWheelChange.module.css";
 
 const CHANGE_CONTROL_TYPE = "Wheel Change";
@@ -588,13 +589,18 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       );
     }
 
+    const handleChange = row.numeric
+      ? (event) => handleValueChange(row.key, column)(sanitizeNumericInput(event.target.value))
+      : handleValueChange(row.key, column);
+
     return (
       <input
         className={className}
         type="text"
+        inputMode={row.numeric ? "decimal" : undefined}
         value={value}
         readOnly={isReadOnlyExisting}
-        onChange={handleValueChange(row.key, column)}
+        onChange={handleChange}
       />
     );
   };

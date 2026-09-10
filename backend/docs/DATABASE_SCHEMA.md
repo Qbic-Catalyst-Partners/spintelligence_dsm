@@ -3212,6 +3212,12 @@ The remainder of this document is **mechanically generated** from a live `inform
 | break_per_million_meter | numeric(14,4) | NOT NULL | 0 |  |
 | remarks | text |  |  |  |
 | created_at | timestamp with time zone |  | now() |  |
+| remarks_optional | text |  |  |  |
+| total_cones | integer |  |  |  |
+| total_faults | integer |  |  |  |
+| total_weight | numeric(14,4) |  |  |  |
+| total_length_meters | numeric(14,4) |  |  |  |
+| operator | text |  |  |  |
 
 <details><summary>Indexes (2)</summary>
 

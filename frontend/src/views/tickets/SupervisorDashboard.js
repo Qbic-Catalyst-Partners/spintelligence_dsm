@@ -433,12 +433,12 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   // merge/filter/pagination (across Value/Acknowledgement/PP/Wheel Change
   // ticket types) then paginated over just those 25 rows instead of the real
   // total. An explicit high limit actually works, same fix already used for
-  // fetchApprovalQueueApi below.
-  const supervisorTicketQuery = isAdminUser
-    ? {
-        limit: 1000,
-      }
-    : {};
+  // fetchApprovalQueueApi below. This used to only apply to isAdminUser, but
+  // every non-admin L2-L5 viewer hits the exact same default-limit
+  // truncation - a supervisor's older reportee tickets (e.g. anything past
+  // the 25 most recent system-wide) silently never reached the client-side
+  // Mapped/ownership filtering at all, regardless of level or ticket type.
+  const supervisorTicketQuery = { limit: 1000 };
 
   const [status, setStatus] = useState("");
   const [severity, setSeverity] = useState("");
@@ -815,7 +815,21 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
       isOverdue: String(overdueTicket?.status || "").trim().toLowerCase() === "overdue",
     };
   });
-  const displayTickets = taggedTickets.filter((t) => t.ownership.kind === activeTicketingView);
+  // A ticket that escalated to the viewer's own level and that they closed
+  // shows under Owned (it's their action) - but it's still a reportee's
+  // ticket underneath that, so once it's Closed it also belongs in Mapped as
+  // part of that reportee's full history, not just the approver's own log.
+  // Guarded on user_id !== the viewer's own id so a viewer never "reportees"
+  // themselves.
+  const displayTickets = taggedTickets.filter((t) => {
+    if (t.ownership.kind === activeTicketingView) return true;
+    return (
+      activeTicketingView === "mapped" &&
+      t.ownership.kind === "owned" &&
+      String(t.status || "").trim().toLowerCase() === "closed" &&
+      String(t.user_id ?? "") !== String(authUserId ?? "")
+    );
+  });
 
   const totalPages = Math.max(
     1,
@@ -1121,7 +1135,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                     >
                       {t.ticket_id}
                     </td>
-                    <td>{t.entry_id || t.entryId || "-"}</td>
+                    <td>{t.entry_id || t.entryId || (t.ticketType === "Submission" ? "No entry submitted" : "-")}</td>
                     <td>{t.ticketType}</td>
                     <td>
                       {t.ownership.label}
@@ -1226,8 +1240,10 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                   <div className={styles["sup-card-title"]}>
                     {t.ticket_id} | {t.ticketType}
                   </div>
-                  {(t.entry_id || t.entryId) && (
-                    <div className={styles["sup-small-label"]}>Entry ID: {t.entry_id || t.entryId}</div>
+                  {(t.entry_id || t.entryId || t.ticketType === "Submission") && (
+                    <div className={styles["sup-small-label"]}>
+                      Entry ID: {t.entry_id || t.entryId || (t.ticketType === "Submission" ? "No entry submitted" : "-")}
+                    </div>
                   )}
                   <div className={styles["sup-card-date"]}>
                     {formatDateTime(t.created_at)}

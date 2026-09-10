@@ -7,7 +7,7 @@ const { fetchPrepVarieties, sendPrepVarietyDropdown } = require('../utils/prepVa
 const { sendUqcMasterData } = require('./uqcMasterData');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
-const { createWheelChangeApprovalTicket, closeWheelChangeApprovalTicket } = require('./spinning');
+const { closeWheelChangeApprovalTicket } = require('./spinning');
 const MSSQL_THRESHOLD_TABLE = String(process.env.MSSQL_THRESHOLD_TABLE || 'dbo.threshold_master').trim();
 const SCREEN_ID_PREFIXES = {
   card_thick_place: 'CT',
@@ -200,7 +200,6 @@ const ensureCardThickPlaceTables = async () => {
       entry_date DATE NOT NULL,
       entry_time TIME,
       operator TEXT,
-      remarks TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
@@ -291,7 +290,11 @@ router.get('/thresholds', async (req, res, next) => {
 router.get('/master/machines', async (req, res, next) => {
   try {
     const prefix = String(req.query.prefix || '').trim();
-    const likeToken = `%${prefix}%`;
+    // Filtered by DEPTCODE = 14 (CARDING), not by machine name pattern - name-based matching
+    // (e.g. '%CDG%') pulled in machines from OTHER departments whose name merely mentions CDG in
+    // passing (e.g. Blow Room's "B/R LINE 11 (CDG 03 & 06)"), while also missing genuine Carding
+    // machines with different naming (e.g. "CARD 2 HRS CHECKING").
+    const likeToken = `${prefix}%`;
 
     if (!sqlServer.hasSqlServerEnv()) {
       const fallback = await client.query(
@@ -324,6 +327,7 @@ router.get('/master/machines', async (req, res, next) => {
        JOIN dbo.dept_mai d ON m.DEPTCODE = d.DEPTCODE
        WHERE m.compcode = '1'
          AND m.mcclose = '0'
+         AND m.DEPTCODE = 14
          AND (@prefix = '' OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @machinePrefix)
        ORDER BY d.DEPTNAME, m.MCNAME`,
       { prefix, machinePrefix: likeToken }
@@ -477,7 +481,7 @@ const getCdgMasterDropdown = async (req, res, next) => {
        FROM dbo.MCMASTER m
        WHERE m.compcode = '1'
          AND LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) <> ''
-         AND UPPER(LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255))))) LIKE 'CDG-%'
+         AND m.DEPTCODE = 14
          AND (@prefix = '' OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @prefixLike)
        ORDER BY cdg_no`,
       { prefix, prefixLike: likeToken }
@@ -536,18 +540,22 @@ const getCardingDepartmentCdgDropdown = async (req, res, next) => {
       });
     }
 
+    // This endpoint only ever serves Carding-context routes (nati/uqc CDG dropdowns), so the
+    // department query param - which defaults to 'Carding' - maps to DEPTCODE 14 directly rather
+    // than joining dept_mai by name string, which is fragile to naming variants.
+    const departmentCodes = { CARDING: 14 };
+    const departmentCode = departmentCodes[department.toUpperCase()] || null;
+
     const result = await sqlServer.query(
       `SELECT DISTINCT
          LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) AS cdg_no
        FROM dbo.MCMASTER m
-       JOIN dbo.dept_mai d ON m.DEPTCODE = d.DEPTCODE
        WHERE m.compcode = '1'
          AND LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) <> ''
-         AND UPPER(LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255))))) LIKE 'CDG-%'
+         AND (@departmentCode IS NULL OR m.DEPTCODE = @departmentCode)
          AND (@prefix = '' OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @prefixLike)
-         AND UPPER(LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255))))) = UPPER(LTRIM(RTRIM(@department)))
        ORDER BY cdg_no`,
-      { prefix, prefixLike: likeToken, department }
+      { prefix, prefixLike: likeToken, departmentCode }
     );
 
     const values = (result.recordset || [])
@@ -1220,7 +1228,7 @@ router.get('/carding-notebook/wrapping', getWrappingCardingNotebook);
 router.post('/card-thick-place', async (req, res) => {
     try {
         await ensureCardThickPlaceTables();
-        const { entry_id, entry_date, date, entry_time, remarks, entries, machine, cv_value, cv_5m, five_m_cv, unit } = req.body;
+        const { entry_id, entry_date, date, entry_time, entries, machine, cv_value, cv_5m, five_m_cv } = req.body;
         const resolvedEntryDate = entry_date || date || new Date().toISOString().slice(0, 10);
 
         if (!entry_id) {
@@ -1229,7 +1237,7 @@ router.post('/card-thick-place', async (req, res) => {
 
         const normalizedEntries = Array.isArray(entries)
           ? entries
-          : (machine ? [{ machine, cv_value, cv_5m, five_m_cv, unit }] : []);
+          : (machine ? [{ machine, cv_value, cv_5m, five_m_cv }] : []);
 
         if (!normalizedEntries.length) {
           return res.status(400).json({ message: 'entries are required' });
@@ -1239,16 +1247,15 @@ router.post('/card-thick-place', async (req, res) => {
 
         const headerResult = await client.query(
           `INSERT INTO carding.card_thick_place_header
-           (entry_id, entry_code, entry_date, entry_time, operator, remarks)
-           VALUES ($1, $2, $3, $4, $5, $6)
+           (entry_id, entry_code, entry_date, entry_time, operator)
+           VALUES ($1, $2, $3, $4, $5)
            RETURNING *`,
           [
             entry_id || null,
             entry_id || null,
             resolvedEntryDate,
             entry_time || null,
-            String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null,
-            remarks || null
+            String(req.user?.full_name || req.user?.name || req.user?.employee_id || '').trim() || null
           ]
         );
 
@@ -2268,6 +2275,12 @@ router.post('/dfk-pressure', async (req, res) => {
         await client.query('BEGIN');
 
         for (const row of data) {
+            // The frontend now only ever sends rows the user actually added a machine for (the
+            // Card DFK Data screen moved from a fixed "all 27 machines" grid to add/delete rows
+            // with a machine dropdown), but guard here too so a blank/malformed row from any
+            // other caller can't insert a nameless entry no report could ever attribute to a
+            // machine.
+            if (!String(row?.machine_name || '').trim()) continue;
             await client.query(
                 `INSERT INTO carding.card_dfk_pressure_checking
                 (entry_id, inspection_type, entry_date, machine_name,
@@ -2950,8 +2963,40 @@ const toNumericOrNull = (value) => {
   return trimmed === '' ? null : value;
 };
 
+// Wheel Change parameter fields that are `numeric` columns in
+// carding.carding_change_request - a non-numeric value here used to reach
+// the INSERT untouched and blow up as a raw Postgres type-cast error
+// ("invalid input syntax for type numeric"), surfacing to the client as an
+// unexplained 500 instead of a normal validation message.
+const NUMERIC_CHANGE_CONTROL_FIELDS = [
+  'del_hank_existing', 'del_hank_proposed',
+  'feed_weight_existing', 'feed_weight_proposed',
+  'licker_in_speed_1_existing', 'licker_in_speed_1_proposed',
+  'licker_in_speed_2_existing', 'licker_in_speed_2_proposed',
+  'cylinder_speed_existing', 'cylinder_speed_proposed',
+  'flats_speed_mm_min_existing', 'flats_speed_mm_min_proposed',
+  'feed_plate_to_licker_in_existing', 'feed_plate_to_licker_in_proposed',
+  'sfl_existing', 'sfl_proposed',
+  'sfd_existing', 'sfd_proposed',
+  'cylinder_to_flats_existing', 'cylinder_to_flats_proposed',
+  'cylinder_in_doffer_existing', 'cylinder_in_doffer_proposed',
+  'web_speed_draft_mw_v4_existing', 'web_speed_draft_mw_v4_proposed',
+  'lc_wing_setting_existing', 'lc_wing_setting_proposed',
+  'rr_rk_beater_speed_existing', 'rr_rk_beater_speed_proposed'
+];
+
 router.post('/change-control', async (req, res, next) => {
   try {
+    const invalidNumericFields = NUMERIC_CHANGE_CONTROL_FIELDS.filter((field) => {
+      const trimmed = String(req.body[field] ?? '').trim();
+      return trimmed !== '' && !Number.isFinite(Number(trimmed));
+    });
+    if (invalidNumericFields.length) {
+      return res.status(400).json({
+        message: `Invalid numeric value for: ${invalidNumericFields.join(', ')}`
+      });
+    }
+
 
     const {
       entry_id,

@@ -6,7 +6,7 @@ const sqlServerPrep = require('../config/sqlserverPrep');
 const { fetchPrepVarieties, isDatabaseAccessDenied } = require('../utils/prepVariety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
-const { createWheelChangeApprovalTicket, closeWheelChangeApprovalTicket } = require('./spinning');
+const { closeWheelChangeApprovalTicket } = require('./spinning');
 const SCREEN_ID_PREFIXES = {
   yarn_cv: 'DY',
   cots: 'DC',
@@ -1454,15 +1454,16 @@ router.post('/cots', async (req, res) => {
             } else if (sub_type === 'Finisher') {
                 await client.query(
                     `INSERT INTO drawframe.cots_finisher_data
-                    (entry_id, mc_name, fan_waste, cot_change, stripper_w,
+                    (entry_id, mc_name, fan_waste, cot_change, stripper_w, thick_place,
                      auto_level, silver_worn, mass_thick_place, scanning)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
                     [
                         createdEntryId,
                         m.mc_name,
                         m.fan_waste,
                         m.cot_change,
                         m.stripper_w,
+                        m.thick_place,
                         m.auto_level,
                         m.silver_worn,
                         m.main_tin,
@@ -1561,6 +1562,7 @@ router.get('/cots', async (req, res) => {
                     'fan_waste', f.fan_waste,
                     'cot_change', f.cot_change,
                     'stripper_w', f.stripper_w,
+                    'thick_place', f.thick_place,
                     'auto_level', f.auto_level,
                     'silver_worn', f.silver_worn,
                     'main_tin', f.mass_thick_place,
@@ -2035,7 +2037,6 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
     const entry_date = parseNotebookDate(payload.entry_date ?? payload.entryDate ?? payload.date);
     const machine_no = String(payload.machine_no ?? payload.machineNo ?? '').trim() || null;
     const operator = String(payload.operator ?? '').trim() || null;
-    const remarks = String(payload.remarks ?? '').trim() || null;
     const parameters = normalizeWheelChangeParameters(payload);
     const rows = normalizeWheelChangeRows(payload, parameters);
 
@@ -2046,9 +2047,9 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
     const result = await client.query(
       `INSERT INTO drawframe.wheel_change (
          entry_id, type, line_type, wheel_change_type, wheel_change_type_label, entry_date, parameters, rows,
-         machine_no, operator, remarks
+         machine_no, operator
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10)
        RETURNING *`,
       [
         entry_id,
@@ -2060,8 +2061,7 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
         JSON.stringify(parameters),
         JSON.stringify(rows),
         machine_no,
-        operator,
-        remarks
+        operator
       ]
     );
 

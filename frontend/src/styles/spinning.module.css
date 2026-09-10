@@ -224,6 +224,11 @@
   gap: 2px;
 }
 
+.segmentedControl.segmentedControlError {
+  border-color: #ef4444;
+  background: #fff1f2;
+}
+
 .segmentButton {
   min-width: 88px;
   height: 36px;
@@ -369,8 +374,8 @@
 
 .countChangeTable td:nth-child(2) .countChangeInput,
 .countChangeTable td:nth-child(5) .countChangeInput {
-  width: 80px;
-  min-width: 80px;
+  width: 110px;
+  min-width: 110px;
 }
 
 .countChangeInput:focus {
@@ -492,11 +497,11 @@
 .ringFrameTable th {
   padding: 0 4px 6px;
   color: #64748b;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   text-align: left;
   white-space: normal;
-  line-height: 1.2;
+  line-height: 1.3;
 }
 
 .ringFrameTable td {
@@ -504,10 +509,22 @@
   vertical-align: middle;
 }
 
+/* table-layout: fixed sizes every column from the <thead> row's cells (not the <tbody> cells),
+   and this column used to have no explicit width at all, so it got squeezed down to roughly the
+   same auto width as the tiny numeric columns (1-6) next to it. Mc.No now holds a full machine
+   name/number dropdown (see spinning.js), not a 2-digit number, so it needs real room - widen
+   both the header cell (:first-child, since these <th>s have no per-column class) and the body
+   cell to match. */
+.ringFrameTable thead th:first-child,
+.ringFrameMachineCell {
+  width: 110px;
+  min-width: 110px;
+}
+
 .ringFrameMachineCell {
   color: #0f172a;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 400;
   white-space: nowrap;
 }
 
@@ -528,9 +545,11 @@
 }
 
 .ringFrameMachineInput {
-  max-width: 34px;
+  /* Was 34px, sized for a plain 2-digit number. It's now a <select> holding a real machine
+     name/number from the master list, which was clipping/hiding most of it at that width. */
+  max-width: 100%;
   text-align: center;
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .ringFrameToggle {

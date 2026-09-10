@@ -43,6 +43,15 @@
   gap: 14px 12px;
 }
 
+.errorField,
+.field input.errorField,
+.field select.errorField,
+.metricField input.errorField {
+  border: 1px solid #ef4444 !important;
+  background: #fff1f2 !important;
+  box-shadow: 0 0 0 1000px #fff1f2 inset;
+}
+
 @media (max-width: 900px) {
   .formGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -85,4 +94,12 @@
 :global(:root[data-theme="dark"]) :local(.field) label,
 :global(:root[data-theme="dark"]) :local(.metricField) label {
   color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.field) input.errorField,
+:global(:root[data-theme="dark"]) :local(.field) select.errorField,
+:global(:root[data-theme="dark"]) :local(.metricField) input.errorField {
+  background: #3f1d1d !important;
+  border-color: #ef4444 !important;
+  color: #fecaca !important;
 }

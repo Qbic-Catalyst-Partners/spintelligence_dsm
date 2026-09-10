@@ -332,6 +332,15 @@ router.post('/add-user', async (req, res, next) => {
     const department_id = deptResult.rows[0].id;
     const department_name = deptResult.rows[0].name;
 
+    const employeeIdResult = await client.query(
+      `SELECT id FROM users.user_details WHERE employee_id = $1`,
+      [employee_id]
+    );
+    if (employeeIdResult.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: `Employee ID "${employee_id}" is already taken. Please use a different Employee ID.` });
+    }
+
     const normalizedLevel = normalizeUserLevel(level);
     const reportingManagerError = await validateReportingManager(normalizedLevel, reports_to_user_id || null);
     if (reportingManagerError) {
@@ -383,9 +392,10 @@ router.post('/add-user', async (req, res, next) => {
     await client.query("ROLLBACK");
 
     if (err.code === '23505') {
-      return res.status(400).json({
-        message: 'Email or phone already exists'
-      });
+      const message = err.constraint && err.constraint.includes('employee_id')
+        ? `Employee ID "${employee_id}" is already taken. Please use a different Employee ID.`
+        : 'Email or phone already exists';
+      return res.status(400).json({ message });
     }
 
     next(err);
@@ -445,12 +455,20 @@ router.patch('/change-password/:id', async (req, res, next) => {
     }
 
     const userResult = await client.query(
-      `SELECT id FROM users.user_details WHERE id = $1`,
+      `SELECT id, password_hash FROM users.user_details WHERE id = $1`,
       [id]
     );
 
     if (userResult.rows.length === 0) {
       return res.status(404).json({ message: 'User not found' });
+    }
+
+    const currentPasswordHash = userResult.rows[0].password_hash;
+    if (currentPasswordHash) {
+      const isSameAsCurrent = await bcrypt.compare(new_password, currentPasswordHash);
+      if (isSameAsCurrent) {
+        return res.status(400).json({ message: 'This is the current password. Please enter a different password.' });
+      }
     }
 
     const newPasswordHash = await bcrypt.hash(new_password, saltRounds);
@@ -1144,8 +1162,31 @@ async function processUsers(data) {
         );
       }
 
+      const existingEmail = await client.query(
+        `SELECT id FROM users.user_details WHERE email = $1`,
+        [email]
+      );
+      if (existingEmail.rows.length) {
+        throw createBulkUploadError(`Row ${rowNumber}: email "${email}" already exists`, {
+          row: rowNumber,
+          field: "email"
+        });
+      }
+
       const full_name = `${String(first_name || "").trim()} ${String(last_name || "").trim()}`.trim();
       const resolved_employee_id = employee_id || await generateEmployeeId(full_name);
+      if (employee_id) {
+        const existingEmployeeId = await client.query(
+          `SELECT id FROM users.user_details WHERE employee_id = $1`,
+          [String(employee_id).trim()]
+        );
+        if (existingEmployeeId.rows.length) {
+          throw createBulkUploadError(
+            `Row ${rowNumber}: employee_id "${employee_id}" already exists`,
+            { row: rowNumber, field: "employee_id" }
+          );
+        }
+      }
       const password_hash = await bcrypt.hash(rowPassword || "Password@123", saltRounds);
       const roleResolved = await resolveRoleForBulk({
         roleIdRaw: role_id_raw,
@@ -1207,7 +1248,6 @@ async function processUsers(data) {
         department_id, department, top_department, employee_type,
         designation, level, dob, account_status, reports_to_user_id)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-        ON CONFLICT (email) DO NOTHING
         RETURNING id`,
         [
           full_name,

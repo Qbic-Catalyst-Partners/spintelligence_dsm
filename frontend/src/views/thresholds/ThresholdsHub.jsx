@@ -239,7 +239,18 @@ const normalizeWheelChangeApprovalRow = (item, users) => {
   return {
     type: "wheel-change-approval",
     typeLabel: "WC Threshold",
-    id: item?.department,
+    // item.department is always the literal string "Quality Control" - a
+    // display placeholder the backend sets deliberately since WC configs
+    // have no real department/sub-department of their own (see
+    // getAllWheelChangeApprovalConfigs in spinning.js). The actual
+    // per-config identifier (Spinning/Drawframe/Carding/Simplex) that
+    // edit/delete/status APIs need is wheel_change_department. Using
+    // item.department here gave every row the same id, which both
+    // collided their React keys (all rows sharing one key, so edits and
+    // deletes silently acted on the wrong row) and sent "Quality Control"
+    // as the department to the delete/status endpoints, which reject it
+    // outright since it's not one of the four real WC departments.
+    id: item?.wheel_change_department || item?.config_key,
     raw: item,
     department: "Quality Control",
     subDepartment: "-",

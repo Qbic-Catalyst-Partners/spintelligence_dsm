@@ -617,16 +617,17 @@ function Mixing() {
     };
 
     const openAfis6Preview = () => {
-        const numericKeys = afis6FieldDefs.map((field) => field.key);
-        const nextErrors = numericKeys.reduce((acc, key) => {
-            const trimmed = String(afis6Form[key] ?? "").trim();
-            const parsed = trimmed === "" ? "" : Number(trimmed);
-            if (Number.isNaN(parsed)) acc[key] = "Must be a number";
-            return acc;
-        }, {});
+        const nextErrors = {};
+        afis6TextFieldDefs.forEach((field) => {
+            if (String(afis6Form[field.key] ?? "").trim() === "") nextErrors[field.key] = true;
+        });
+        afis6FieldDefs.forEach((field) => {
+            const trimmed = String(afis6Form[field.key] ?? "").trim();
+            if (trimmed === "" || Number.isNaN(Number(trimmed))) nextErrors[field.key] = true;
+        });
         setAfis6Errors(nextErrors);
         if (Object.keys(nextErrors).length > 0) {
-            setValidationMessage("Please correct the numeric fields before saving.");
+            setValidationMessage("Please fill all required fields before saving.");
             return;
         }
 
@@ -855,16 +856,17 @@ function Mixing() {
     };
 
     const openAfis6MmfPreview = () => {
-        const numericKeys = afis6MmfFieldDefs.map((field) => field.key);
-        const nextErrors = numericKeys.reduce((acc, key) => {
-            const trimmed = String(afis6MmfForm[key] ?? "").trim();
-            const parsed = trimmed === "" ? "" : Number(trimmed);
-            if (Number.isNaN(parsed)) acc[key] = "Must be a number";
-            return acc;
-        }, {});
+        const nextErrors = {};
+        afis6MmfTextFieldDefs.forEach((field) => {
+            if (String(afis6MmfForm[field.key] ?? "").trim() === "") nextErrors[field.key] = true;
+        });
+        afis6MmfFieldDefs.forEach((field) => {
+            const trimmed = String(afis6MmfForm[field.key] ?? "").trim();
+            if (trimmed === "" || Number.isNaN(Number(trimmed))) nextErrors[field.key] = true;
+        });
         setAfis6MmfErrors(nextErrors);
         if (Object.keys(nextErrors).length > 0) {
-            setValidationMessage("Please correct the numeric fields before saving.");
+            setValidationMessage("Please fill all required fields before saving.");
             return;
         }
 
@@ -1183,7 +1185,7 @@ function Mixing() {
                                             <select
                                                 value={afis6Form.blow_room}
                                                 onChange={(e) => handleAfis6Change("blow_room", e.target.value)}
-                                                className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6Errors.blow_room ? "border-red-500" : "border-slate-200"}`}
+                                                className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6Errors.blow_room ? "border-red-500 bg-red-50" : "border-slate-200"}`}
                                             >
                                                 <option value="">Select Blow Room</option>
                                                 {BLOW_ROOM_OPTIONS.map((option) => (
@@ -1201,7 +1203,7 @@ function Mixing() {
                                                 placeholder={field.type === "date" ? undefined : `Enter ${field.label}`}
                                                 value={afis6Form[field.key]}
                                                 onChange={(e) => handleAfis6Change(field.key, e.target.value)}
-                                                className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6Errors[field.key] ? "border-red-500" : "border-slate-200"}`}
+                                                className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6Errors[field.key] ? "border-red-500 bg-red-50" : "border-slate-200"}`}
                                             />
                                         </div>
                                     )
@@ -1215,7 +1217,7 @@ function Mixing() {
                                             placeholder="Enter"
                                             value={afis6Form[field.key]}
                                             onChange={(e) => handleAfis6Change(field.key, e.target.value)}
-                                            className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6Errors[field.key] ? "border-red-500" : "border-slate-200"}`}
+                                            className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6Errors[field.key] ? "border-red-500 bg-red-50" : "border-slate-200"}`}
                                         />
                                     </div>
                                 ))}
@@ -1300,7 +1302,7 @@ function Mixing() {
                                             <select
                                                 value={afis6MmfForm.blow_room}
                                                 onChange={(e) => handleAfis6MmfChange("blow_room", e.target.value)}
-                                                className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors.blow_room ? "border-red-500" : "border-slate-200"}`}
+                                                className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors.blow_room ? "border-red-500 bg-red-50" : "border-slate-200"}`}
                                             >
                                                 <option value="">Select Blow Room</option>
                                                 {BLOW_ROOM_OPTIONS.map((option) => (
@@ -1318,7 +1320,7 @@ function Mixing() {
                                                 placeholder={field.type === "date" ? undefined : `Enter ${field.label}`}
                                                 value={afis6MmfForm[field.key]}
                                                 onChange={(e) => handleAfis6MmfChange(field.key, e.target.value)}
-                                                className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors[field.key] ? "border-red-500" : "border-slate-200"}`}
+                                                className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors[field.key] ? "border-red-500 bg-red-50" : "border-slate-200"}`}
                                             />
                                         </div>
                                     )
@@ -1335,7 +1337,7 @@ function Mixing() {
                                             placeholder="Enter"
                                             value={afis6MmfForm[field.key]}
                                             onChange={(e) => handleAfis6MmfChange(field.key, e.target.value)}
-                                            className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors[field.key] ? "border-red-500" : "border-slate-200"}`}
+                                            className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors[field.key] ? "border-red-500 bg-red-50" : "border-slate-200"}`}
                                         />
                                     </div>
                                 ))}
@@ -1351,7 +1353,7 @@ function Mixing() {
                                             placeholder="Enter"
                                             value={afis6MmfForm[field.key]}
                                             onChange={(e) => handleAfis6MmfChange(field.key, e.target.value)}
-                                            className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors[field.key] ? "border-red-500" : "border-slate-200"}`}
+                                            className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors[field.key] ? "border-red-500 bg-red-50" : "border-slate-200"}`}
                                         />
                                     </div>
                                 ))}

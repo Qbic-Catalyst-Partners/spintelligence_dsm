@@ -82,9 +82,16 @@ const shouldShowGlobalSuccessModal = (response) => {
     return response.status >= 200 && response.status < 300;
 };
 
+// Without a default timeout, axios waits forever on a stalled connection - a page that fires
+// several requests on mount (e.g. SMX Breaks Study Report's machine-names lookup) would then sit
+// in "loading" indefinitely with no error, leaving fields blank until the user manually reloads.
+// Individual calls can still override this via the `timeout` option (see buildRequestConfig below).
+const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
+
 // Create the base Axios instance with default settings
 const axiosInstance = axios.create({
     baseURL: resolvedBaseUrl,
+    timeout: DEFAULT_REQUEST_TIMEOUT_MS,
     headers: {
         'Content-Type': 'application/json',
     },

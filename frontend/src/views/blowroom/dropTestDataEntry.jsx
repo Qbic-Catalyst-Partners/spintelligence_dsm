@@ -25,7 +25,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
     ref
 ) {
     const dispatch = useDispatch();
-    const { success } = useSelector(state => state.blowroom ?? {});
+    const success = useSelector(state => state.blowroom?.success);
     const [formData, setFormData] = useState(initialForm);
     const [numTufts, setNumTufts] = useState('');
     const [tufts, setTufts] = useState([]);
@@ -57,9 +57,6 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                 await dispatch(saveBlowroomDropTest({
                     entry_id: tuftEntryId,
                     drop_id: entryId,
-                    dropId: entryId,
-                    drop_test_id: entryId,
-                    display_entry_id: tuftEntryId,
                     date,
                     variety: formData.variety,
                     blend: formData.blend,
@@ -123,8 +120,6 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
         validate,
         getPreviewData: () => {
             const header = [
-                { label: "Type", value: selectedTypeName || "Drop Test Data Entry" },
-                { label: "Entry ID", value: entryId || "-" },
                 { label: "Variety", value: formData.variety },
                 { label: "Blend", value: formData.blend },
                 { label: "No. of Tufts", value: numTufts },

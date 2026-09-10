@@ -42,6 +42,15 @@
   align-items: end;
 }
 
+.errorField,
+.field input.errorField,
+.field select.errorField,
+.table input.errorField {
+  border: 1px solid #ef4444 !important;
+  background: #fff1f2 !important;
+  box-shadow: 0 0 0 1000px #fff1f2 inset;
+}
+
 :global(:root[data-theme="dark"]) :local(.field) label,
 :global(:root[data-theme="dark"]) :local(.remarksBlock) label {
   color: #cbd5e1;
@@ -79,6 +88,14 @@
 :global(:root[data-theme="dark"]) :local(.field) label,
 :global(:root[data-theme="dark"]) :local(.remarksBlock) label {
   color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.field) input.errorField,
+:global(:root[data-theme="dark"]) :local(.field) select.errorField,
+:global(:root[data-theme="dark"]) :local(.table) input.errorField {
+  background: #3f1d1d !important;
+  border-color: #ef4444 !important;
+  color: #fecaca !important;
 }
 .table {
   width: 100%;
