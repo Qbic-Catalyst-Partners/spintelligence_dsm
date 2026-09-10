@@ -7,6 +7,10 @@ logs/backend.log
 
 /node_modules
 
+# runtime-generated uploads and temp files (not source)
+uploads/
+.tmp/
+
 # Python virtual environment and compiled bytecode (regenerated locally, never committed)
 .venv/
 __pycache__/

@@ -22,7 +22,7 @@ const NUMERIC_FIELDS = [
 
 const EMPTY_FORM = NUMERIC_FIELDS.reduce(
   (acc, field) => ({ ...acc, [field.key]: "" }),
-  { machine: "", material_class: "", comment: "" }
+  { machine: "" }
 );
 
 const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
@@ -62,8 +62,6 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
   const buildPayload = () => ({
     entry_id: entryId || undefined,
     inspection_date: date,
-    material_class: formData.material_class,
-    comment: formData.comment,
     total_nep_count_g: Number(formData.total_nep_count_g) || 0,
     total_nep_mean_size_um: Number(formData.total_nep_mean_size_um) || 0,
     cut_length_n_mm: Number(formData.cut_length_n_mm) || 0,
@@ -110,15 +108,11 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
   const getPreviewData = () => [
     { label: "Inspection Date", value: date },
     { label: "Machine", value: formData.machine },
-    { label: "Material Class", value: formData.material_class },
-    { label: "Comment", value: formData.comment },
     ...NUMERIC_FIELDS.map((field) => ({ label: field.label, value: formData[field.key] })),
   ];
 
   const validate = () => {
     const nextErrors = {
-      material_class: String(formData.material_class || "").trim() === "",
-      comment: String(formData.comment || "").trim() === "",
       ...NUMERIC_FIELDS.reduce((acc, field) => {
         acc[field.key] = String(formData[field.key] || "").trim() === "";
         return acc;
@@ -186,22 +180,6 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
             value={formData.machine}
             onChange={(e) => handleChange("machine", e.target.value)}
             className={styles["mixx-input"]}
-          />
-        </Field>
-        <Field label="Material Class">
-          <input
-            placeholder="Enter Material Class"
-            value={formData.material_class}
-            onChange={(e) => handleChange("material_class", e.target.value)}
-            className={`${styles["mixx-input"]} ${errors.material_class ? styles["mixx-error"] : ""}`}
-          />
-        </Field>
-        <Field label="Comment">
-          <input
-            placeholder="Enter Comment"
-            value={formData.comment}
-            onChange={(e) => handleChange("comment", e.target.value)}
-            className={`${styles["mixx-input"]} ${errors.comment ? styles["mixx-error"] : ""}`}
           />
         </Field>
         {renderField(NUMERIC_FIELDS[0])}

@@ -256,7 +256,13 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
       const fromLegacy = Array.isArray(response?.count_names)
         ? response.count_names.map((item) => String(item || "").trim()).filter(Boolean).map((label) => ({ value: label, label, code: "" }))
         : [];
-      const unique = Array.from(new Map([...fromObjects, ...fromLegacy].map((item) => [item.value, item])).values());
+      // Both lists describe the same count names - count_names is just
+      // count_options.map(row => row.cntname). Dedupe by label (not value)
+      // so the code-bearing fromObjects entry always wins; otherwise a
+      // code-less duplicate with an identical visible label sits next to it
+      // in the dropdown, and picking that one instead silently saves
+      // cntcode as null with no visible difference to the operator.
+      const unique = Array.from(new Map([...fromLegacy, ...fromObjects].map((item) => [item.label, item])).values());
       if (unique.length) {
         setCountDropdownOptions(unique);
         setForm((current) => ({
