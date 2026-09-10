@@ -219,8 +219,6 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
 
   const getPreviewData = () => {
     const items = [
-      { label: "Type", value: form.type },
-      { label: "Entry ID", value: entryId || "-" },
       { label: "MC Name", value: form.mcName },
     ];
 

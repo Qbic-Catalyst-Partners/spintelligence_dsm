@@ -534,6 +534,42 @@ const initPromise = (async () => {
     ON ticketing_system.operator_tickets (submission_frequency_config_id);
   `);
 
+  // Submission Threshold can now track several L2 users per screen (any one
+  // of them meeting the frequency clears it for the group; only when all of
+  // them fall short does a ticket get raised) - guarded on the table
+  // existing since screen_submission_frequency itself is created out-of-band
+  // rather than bootstrapped in this file. Column was originally named
+  // tracked_l1_user_ids from before Submission Threshold tickets were
+  // changed to skip L1 and go straight to L2 - renamed in place (not
+  // dropped+recreated) so existing assignments survive the rename. Safe to
+  // run repeatedly: renames tracked_l1_user_ids -> tracked_l2_user_ids only
+  // the first time (once tracked_l2_user_ids exists, this is a no-op ADD
+  // COLUMN IF NOT EXISTS).
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'ticketing_system' AND table_name = 'screen_submission_frequency'
+      ) THEN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'ticketing_system' AND table_name = 'screen_submission_frequency'
+            AND column_name = 'tracked_l1_user_ids'
+        ) AND NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'ticketing_system' AND table_name = 'screen_submission_frequency'
+            AND column_name = 'tracked_l2_user_ids'
+        ) THEN
+          ALTER TABLE ticketing_system.screen_submission_frequency
+            RENAME COLUMN tracked_l1_user_ids TO tracked_l2_user_ids;
+        END IF;
+        ALTER TABLE ticketing_system.screen_submission_frequency
+          ADD COLUMN IF NOT EXISTS tracked_l2_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[];
+      END IF;
+    END $$;
+  `);
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS notifications_ticket_id_idx
     ON ticketing_system.notifications (ticket_id);

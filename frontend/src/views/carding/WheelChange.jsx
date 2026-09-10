@@ -17,6 +17,8 @@ import {
 } from "@/apis/carding";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import styles from "./cardingWheelChange.module.css";
 
 const CHANGE_CONTROL_TYPE = "Wheel Change";
@@ -519,7 +521,39 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      await submitCardingChangeControlEntry(buildPayload());
+      const saved = await submitCardingChangeControlEntry(buildPayload());
+
+      const nextEntryId = saved?.entry_id || entryId;
+      // Acknowledgement Threshold's screen catalog lists this screen as
+      // "WheelChange" (no space) — see the sibling carding screens (Card DFK
+      // Data, Carding NRE%, etc.) for the established recordSubmittedNotebook
+      // pattern this follows. Without this call, WheelChange submissions never
+      // reached ticketing_system.submitted_notebooks at all.
+      try {
+        await recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Carding",
+          notebookName: selectedType || "WheelChange",
+          entryId: nextEntryId,
+          previewItems,
+          user,
+        });
+      } catch (recordError) {
+        console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+      }
+
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Carding",
+          screenName: selectedType || "WheelChange",
+          machineName: selectedType || "WheelChange",
+          entryId: nextEntryId,
+          values: previewItems,
+        });
+      } catch (ticketError) {
+        console.error("Threshold ticket generation failed:", ticketError);
+      }
 
       const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
       if (entryId && customFieldEntries.length) {

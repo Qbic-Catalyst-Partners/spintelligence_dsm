@@ -41,16 +41,6 @@ const getAuthenticatedOperatorName = (req) =>
     ''
   ).trim() || null;
 const isUniqueViolation = (err) => err && err.code === '23505';
-const DRAWFRAME_FR_ALLOWED_LIKE = [
-  'FR%HSR%',
-  'FR%D%',
-  'FR%LRSB%',
-  'FR%LDF%'
-];
-const DRAWFRAME_FR_FIXED_MACHINES = [
-  'FR (HSR 1000-2)',
-  'FR (HSR 1000-1)'
-];
 const ensurePrefix = (value, prefix) => {
   const text = String(value || '').trim();
   const cleanPrefix = String(prefix || '').trim();
@@ -508,7 +498,7 @@ const saveWrappingDrawframeNotebook = async (req, res, next) => {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         RETURNING *`,
         [
-          submissionId,
+          rows.length > 1 ? `${submissionId}-${index + 1}` : submissionId,
           row.entry_id ?? row.id_no ?? row.sourceId ?? row.ID ?? row.id_value ?? row.notebook_id ?? null,
           toNullableNumber(row.serial_no ?? row.s_no ?? row.sno ?? row['S.No'] ?? row.SNo ?? (index + 1)),
           dateText || null,
@@ -685,151 +675,50 @@ router.get('/thresholds', async (req, res, next) => {
   }
 });
 
-router.get('/master/machines', async (req, res, next) => {
+// Breaker is dbo.MCMASTER.DEPTCODE 16, Finisher is DEPTCODE 15 (compcode 1).
+// Every Draw Frame machine-name dropdown (Cots Data Entry, 1 Yard/Half Yard CV
+// Entry, U% Data Entry, Wheel Change) is sourced from this one query — run once
+// per dept code needed and union the results for screens that don't split by
+// process type.
+const DRAWFRAME_SUB_TYPE_DEPT_CODE = { breaker: '16', finisher: '15' };
+const queryDrawframeMachines = async (deptCode) => {
+  const result = await sqlServer.query(
+    `SELECT * FROM MCMASTER WHERE DEPTCODE = @deptCode AND compcode = 1`,
+    { deptCode }
+  );
+  return (result.recordset || []).map((r) => ({
+    mc_no: String(r.MCCODE ?? '').trim(),
+    mc_name: String(r.MCNAME ?? '').trim(),
+    dept_code: String(r.DEPTCODE ?? '').trim()
+  })).filter((r) => r.mc_name);
+};
+
+router.get('/cots/machine-numbers', async (req, res, next) => {
   try {
-    const prefix = String(req.query.prefix || '').trim();
-    const likeToken = `%${prefix}%`;
-
     if (!sqlServer.hasSqlServerEnv()) {
-      const fallback = await client.query(
-        `SELECT mccode, mcname, deptcode, deptname
-         FROM ticketing_system.mc_master
-         WHERE ($1::text = '' OR mcname ILIKE $2)
-         ORDER BY deptname, mcname`,
-        [prefix, likeToken]
-      );
-
-      return res.status(200).json({
-        source: 'postgres-fallback',
-        data: fallback.rows.map((r) => ({
-          mc_no: String(r.mccode || '').trim(),
-          mc_name: String(r.mcname || '').trim(),
-          dept_code: String(r.deptcode || '').trim(),
-          dept_name: String(r.deptname || '').trim()
-        })).filter((r) => r.mc_name),
-        names: fallback.rows.map((r) => r.mcname).filter(Boolean)
-      });
+      return res.status(503).json({ message: 'SQL Server is not configured on backend' });
     }
 
-    const result = await sqlServer.query(
-      `SELECT
-         CAST(m.MCCODE AS VARCHAR(50)) AS mc_no,
-         LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) AS mc_name,
-         CAST(m.DEPTCODE AS VARCHAR(50)) AS dept_code,
-         LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255)))) AS dept_name
-       FROM MCMASTER m
-       JOIN dept_mai d ON m.DEPTCODE = d.DEPTCODE
-       WHERE m.compcode = '1'
-         AND m.mcclose = '0'
-         AND m.DEPTCODE IN (15, 16)
-         AND (@prefix = '' OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @machinePrefix)
-       ORDER BY d.DEPTNAME, m.MCNAME`,
-      { prefix, machinePrefix: likeToken }
-    );
+    const subType = String(req.query.sub_type || '').trim();
+    const deptCode = DRAWFRAME_SUB_TYPE_DEPT_CODE[subType.toLowerCase()];
+
+    const data = deptCode
+      ? await queryDrawframeMachines(deptCode)
+      : [
+          ...(await queryDrawframeMachines(DRAWFRAME_SUB_TYPE_DEPT_CODE.breaker)),
+          ...(await queryDrawframeMachines(DRAWFRAME_SUB_TYPE_DEPT_CODE.finisher))
+        ];
 
     return res.status(200).json({
       source: 'sqlserver',
-      data: (result.recordset || []).map((r) => ({
-        mc_no: String(r.mc_no || '').trim(),
-        mc_name: String(r.mc_name || '').trim(),
-        dept_code: String(r.dept_code || '').trim(),
-        dept_name: String(r.dept_name || '').trim()
-      })).filter((r) => r.mc_name),
-      names: (result.recordset || []).map((r) => r.mc_name).filter(Boolean)
+      sub_type: subType || null,
+      data,
+      machine_numbers: data.map((r) => r.mc_name)
     });
   } catch (error) {
     next(error);
   }
 });
-
-const getDrawframeMachineNumbers = async (req, res, next) => {
-  try {
-    const prefix = String(req.query.prefix || '').trim();
-    const yarnCvPrefix = String(
-      req.query.yarn_cv_prefix || process.env.DRAWFRAME_YARN_CV_PREFIX || 'FR'
-    ).trim();
-    const deptCode = String(req.query.dept_code || '').trim();
-    const deptName = String(req.query.dept_name || '').trim();
-    const likeToken = `%${prefix}%`;
-
-    if (!sqlServer.hasSqlServerEnv()) {
-      return res.status(503).json({ message: 'SQL Server is not configured on backend' });
-    }
-
-    const result = await sqlServer.query(
-      `SELECT
-         LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) AS machine_number,
-         CAST(m.MCCODE AS VARCHAR(50)) AS mc_no,
-         CAST(m.DEPTCODE AS VARCHAR(50)) AS dept_code,
-         LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255)))) AS dept_name
-       FROM MCMASTER m
-       JOIN dept_mai d ON m.DEPTCODE = d.DEPTCODE
-       WHERE m.compcode = '1'
-         AND m.mcclose = '0'
-         AND m.DEPTCODE IN (15, 16)
-         AND (@prefix = '' OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @machinePrefix)
-         AND (
-           @yarnCvPrefix = ''
-           OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @yarnCvLike
-         )
-         AND LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE 'FR%'
-         AND (
-           LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @frLike1
-           OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @frLike2
-           OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @frLike3
-           OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @frLike4
-         )
-         AND (@deptCode = '' OR CAST(m.DEPTCODE AS VARCHAR(50)) = @deptCode)
-         AND (@deptName = '' OR LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255)))) = @deptName)
-       ORDER BY d.DEPTNAME, m.MCCODE, m.MCNAME`,
-      {
-        prefix,
-        machinePrefix: likeToken,
-        yarnCvPrefix,
-        yarnCvLike: `${yarnCvPrefix}%`,
-        frLike1: DRAWFRAME_FR_ALLOWED_LIKE[0],
-        frLike2: DRAWFRAME_FR_ALLOWED_LIKE[1],
-        frLike3: DRAWFRAME_FR_ALLOWED_LIKE[2],
-        frLike4: DRAWFRAME_FR_ALLOWED_LIKE[3],
-        deptCode,
-        deptName
-      }
-    );
-
-    let data = (result.recordset || []).map((r) => ({
-      machine_number: String(r.machine_number || '').trim(),
-      mc_no: String(r.mc_no || '').trim(),
-      dept_code: String(r.dept_code || '').trim(),
-      dept_name: String(r.dept_name || '').trim()
-    })).filter((r) => r.machine_number);
-
-    const existing = new Set(data.map((r) => r.machine_number.toUpperCase()));
-    for (const name of DRAWFRAME_FR_FIXED_MACHINES) {
-      if (!existing.has(name.toUpperCase())) {
-        data.push({
-          machine_number: name,
-          mc_no: '',
-          dept_code: '',
-          dept_name: ''
-        });
-      }
-    }
-
-    data.sort((a, b) => a.machine_number.localeCompare(b.machine_number, undefined, { sensitivity: 'base' }));
-
-    return res.status(200).json({
-      source: 'sqlserver',
-      yarn_cv_prefix: yarnCvPrefix,
-      machine_numbers: data.map((r) => r.machine_number),
-      data
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-router.get('/yarn-cv/machine-numbers', getDrawframeMachineNumbers);
-router.get('/machine-numbers', getDrawframeMachineNumbers);
 
 const getDrawframeUqcMasterDropdown = async (req, res, next) => {
   try {
@@ -839,11 +728,9 @@ const getDrawframeUqcMasterDropdown = async (req, res, next) => {
 
     const varietyPrefix = String(req.query.variety_prefix || req.query.prefix || '').trim();
     const departmentPrefix = String(req.query.department_prefix || req.query.prefix || '').trim();
-    const mcNoPrefix = String(req.query.mc_no_prefix || req.query.prefix || '').trim();
-    const department = String(req.query.department || '').trim();
     const departmentCode = String(req.query.department_code || '').trim();
 
-    const [varieties, departmentResult, mcResult] = await Promise.all([
+    const [varieties, departmentResult, mcRows] = await Promise.all([
       fetchPrepVarieties(sqlServerPrep, varietyPrefix),
       sqlServer.query(
         `SELECT DISTINCT
@@ -855,36 +742,20 @@ const getDrawframeUqcMasterDropdown = async (req, res, next) => {
          ORDER BY dept_name`,
         { prefix: departmentPrefix, deptPrefix: `%${departmentPrefix}%` }
       ),
-      sqlServer.query(
-        `SELECT
-           CAST(m.MCCODE AS VARCHAR(50)) AS mc_no,
-           LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) AS mc_name,
-           CAST(m.DEPTCODE AS VARCHAR(50)) AS dept_code,
-           LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255)))) AS dept_name
-         FROM dbo.MCMASTER m
-         JOIN dbo.dept_mai d ON m.DEPTCODE = d.DEPTCODE
-         WHERE m.compcode = '1'
-           AND m.mcclose = '0'
-           AND m.DEPTCODE IN (15, 16)
-           AND (@prefix = '' OR CAST(m.MCCODE AS VARCHAR(50)) LIKE @mcNoPrefix)
-           AND (@department = '' OR LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255)))) LIKE @departmentLike)
-           AND (@departmentCode = '' OR CAST(d.DEPTCODE AS VARCHAR(50)) = @departmentCode)
-         ORDER BY CASE WHEN ISNUMERIC(CAST(m.MCCODE AS VARCHAR(50))) = 1 THEN CAST(m.MCCODE AS INT) ELSE 2147483647 END, m.MCCODE`,
-        {
-          prefix: mcNoPrefix,
-          mcNoPrefix: `%${mcNoPrefix}%`,
-          department,
-          departmentLike: `%${department}%`,
-          departmentCode
-        }
-      )
+      // Union of Breaker (16) and Finisher (15) unless a specific dept_code is requested.
+      departmentCode
+        ? queryDrawframeMachines(departmentCode)
+        : Promise.all([
+            queryDrawframeMachines(DRAWFRAME_SUB_TYPE_DEPT_CODE.breaker),
+            queryDrawframeMachines(DRAWFRAME_SUB_TYPE_DEPT_CODE.finisher)
+          ]).then(([breaker, finisher]) => [...breaker, ...finisher])
     ]);
 
     const departments = (departmentResult.recordset || []).map((r) => ({
       dept_code: String(r.dept_code || '').trim(),
       dept_name: String(r.dept_name || '').trim()
     })).filter((r) => r.dept_name);
-    const mcNos = (mcResult.recordset || []).map((r) => {
+    const mcNos = mcRows.map((r) => {
       const mc_no = String(r.mc_no || '').trim();
       const mc_name = String(r.mc_name || '').trim();
       const full_mc_no = mc_no && mc_name ? `${mc_no}/${mc_name}` : mc_no || mc_name;
@@ -893,7 +764,7 @@ const getDrawframeUqcMasterDropdown = async (req, res, next) => {
         mc_name,
         full_mc_no,
         dept_code: String(r.dept_code || '').trim(),
-        dept_name: String(r.dept_name || '').trim()
+        dept_name: ''
       };
     }).filter((r) => r.full_mc_no);
 
@@ -1041,110 +912,6 @@ router.get('/wheel-change/master/varieties', getDrawframePrepVarietyDropdown);
 router.get('/wheel-change/master/mixings', getDrawframePrepVarietyDropdown);
 router.get('/wheel-change/master/mixing-dropdown', getDrawframePrepVarietyDropdown);
 router.get('/wheel-change/master/dropdown', getDrawframePrepVarietyDropdown);
-
-router.get('/cots/machine-numbers', async (req, res, next) => {
-  try {
-    const subType = String(req.query.sub_type || '').trim();
-    const prefix = String(req.query.prefix || '').trim();
-    const deptCode = String(req.query.dept_code || '').trim();
-    const deptName = String(req.query.dept_name || '').trim();
-    const likeToken = `%${prefix}%`;
-
-    const breakerPrefix = String(process.env.DRAWFRAME_BREAKER_PREFIX || 'BR').trim();
-    const finisherPrefix = String(process.env.DRAWFRAME_FINISHER_PREFIX || 'FR').trim();
-
-    if (!sqlServer.hasSqlServerEnv()) {
-      return res.status(503).json({ message: 'SQL Server is not configured on backend' });
-    }
-
-    let typeFilter = '';
-    const params = { prefix, machinePrefix: likeToken, deptCode, deptName };
-
-    if (/^breaker$/i.test(subType)) {
-      typeFilter = ` AND LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @typePrefix `;
-      params.typePrefix = `${breakerPrefix}%`;
-    } else if (/^finisher$/i.test(subType)) {
-      typeFilter = `
-        AND LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @typePrefix
-        AND (
-          LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @frLike1
-          OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @frLike2
-          OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @frLike3
-          OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @frLike4
-        )
-      `;
-      params.typePrefix = `${finisherPrefix}%`;
-      params.frLike1 = DRAWFRAME_FR_ALLOWED_LIKE[0];
-      params.frLike2 = DRAWFRAME_FR_ALLOWED_LIKE[1];
-      params.frLike3 = DRAWFRAME_FR_ALLOWED_LIKE[2];
-      params.frLike4 = DRAWFRAME_FR_ALLOWED_LIKE[3];
-    }
-
-    const baseQuery = `SELECT
-         CAST(m.MCCODE AS VARCHAR(50)) AS mc_no,
-         LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) AS mc_name,
-         CAST(m.DEPTCODE AS VARCHAR(50)) AS dept_code,
-         LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255)))) AS dept_name
-       FROM MCMASTER m
-       JOIN dept_mai d ON m.DEPTCODE = d.DEPTCODE
-       WHERE m.compcode = '1'
-         AND m.mcclose = '0'
-         AND m.DEPTCODE IN (15, 16)
-         AND (@prefix = '' OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @machinePrefix)
-         AND (@deptCode = '' OR CAST(m.DEPTCODE AS VARCHAR(50)) = @deptCode)
-         AND (@deptName = '' OR LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255)))) = @deptName)
-         %TYPE_FILTER%
-       ORDER BY d.DEPTNAME, m.MCCODE, m.MCNAME`;
-
-    let result = await sqlServer.query(
-      baseQuery.replace('%TYPE_FILTER%', typeFilter),
-      params
-    );
-
-    // Fallback for breaker: if SQL names are not BR-prefixed, fetch machines without type filter
-    // and normalize display with BR prefix so UI still receives breaker machine numbers.
-    if (/^breaker$/i.test(subType) && (!result.recordset || result.recordset.length === 0)) {
-      result = await sqlServer.query(
-        baseQuery.replace('%TYPE_FILTER%', ''),
-        { prefix, machinePrefix: likeToken, deptCode, deptName }
-      );
-    }
-
-    const isBreaker = /^breaker$/i.test(subType);
-    let data = (result.recordset || []).map((r) => ({
-      mc_no: String(r.mc_no || '').trim(),
-      mc_name: isBreaker
-        ? ensurePrefix(r.mc_name || r.mc_no, breakerPrefix)
-        : String(r.mc_name || '').trim(),
-      dept_code: String(r.dept_code || '').trim(),
-      dept_name: String(r.dept_name || '').trim()
-    })).filter((r) => r.mc_name);
-
-    if (/^finisher$/i.test(subType)) {
-      const existing = new Set(data.map((r) => r.mc_name.toUpperCase()));
-      for (const name of DRAWFRAME_FR_FIXED_MACHINES) {
-        if (!existing.has(name.toUpperCase())) {
-          data.push({
-            mc_no: '',
-            mc_name: name,
-            dept_code: '',
-            dept_name: ''
-          });
-        }
-      }
-      data.sort((a, b) => a.mc_name.localeCompare(b.mc_name, undefined, { sensitivity: 'base' }));
-    }
-
-    return res.status(200).json({
-      source: 'sqlserver',
-      sub_type: subType || null,
-      data,
-      machine_numbers: data.map((r) => r.mc_name)
-    });
-  } catch (error) {
-    next(error);
-  }
-});
 
 /**
  * @swagger
