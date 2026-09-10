@@ -9,7 +9,7 @@ import Header from "@/components/Header";
 import SuccessModal from "@/components/SuccessModal";
 import { subscribeToGlobalFailureModal } from "@/utils/globalFailureModal";
 import { subscribeToGlobalSuccessModal } from "@/utils/globalSuccessModal";
-import { hydrateAuthFromStorage } from "@/store/slices/authSlice";
+import { hydrateAuthFromStorage, logout } from "@/store/slices/authSlice";
 import {
   getDefaultTicketingLabel,
   getDefaultTicketingRoute,
@@ -32,7 +32,7 @@ function AppShell({ Component, pageProps }) {
   const user = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
-  const [failureModal, setFailureModal] = useState({ open: false, message: "Error Occured" });
+  const [failureModal, setFailureModal] = useState({ open: false, message: "Error Occured", sessionExpired: false });
   const [successModal, setSuccessModal] = useState({ open: false, message: "Data Submitted" });
   const lastSuccessEventRef = useRef({ message: "", status: null, at: 0 });
   const isInputScreen = Boolean(routeDepartmentMap[router.pathname]);
@@ -110,7 +110,16 @@ function AppShell({ Component, pageProps }) {
   }, [dispatch]);
 
   useEffect(() => {
-    return subscribeToGlobalFailureModal(({ message, status }) => {
+    return subscribeToGlobalFailureModal(({ message, status, sessionExpired }) => {
+      if (sessionExpired) {
+        setFailureModal({
+          open: true,
+          message: "Your session is expired, please login again.",
+          sessionExpired: true,
+        });
+        return;
+      }
+
       const fallbackMessage =
         status >= 500
           ? "Internal Server Error"
@@ -121,9 +130,16 @@ function AppShell({ Component, pageProps }) {
       setFailureModal({
         open: true,
         message: fallbackMessage,
+        sessionExpired: false,
       });
     });
   }, []);
+
+  const handleSessionExpiredNavigate = () => {
+    dispatch(logout());
+    setFailureModal({ open: false, message: "Error Occured", sessionExpired: false });
+    router.replace("/");
+  };
 
   useEffect(() => {
     return subscribeToGlobalSuccessModal(({ message }) => {
@@ -223,7 +239,9 @@ function AppShell({ Component, pageProps }) {
       <FailureModal
         open={failureModal.open}
         message={failureModal.message}
-        onClose={() => setFailureModal({ open: false, message: "Error Occured" })}
+        sessionExpired={failureModal.sessionExpired}
+        onNavigateLogin={handleSessionExpiredNavigate}
+        onClose={() => setFailureModal({ open: false, message: "Error Occured", sessionExpired: false })}
       />
       <SuccessModal
         open={successModal.open}

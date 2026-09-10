@@ -175,12 +175,28 @@ axiosInstance.interceptors.response.use(
     (error) => {
         if (typeof window !== "undefined" && shouldShowGlobalErrorModal(error)) {
             const status = error.response?.status;
+            const responseData = error.response?.data || {};
             const message =
-                error.response?.data?.message ||
-                error.response?.data?.error ||
+                responseData.message ||
+                responseData.error ||
                 (status ? `Request failed with status ${status}` : buildNetworkErrorMessage(error));
 
-            emitGlobalFailureModal({ message, status });
+            // A 401 on a request that actually carried a Bearer token means the token was
+            // rejected (expired/invalid) - not a login-form credential failure, which never
+            // sends an Authorization header. Route that case to the session-expired UI.
+            const hadAuthHeader = Boolean(error.config?.headers?.Authorization);
+            const isUnauthorized = status === 401 && hadAuthHeader;
+
+            // A hung request (e.g. the backend/DB reconnecting after a quiet night-shift gap)
+            // times out client-side with no response at all. To the user this looks the same as
+            // a dead session, so route it to the same "session expired" UI instead of a raw
+            // "Request timed out" message.
+            const isTimeout =
+                error.code === "ECONNABORTED" || /timeout/i.test(error.message || "");
+
+            const sessionExpired = isUnauthorized || isTimeout;
+
+            emitGlobalFailureModal({ message, status, code: responseData.code, sessionExpired });
         }
 
         return Promise.reject(error);

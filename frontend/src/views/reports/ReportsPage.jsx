@@ -969,15 +969,14 @@ const normalizeBrWasteStudyRows = (studyType) => (response) =>
       }));
     });
 
-// Blow Room's "Drop Test Data Entry" submits one form as N separate physical rows — one per tuft
-// — sharing a common `drop_id` (the parent Entry ID reserved for the whole submission; each tuft's
-// OWN `entry_id` is that same id with a "-01"/"-02" suffix). The GET endpoint returns them flat,
-// one tuft per row. For Custom Report, group tufts back into a single row per submission with a
-// numbered column set per tuft ("Tuft 1 - Variety", "Tuft 1 - Display Wt.", "Tuft 2 - Variety",
-// ...) — a submission with only 1 tuft shows "-" for every Tuft 2+ column instead of those columns
-// not existing at all, and the row's own Entry ID becomes the shared `drop_id` so it matches what
-// was recorded in submitted_notebooks (fixing Operator resolution, which was previously failing
-// because each tuft's own suffixed entry_id never matched the notebook recorded under the parent id).
+// Blow Room's "Drop Test Data Entry" submits one form as N separate physical rows — one per
+// tuft — and every tuft row now shares the SAME entry_id (the id reserved for the whole
+// submission; the old per-tuft "-01"/"-02" suffix and the separate `drop_id` parent-id column
+// are both retired - see dropTestDataEntry.jsx/routes/blowroom.js). The GET endpoint returns
+// them flat, one tuft per row. For Custom Report, group tufts back into a single row per
+// submission with a numbered column set per tuft ("Tuft 1 - Variety", "Tuft 1 - Display Wt.",
+// "Tuft 2 - Variety", ...) — a submission with only 1 tuft shows "-" for every Tuft 2+ column
+// instead of those columns not existing at all.
 const DROP_TEST_MAX_TUFTS = 20;
 
 const buildDropTestTuftColumns = (tuftRows) => {
@@ -994,16 +993,10 @@ const buildDropTestTuftColumns = (tuftRows) => {
   return columns;
 };
 
-// Prefer the real `drop_id` column the backend returns, but fall back to deriving it from the
-// tuft's own suffixed entry_id (stripping the trailing "-01"/"-02") — mirrors
-// getDropTestParentId's logic on the backend, so grouping/Operator matching still works even
-// against a stale API response that hasn't started including `drop_id` yet.
-const deriveDropTestParentId = (row) => {
-  const explicitDropId = String(row?.drop_id ?? "").trim();
-  if (explicitDropId) return explicitDropId;
-  const ownEntryId = String(row?.entry_id ?? "").trim();
-  return ownEntryId ? ownEntryId.replace(/-\d{1,2}$/, "") : "";
-};
+// Every tuft row of one submission already shares the same entry_id (drop_id is retired), so
+// that's the group key directly now - no more stripping a "-01"/"-02" suffix or falling back
+// to a separate drop_id field.
+const deriveDropTestParentId = (row) => String(row?.entry_id ?? "").trim();
 
 const normalizeDropTestRows = (response) => {
   const groups = new Map();

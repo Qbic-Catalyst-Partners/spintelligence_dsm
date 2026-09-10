@@ -1,6 +1,6 @@
 const FAILURE_EVENT_NAME = "global-api-failure";
 
-export const emitGlobalFailureModal = ({ message, status } = {}) => {
+export const emitGlobalFailureModal = ({ message, status, code, sessionExpired } = {}) => {
     if (typeof window === "undefined") return;
 
     window.dispatchEvent(
@@ -8,6 +8,8 @@ export const emitGlobalFailureModal = ({ message, status } = {}) => {
             detail: {
                 message,
                 status,
+                code,
+                sessionExpired,
             },
         })
     );
