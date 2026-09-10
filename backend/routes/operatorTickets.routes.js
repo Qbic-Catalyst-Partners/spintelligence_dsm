@@ -1204,6 +1204,34 @@ const checkSubmissionFrequencyMissed = async (config) => {
     return null;
   }
 
+  // A ticket for this exact config was already closed (approved) earlier
+  // TODAY - don't immediately raise a new one on the very next check just
+  // because the underlying screen still hasn't actually caught up. Fix &
+  // Submit only escalates the ticket itself; it doesn't create a real
+  // submitted_notebooks row, so actualCount can easily stay short even
+  // after a genuine L3 approval, and without this guard the very next
+  // periodic run (whatever the check interval is, often minutes) would
+  // immediately recreate "the same ticket" for L2 again. operator_tickets
+  // has no updated_at column, so "closed today" is read off the real
+  // approval event in ticket_logs instead of the ticket row itself. Wait
+  // for the next calendar day - the same boundary requirementMet's own
+  // rolling window already judges by - before re-raising.
+  const closedTodayTicket = await client.query(
+    `SELECT ot.ticket_id FROM ticketing_system.operator_tickets ot
+     WHERE ot.submission_frequency_config_id = $1
+       AND ot.ticket_reason = 'MISSING_VALUE'
+       AND ot.status = 'Closed'
+       AND EXISTS (
+         SELECT 1 FROM ticketing_system.ticket_logs tl
+         WHERE tl.ticket_id = ot.ticket_id
+           AND UPPER(tl.action) = 'APPROVED'
+           AND tl.created_at >= DATE_TRUNC('day', NOW())
+       )
+     LIMIT 1`,
+    [config.id]
+  );
+  if (closedTodayTicket.rows[0]?.ticket_id) return null;
+
   // No TAT-hours column exists on this config table (unlike the other
   // threshold types) - there's nothing configured to derive a due date from,
   // so this stays unset rather than inventing a default. There's no L1 stage

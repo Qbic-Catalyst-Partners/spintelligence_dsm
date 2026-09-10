@@ -19,3 +19,100 @@
   pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
   tickets: []
 } (src/views/tickets/SupervisorDashboard.js:522:17)
+ GET / 304 in 584ms (next.js: 240ms, application-code: 344ms)
+[browser] Image with src "http://localhost:3000/spintelligence_light.png" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio.
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] Image with src "http://localhost:3000/spintelligence_light.png" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio.
+ GET /operator 200 in 1239ms (next.js: 1020ms, application-code: 219ms)
+[browser] Image with src "http://localhost:3000/spintelligence_light.png" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio.
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)
+[browser] Image with src "http://localhost:3000/spintelligence_light.png" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio.
+[browser] Unable to fetch B/R Line options: Network Error: unable to reach the API server. Check backend availability and API URL. (src/views/mixing.js:327:25)
