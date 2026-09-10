@@ -67,6 +67,7 @@ function AppShell({ Component, pageProps }) {
     router.pathname === "/rolespermission" ||
     router.pathname === "/delegation-system" ||
     router.pathname === "/threshold-values" ||
+    router.pathname === "/value-threshold" ||
     router.pathname === "/submission-threshold" ||
     router.pathname === "/pp-batch-threshold" ||
     router.pathname === "/pp-approval-threshold" ||
@@ -86,6 +87,7 @@ function AppShell({ Component, pageProps }) {
     { href: "/usermanagement", label: "User Management" },
     { href: "/rolespermission", label: "Roles & Permissions" },
     { href: "/threshold-values", label: "Threshold Values" },
+    { href: "/value-threshold", label: "Value Threshold" },
     { href: "/submission-threshold", label: "Submission Threshold" },
     { href: "/reports/custom", label: "Reports" },
     { href: "/submitted-notebooks", label: "Submitted Notebooks" },

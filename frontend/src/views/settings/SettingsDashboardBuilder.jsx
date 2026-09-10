@@ -33,12 +33,16 @@ const normalizeInputFieldKey = (value) => String(value || "").trim().toLowerCase
 const visualizationTypeToChartType = (visualizationType) =>
   String(visualizationType || "").toLowerCase().includes("average") ? "value" : "line";
 const chartTypeToVisualizationType = (chartType) => (chartType === "value" ? "average_value_card" : "line_chart");
+// "pending" stays the internal metric key (existing saved widgets already reference it), but
+// the ticket's own real status is always "In Progress" everywhere else in the app - "Pending"
+// was never an actual ticket status, just a mislabeled alias for the same correctly-counted
+// value, so only the display label changes here.
 const TICKET_OPTION_LABELS = {
   total: "Total Tickets",
   open: "Open Tickets",
   reopened: "Reopened Tickets",
   closed: "Closed Tickets",
-  pending: "Pending Tickets",
+  pending: "In Progress Tickets",
   overdue: "Overdue Tickets",
 };
 const normalizeTicketMetricKey = (value) =>
@@ -53,7 +57,7 @@ const getTicketMetricKey = (value) => {
   if (["open", "opentickets"].includes(key)) return "open";
   if (["reopened", "reopenedtickets"].includes(key)) return "reopened";
   if (["closed", "closedtickets"].includes(key)) return "closed";
-  if (["pending", "pendingtickets"].includes(key)) return "pending";
+  if (["pending", "pendingtickets", "inprogress", "inprogresstickets"].includes(key)) return "pending";
   if (["overdue", "overduetickets"].includes(key)) return "overdue";
   return "total";
 };
@@ -545,7 +549,7 @@ function SettingsDashboardBuilder() {
                 <button type="button" className={`${styles.builderToggle} ${ticketOptions.closed ? styles.builderToggleOn : ""}`} onClick={() => handleToggleTicketOption("closed")}><span className={styles.builderToggleThumb} /></button>
               </div>
               <div className={styles.ticketCardOptionRow}>
-                <span className={styles.ticketCardOptionName}>Pending Tickets</span>
+                <span className={styles.ticketCardOptionName}>In Progress Tickets</span>
                 <button type="button" className={`${styles.builderToggle} ${ticketOptions.pending ? styles.builderToggleOn : ""}`} onClick={() => handleToggleTicketOption("pending")}><span className={styles.builderToggleThumb} /></button>
               </div>
               <div className={styles.ticketCardOptionRow}>

@@ -1,0 +1,21 @@
+
+> spintelligence-frontend-beta1@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.0 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.8:3000
+- Environments: .env
+✓ Ready in 1826ms
+
+ GET /supervisordetails?ticketId=%23TK-0443&ticketType=Submission 304 in 10.8s (next.js: 10.2s, application-code: 585ms)
+○ Compiling /supervisordetails ...
+ GET / 304 in 12.3s (next.js: 12.2s, application-code: 113ms)
+ GET /supervisordashboard 304 in 13.1s (next.js: 12.9s, application-code: 244ms)
+[browser] Image with src "http://localhost:3000/spintelligence_light.png" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio.
+[browser] Image with src "http://localhost:3000/spintelligence_light.png" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio.
+[browser] getProcessParameterTickets returned an unrecognized response shape: {
+  data: [],
+  pagination: { currentPage: [33m1[39m, itemsPerPage: [33m500[39m, totalItems: [33m0[39m, totalPages: [33m0[39m },
+  tickets: []
+} (src/views/tickets/SupervisorDashboard.js:522:17)

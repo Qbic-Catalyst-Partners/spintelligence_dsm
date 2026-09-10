@@ -570,6 +570,50 @@ const initPromise = (async () => {
     END $$;
   `);
 
+  // approval_l1/approval_l1_name predate Submission Threshold moving to a
+  // straight-to-L2 flow (same history as tracked_l1_user_ids above) - the
+  // route layer has been reading/writing them as "approval_l2" via a SELECT
+  // alias ever since, which only masks the mismatch in query results, not in
+  // the actual INSERT/UPDATE column names. Renamed in place for the same
+  // reason as tracked_l2_user_ids: no other feature/table reads this column,
+  // so there's no shared-column risk, and renaming keeps existing
+  // assignments. Safe to run repeatedly: renames only the first time (once
+  // approval_l2/approval_l2_name exist, this is a no-op).
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'ticketing_system' AND table_name = 'screen_submission_frequency'
+      ) THEN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'ticketing_system' AND table_name = 'screen_submission_frequency'
+            AND column_name = 'approval_l1'
+        ) AND NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'ticketing_system' AND table_name = 'screen_submission_frequency'
+            AND column_name = 'approval_l2'
+        ) THEN
+          ALTER TABLE ticketing_system.screen_submission_frequency
+            RENAME COLUMN approval_l1 TO approval_l2;
+        END IF;
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'ticketing_system' AND table_name = 'screen_submission_frequency'
+            AND column_name = 'approval_l1_name'
+        ) AND NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'ticketing_system' AND table_name = 'screen_submission_frequency'
+            AND column_name = 'approval_l2_name'
+        ) THEN
+          ALTER TABLE ticketing_system.screen_submission_frequency
+            RENAME COLUMN approval_l1_name TO approval_l2_name;
+        END IF;
+      END IF;
+    END $$;
+  `);
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS notifications_ticket_id_idx
     ON ticketing_system.notifications (ticket_id);
