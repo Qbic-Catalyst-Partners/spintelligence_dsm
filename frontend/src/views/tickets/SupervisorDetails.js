@@ -1070,7 +1070,9 @@ export default function SupervisorDetails() {
               <h3 className={styles.modalTitle}>Fix &amp; Submit</h3>
 
               <p className={styles.modalDesc}>
-                Resolve Ticket <b>{displayTicketId}</b> at L1 and submit it for review.
+                {isSubmissionTicket
+                  ? <>Resolve Ticket <b>{displayTicketId}</b> with your comments / justification and submit it for review.</>
+                  : <>Resolve Ticket <b>{displayTicketId}</b> at L1 and submit it for review.</>}
               </p>
 
               <label className={styles.modalLabel}>
@@ -1434,7 +1436,9 @@ export default function SupervisorDetails() {
               </div>
 
               <p className={styles.modalDesc}>
-                Resolve Ticket <b>{displayTicketId}</b> at L1 and submit it for review.
+                {isSubmissionTicket
+                  ? <>Resolve Ticket <b>{displayTicketId}</b> with your comments / justification and submit it for review.</>
+                  : <>Resolve Ticket <b>{displayTicketId}</b> at L1 and submit it for review.</>}
               </p>
 
               <label className={styles.modalLabel}>

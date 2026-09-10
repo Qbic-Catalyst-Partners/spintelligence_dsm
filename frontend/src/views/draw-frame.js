@@ -15,7 +15,6 @@ import WheelChange from "@/views/draw-frame/WheelChange";
 import { cvMachineOptions } from "@/views/draw-frame/constants";
 import {
   fetchDrawFrameCotsMachineMaster,
-  fetchDrawFrameMachineMaster,
   fetchDrawFrameUqcMasterDropdown,
   submitDrawFrameAPercentInspection,
 } from "@/apis/draw-frame";
@@ -91,6 +90,23 @@ const DRAW_FRAME_WHEEL_CHANGE_ENTRY_ID_BY_SUBTYPE = {
   "Type 2 (D40)": { prefix: "DW5", width: 4, routePath: "/drawframe/wheel-change/type2-d40" },
   "Type 3 (D50/D55)": { prefix: "DW6", width: 4, routePath: "/drawframe/wheel-change/type3-d50-d55" },
   "Type 4 (LDF3S)": { prefix: "DW7", width: 4, routePath: "/drawframe/wheel-change/type4-ldf3s" },
+};
+
+// Submission Threshold's screen catalog tracks Wheel Change as 7 separate
+// notebooks split by line + type ("Wheel Change - Breaker Type 1" .. "-
+// Finisher Type 4", see screenCatalog.js), not the single generic "Wheel
+// Change" type name in the Type dropdown - map WheelChange.jsx's own
+// sub-type label (the same keys as DRAW_FRAME_WHEEL_CHANGE_ENTRY_ID_BY_SUBTYPE
+// above) to the catalog name so a threshold configured for the exact
+// sub-type actually counts that sub-type's submissions.
+const DRAW_FRAME_WHEEL_CHANGE_NOTEBOOK_NAMES = {
+  "Type 1 (SB20)": "Wheel Change - Breaker Type 1",
+  "Type 2 (TD7)": "Wheel Change - Breaker Type 2",
+  "Type 3 (TD9)": "Wheel Change - Breaker Type 3",
+  "Type 1 (LRSB)": "Wheel Change - Finisher Type 1",
+  "Type 2 (D40)": "Wheel Change - Finisher Type 2",
+  "Type 3 (D50/D55)": "Wheel Change - Finisher Type 3",
+  "Type 4 (LDF3S)": "Wheel Change - Finisher Type 4",
 };
 
 const getDrawFrameEntryConfig = (type = "", wheelChangeSubType = "") => {
@@ -904,7 +920,7 @@ function DrawFrame() {
           setMachineNameOptions(nextNames);
           return;
         }
-        const fallbackMachines = await fetchDrawFrameMachineMaster();
+        const fallbackMachines = await fetchDrawFrameCotsMachineMaster({});
         const fallbackRawNames = fallbackMachines
           .map((item) => String(item?.mc_name || item?.machine_number || "").trim())
           .filter(Boolean);
@@ -920,7 +936,7 @@ function DrawFrame() {
       } catch (_error) {
         if (!isMounted) return;
         try {
-          const fallbackMachines = await fetchDrawFrameMachineMaster();
+          const fallbackMachines = await fetchDrawFrameCotsMachineMaster({});
           const fallbackRawNames = fallbackMachines
             .map((item) => String(item?.mc_name || item?.machine_number || "").trim())
             .filter(Boolean);
@@ -1624,13 +1640,15 @@ function DrawFrame() {
     if (isWheelChangeEntry) {
       const payload = wheelChangeRef.current?.getPayload?.() || {};
       const wheelChangePreviewItems = wheelChangeRef.current?.getPreviewData?.() || [];
+      const wheelChangeNotebookName =
+        DRAW_FRAME_WHEEL_CHANGE_NOTEBOOK_NAMES[wheelChangeSubType] || form.type;
       setWheelChangeSaving(true);
       try {
         await submitDrawFrameWheelChangeEntry(payload);
         await recordSubmittedNotebook({
           department: "Quality Control",
           subDepartment: "Draw Frame",
-          notebookName: form.type,
+          notebookName: wheelChangeNotebookName,
           entryId,
           previewItems: wheelChangePreviewItems,
           user,
@@ -1642,8 +1660,8 @@ function DrawFrame() {
           await createThresholdViolationTickets({
             department: "Quality Control",
             subDepartment: "Draw Frame",
-            screenName: form.type,
-            machineName: form.type,
+            screenName: wheelChangeNotebookName,
+            machineName: wheelChangeNotebookName,
             entryId,
             values: wheelChangePreviewItems,
           });

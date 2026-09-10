@@ -399,8 +399,6 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
   const getPreviewData = () => {
     const items = [
-      { label: "Type", value: selectedTypeName || form.type },
-      { label: "Entry ID", value: entryId || "#SIM-001" },
       ...Object.entries(form)
         .filter(([key]) => key !== "type" && key !== "date")
         .map(([key, value]) => ({

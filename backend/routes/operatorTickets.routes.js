@@ -1012,7 +1012,7 @@ const checkSubmissionFrequencyValueBreach = async (config) => {
 
   const inserted = ticket.rows[0];
 
-  const trackedUserIds = Array.isArray(config.tracked_l1_user_ids) ? config.tracked_l1_user_ids : [];
+  const trackedUserIds = Array.isArray(config.tracked_l2_user_ids) ? config.tracked_l2_user_ids : [];
   if (trackedUserIds.length) {
     await createNotificationsForUsers(trackedUserIds, {
       ticketId: inserted.ticket_id,
@@ -1041,12 +1041,240 @@ const ensureSubmissionFrequencyTicketIndexes = async () => {
     WHERE ticket_type = 'SUBMISSION_FREQUENCY' AND ticket_reason = 'THRESHOLD_BREACH'
       AND status NOT IN ('Closed', 'No Due')
   `);
+  // A missed-frequency ticket is now raised once per config, covering every
+  // tracked L1 user together (see runSubmissionFrequencyCheck) - not one per
+  // user. The old per-(config, user_id) index would let a second, redundant
+  // ticket through for the same config once it no longer matched this
+  // group-ticket's own (config, NULL) shape, so it's replaced rather than
+  // kept alongside the new one.
+  await client.query(`DROP INDEX IF EXISTS ticketing_system.operator_tickets_subfreq_missed_open_uq`);
   await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_subfreq_missed_open_uq
-    ON ticketing_system.operator_tickets (submission_frequency_config_id, user_id)
+    CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_subfreq_missed_open_config_uq
+    ON ticketing_system.operator_tickets (submission_frequency_config_id)
     WHERE ticket_type = 'SUBMISSION_FREQUENCY' AND ticket_reason = 'MISSING_VALUE'
       AND status NOT IN ('Closed', 'No Due')
   `);
+};
+
+// Employee-Hierarchy-and-Workflow-System_V2.pdf + follow-up clarification:
+// a Submission Threshold screen tracks several L2 users at once (Submission
+// Threshold's "Assigned to" field now selects L2 users directly - L1 is
+// skipped entirely for this ticket type, matching PP Approval/Wheel Change
+// Approval/Acknowledgement, which likewise have no L1 assignee). The
+// requirement is judged against the SCREEN, not any one person - if the
+// required number of submissions to this screen were made in the completed
+// window by ANYONE (an L1, an L2, an admin, etc.), the occurrence
+// requirement is satisfied and no ticket is raised. Only when the screen
+// falls short of the required count entirely does a single ticket go out,
+// assigned directly to every tracked L2 user (via approval_l2_user_ids, the
+// same array-based multi-approver mechanism already used for Value
+// Threshold/PP Approval tickets, so every tracked user sees it) with
+// tat_current_level starting at 'L2' - not 'L1'. approval_l1_user_ids is
+// deliberately left empty and user_id left NULL so no L1 user can see or
+// own this ticket via either the approval-array or the "ot.user_id = viewer"
+// Owned-Tickets path.
+const checkSubmissionFrequencyMissed = async (config) => {
+  const trackedL2UserIds = Array.from(
+    new Set((Array.isArray(config.tracked_l2_user_ids) ? config.tracked_l2_user_ids : [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0))
+  );
+  if (!trackedL2UserIds.length) return null; // nobody configured to track for this screen yet
+
+  const windowDays = Number(config.range) > 0 ? Number(config.range) : 7;
+  const requiredCount = Number(config.frequency) > 0 ? Number(config.frequency) : 1;
+
+  // No full day has elapsed since this config was created/last edited yet -
+  // e.g. created today at 11am, so "yesterday" (the only fully completed day
+  // so far) is still pre-config history. Wait for the day after creation
+  // before judging anything, same as the "today isn't judged until it ends"
+  // rule below applied to the config's own creation day.
+  const createdDay = new Date(config.created_at);
+  createdDay.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (createdDay >= today) return null;
+
+  // Only evaluate fully completed days. "Every 1 day" means today's
+  // submission is not judged until the day ends. The window's lower bound
+  // is clamped to this config's created_at day - without that clamp, a
+  // threshold saved today would immediately look back `range` days into
+  // history that predates the threshold entirely. Counts every submission
+  // to the screen regardless of who made it - not scoped to
+  // submitted_by_user_id at all - since the requirement is "did this screen
+  // get filled in enough times," not "did a specific tracked user do it."
+  const submissionCount = await client.query(
+    `SELECT COUNT(*) FROM ticketing_system.submitted_notebooks
+     WHERE (input_screen = $1 OR notebook = $1)
+       AND submitted_at >= GREATEST(
+             DATE_TRUNC('day', NOW()) - ($2 || ' days')::interval,
+             DATE_TRUNC('day', $3::timestamp)
+           )
+       AND submitted_at < DATE_TRUNC('day', NOW())`,
+    [config.screen_name, windowDays, config.created_at]
+  );
+  const actualCount = Number(submissionCount.rows[0]?.count) || 0;
+  const requirementMet = actualCount >= requiredCount;
+
+  if (requirementMet) {
+    // The screen has since caught up in the current rolling window (by
+    // anyone) - this only ever raised a ticket, it never had a companion
+    // "resolve once fixed" step, so a since-resolved ticket would otherwise
+    // sit open and keep escalating through L2-L5 regardless of whether the
+    // actual problem still exists. Close any ticket still open for this
+    // exact config now that the same measurement that flagged it says it's
+    // no longer true.
+    const closedResult = await client.query(
+      `UPDATE ticketing_system.operator_tickets
+       SET status = 'Closed'
+       WHERE submission_frequency_config_id = $1
+         AND ticket_reason = 'MISSING_VALUE'
+         AND (violation_details->>'category') = 'MISSED_FREQUENCY'
+         AND status NOT IN ('Closed', 'No Due')
+       RETURNING ticket_id`,
+      [config.id]
+    );
+    for (const closedRow of closedResult.rows) {
+      await client.query(
+        `INSERT INTO ticketing_system.ticket_logs (ticket_id, action, performed_by, role, created_at)
+         VALUES ($1, 'AUTO_RESOLVED_CAUGHT_UP', 'System', 'System', NOW())`,
+        [closedRow.ticket_id]
+      );
+    }
+    return null;
+  }
+
+  const trackedUsers = await Promise.all(trackedL2UserIds.map((userId) => getUserById(userId)));
+  const trackedUserNames = trackedUsers.map((u) => u?.full_name).filter(Boolean);
+
+  const existingTicket = await client.query(
+    `SELECT ticket_id, approval_l2_user_ids, tat_current_level FROM ticketing_system.operator_tickets
+     WHERE submission_frequency_config_id = $1
+       AND ticket_reason = 'MISSING_VALUE'
+       AND status NOT IN ('Closed', 'No Due')
+     LIMIT 1`,
+    [config.id]
+  );
+  if (existingTicket.rows[0]?.ticket_id) {
+    // The ticket already exists and is still open (the screen is still
+    // short) - but the config's assigned L2 users can change after a ticket
+    // was raised (an admin adding/removing someone in Submission
+    // Threshold). Every L2 currently selected for this screen must see this
+    // ticket while the occurrence is still not met, so keep
+    // approval_l2_user_ids (the array every visibility/assignment query
+    // checks) in sync with the config on every check, not just at creation.
+    // Only while it's still sitting at L2 review though - once an L2 has
+    // actually acted (Fix & Submit escalates it to L3), who was originally
+    // assigned at L2 becomes historical record, not something to keep
+    // overwriting.
+    const stillAtL2 = String(existingTicket.rows[0].tat_current_level || 'L2').trim().toUpperCase() === 'L2';
+    const currentApproverIds = (existingTicket.rows[0].approval_l2_user_ids || []).map(Number).sort();
+    const nextApproverIds = [...trackedL2UserIds].sort();
+    const changed = stillAtL2 && JSON.stringify(currentApproverIds) !== JSON.stringify(nextApproverIds);
+    if (changed) {
+      await client.query(
+        `UPDATE ticketing_system.operator_tickets
+         SET approval_l2_user_ids = $2::int[],
+             user_name = COALESCE(NULLIF($3, ''), user_name)
+         WHERE ticket_id = $1`,
+        [existingTicket.rows[0].ticket_id, trackedL2UserIds, trackedUserNames.join(', ') || null]
+      );
+      const newlyAddedIds = trackedL2UserIds.filter((id) => !currentApproverIds.includes(id));
+      if (newlyAddedIds.length) {
+        await createNotificationsForUsers(newlyAddedIds, {
+          ticketId: existingTicket.rows[0].ticket_id,
+          type: 'SUBMISSION_FREQUENCY',
+          category: 'Tickets',
+          priority: 'Medium',
+          title: `Submission frequency missed: ${config.screen_name}`,
+          body: `You've been added as an assigned L2 for ${config.screen_name}; this screen still has an open missed-frequency ticket.`,
+          linkUrl: `/operator-tickets/${existingTicket.rows[0].ticket_id}`,
+          payload: { ticket_id: existingTicket.rows[0].ticket_id }
+        });
+      }
+    }
+    return null;
+  }
+
+  // No TAT-hours column exists on this config table (unlike the other
+  // threshold types) - there's nothing configured to derive a due date from,
+  // so this stays unset rather than inventing a default. There's no L1 stage
+  // at all for this ticket, so no l1_tat_due_at either.
+  const l2TatDueAt = null;
+
+  // This ticket has no single triggering entry (it's raised over an absence
+  // of submissions, not a specific one) - leave entry_id unset; every UI
+  // that reads that field already falls back to "-" correctly.
+  const violationDetails = {
+    category: 'MISSED_FREQUENCY',
+    ticket_type: 'SUBMISSION_FREQUENCY',
+    screen_name: config.screen_name,
+    required_occurrences: requiredCount,
+    actual_occurrences: actualCount,
+    window_days: windowDays,
+    assigned_l2_user_ids: trackedL2UserIds,
+    assigned_l2_names: trackedUserNames,
+    message: `${config.screen_name} requires ${requiredCount} submission(s) every ${windowDays} day(s); only ${actualCount} submitted. Assigned: ${trackedUserNames.join(', ') || trackedL2UserIds.join(', ')}.`
+  };
+
+  const ticketId = await generateTicketId(client);
+  let inserted;
+  try {
+    const ticket = await client.query(
+      `INSERT INTO ticketing_system.operator_tickets
+       (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value,
+        severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind,
+        violation_details, approval_l2_user_ids, submission_frequency_config_id, tat_current_level, l2_tat_due_at)
+       VALUES (
+         $1,
+         $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb,
+         'Medium', 'Open', NOW(), $8, $9, 'MISSING_VALUE', 'SUBMISSION_FREQUENCY', 'submission_frequency',
+         $10::jsonb, $11::int[], $12, 'L2', $13
+       )
+       RETURNING *`,
+      [
+        ticketId,
+        // NULL, not a representative tracked user - this ticket has no
+        // single L1-shaped owner (see the function-level comment above).
+        // "Owned Tickets" lists show a ticket to whoever ot.user_id equals
+        // REGARDLESS of the approval arrays, so leaving this null (instead
+        // of picking one L2 as a stand-in) is what actually keeps every
+        // *other* L2/L1 user from seeing this as "their own" ticket -
+        // visibility is entirely through approval_l2_user_ids below.
+        null,
+        trackedUserNames.join(', ') || null,
+        config.screen_name,
+        JSON.stringify([config.screen_name]),
+        JSON.stringify([actualCount]),
+        JSON.stringify([{ screen_name: config.screen_name, required_occurrences: requiredCount, window_days: windowDays }]),
+        config.department,
+        config.sub_department,
+        JSON.stringify(violationDetails),
+        trackedL2UserIds,
+        config.id,
+        l2TatDueAt
+      ]
+    );
+    inserted = ticket.rows[0];
+  } catch (error) {
+    // 23505 = operator_tickets_subfreq_missed_open_config_uq - another run
+    // already raised this exact ticket (same config) first.
+    if (error?.code !== '23505') throw error;
+    return null;
+  }
+
+  await createNotificationsForUsers(trackedL2UserIds, {
+    ticketId: inserted.ticket_id,
+    type: 'SUBMISSION_FREQUENCY',
+    category: 'Tickets',
+    priority: 'Medium',
+    title: `Submission frequency missed: ${config.screen_name}`,
+    body: violationDetails.message,
+    linkUrl: `/operator-tickets/${inserted.ticket_id}`,
+    payload: { ticket_id: inserted.ticket_id }
+  });
+
+  return inserted;
 };
 
 const runSubmissionFrequencyCheck = async () => {
@@ -1065,191 +1293,9 @@ const runSubmissionFrequencyCheck = async () => {
       if (valueBreachTicket) created.push(valueBreachTicket);
     }
 
-    // The Submission Threshold settings screen saves one L1 user per screen
-    // as approval_l1 (a display name, chosen from a dropdown - see
-    // SubmissionThreshold.js), not a tracked_l1_user_ids array - that column
-    // was never actually part of this table (see ensureScreenFrequencyTable
-    // above). Resolving by name is what's actually configured; nobody
-    // assigned means nobody to raise a ticket against.
-    const assignedL1Name = String(config.approval_l1 || '').trim();
-    if (!assignedL1Name) continue; // nobody configured to track for this screen yet
-
     // eslint-disable-next-line no-await-in-loop
-    const l1UserRow = await client.query(
-      `SELECT id, full_name FROM users.user_details WHERE full_name = $1 AND level = 'L1' LIMIT 1`,
-      [assignedL1Name]
-    );
-    const l1UserId = l1UserRow.rows[0]?.id;
-    if (!l1UserId) continue; // configured name doesn't match a real L1 user (renamed/removed) - nothing to assign to
-
-    const windowDays = Number(config.range) > 0 ? Number(config.range) : 7;
-    const requiredCount = Number(config.frequency) > 0 ? Number(config.frequency) : 1;
-
-    // No full day has elapsed since this config was created/last edited yet
-    // - e.g. created today at 11am, so "yesterday" (the only fully completed
-    // day so far) is still pre-config history. Wait for the day after
-    // creation before judging anything, same as the "today isn't judged
-    // until it ends" rule below applied to the config's own creation day.
-    const createdDay = new Date(config.created_at);
-    createdDay.setHours(0, 0, 0, 0);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (createdDay >= today) continue; // eslint-disable-line no-continue
-
-    {
-      // Only evaluate fully completed days. "Every 1 day" means today's
-      // submission is not judged until the day ends.
-      //
-      // The window's lower bound is clamped to this config's created_at day -
-      // without that clamp, a threshold saved today would immediately look
-      // back `range` days into history that predates the threshold entirely
-      // (e.g. a "Days=1" config created today would judge yesterday, before
-      // the config existed, as an instant miss).
-      // eslint-disable-next-line no-await-in-loop
-      const submissionCount = await client.query(
-        `SELECT COUNT(*) FROM ticketing_system.submitted_notebooks
-         WHERE submitted_by_user_id = $1
-           AND (input_screen = $2 OR notebook = $2)
-           AND submitted_at >= GREATEST(
-                 DATE_TRUNC('day', NOW()) - ($3 || ' days')::interval,
-                 DATE_TRUNC('day', $4::timestamp)
-               )
-           AND submitted_at < DATE_TRUNC('day', NOW())`,
-        [l1UserId, config.screen_name, windowDays, config.created_at]
-      );
-      const actualCount = Number(submissionCount.rows[0]?.count) || 0;
-      if (actualCount >= requiredCount) {
-        // The L1 user has since caught up in the current rolling window -
-        // this only ever raised a ticket, it never had a companion "resolve
-        // once fixed" step, so a since-resolved ticket would otherwise sit
-        // open and keep escalating through L2-L5 regardless of whether the
-        // actual problem still exists. Close any ticket still open for this
-        // exact config+user now that the same measurement that flagged it
-        // says it's no longer true.
-        // eslint-disable-next-line no-await-in-loop
-        const closedResult = await client.query(
-          `UPDATE ticketing_system.operator_tickets
-           SET status = 'Closed'
-           WHERE submission_frequency_config_id = $1
-             AND user_id = $2
-             AND ticket_reason = 'MISSING_VALUE'
-             AND (violation_details->>'category') = 'MISSED_FREQUENCY'
-             AND status NOT IN ('Closed', 'No Due')
-           RETURNING ticket_id`,
-          [config.id, l1UserId]
-        );
-        for (const closedRow of closedResult.rows) {
-          // eslint-disable-next-line no-await-in-loop
-          await client.query(
-            `INSERT INTO ticketing_system.ticket_logs (ticket_id, action, performed_by, role, created_at)
-             VALUES ($1, 'AUTO_RESOLVED_CAUGHT_UP', 'System', 'System', NOW())`,
-            [closedRow.ticket_id]
-          );
-        }
-        continue; // eslint-disable-line no-continue
-      }
-
-      // eslint-disable-next-line no-await-in-loop
-      const existingTicket = await client.query(
-        `SELECT ticket_id FROM ticketing_system.operator_tickets
-         WHERE submission_frequency_config_id = $1
-           AND user_id = $2
-           AND status NOT IN ('Closed', 'No Due')
-         LIMIT 1`,
-        [config.id, l1UserId]
-      );
-      if (existingTicket.rows[0]?.ticket_id) continue;
-
-      // eslint-disable-next-line no-await-in-loop
-      const userRow = await client.query(`SELECT full_name FROM users.user_details WHERE id = $1`, [l1UserId]);
-      // No TAT-hours column exists on this config table (unlike the other
-      // threshold types) - there's nothing configured to derive a due date
-      // from, so this stays unset rather than inventing a default.
-      const l1TatDueAt = null;
-      // This ticket has no single triggering entry (it's raised over an
-      // absence of submissions, not a specific one), so there's nothing to
-      // point ot.violation_details->>'entry_id' at when actualCount is 0 -
-      // every UI that reads that field already falls back to "-" correctly.
-      // When the user is short but not at zero, surfacing their most recent
-      // submission to this screen still gives L1/L2 a concrete entry to open
-      // instead of always showing nothing.
-      // eslint-disable-next-line no-await-in-loop
-      const lastEntryRow = actualCount > 0
-        ? await client.query(
-            `SELECT entry_id FROM ticketing_system.submitted_notebooks
-             WHERE submitted_by_user_id = $1
-               AND (input_screen = $2 OR notebook = $2)
-             ORDER BY submitted_at DESC
-             LIMIT 1`,
-            [l1UserId, config.screen_name]
-          )
-        : null;
-      const lastEntryId = lastEntryRow?.rows?.[0]?.entry_id || null;
-      const violationDetails = {
-        category: 'MISSED_FREQUENCY',
-        ticket_type: 'SUBMISSION_FREQUENCY',
-        screen_name: config.screen_name,
-        required_occurrences: requiredCount,
-        actual_occurrences: actualCount,
-        entry_id: lastEntryId,
-        window_days: windowDays,
-        message: `${config.screen_name} requires ${requiredCount} submission(s) every ${windowDays} day(s); only ${actualCount} submitted.`
-      };
-
-      // eslint-disable-next-line no-await-in-loop
-      const ticketId = await generateTicketId(client);
-      let inserted;
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        const ticket = await client.query(
-          `INSERT INTO ticketing_system.operator_tickets
-           (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value,
-            severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type, ticket_kind,
-            violation_details, approval_l1_user_ids, submission_frequency_config_id, tat_current_level, l1_tat_due_at)
-           VALUES (
-             $1,
-             $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb,
-             'Medium', 'Open', NOW(), $8, $9, 'MISSING_VALUE', 'SUBMISSION_FREQUENCY', 'submission_frequency',
-             $10::jsonb, $11::int[], $12, 'L1', $13
-           )
-           RETURNING *`,
-          [
-            ticketId,
-            l1UserId,
-            userRow.rows[0]?.full_name || null,
-            config.screen_name,
-            JSON.stringify([config.screen_name]),
-            JSON.stringify([actualCount]),
-            JSON.stringify([{ screen_name: config.screen_name, required_occurrences: requiredCount, window_days: windowDays }]),
-            config.department,
-            config.sub_department,
-            JSON.stringify(violationDetails),
-            [l1UserId],
-            config.id,
-            l1TatDueAt
-          ]
-        );
-        inserted = ticket.rows[0];
-      } catch (error) {
-        // 23505 = operator_tickets_subfreq_missed_open_uq - another run
-        // already raised this exact ticket (same config+user) first.
-        if (error?.code !== '23505') throw error;
-        continue; // eslint-disable-line no-continue
-      }
-      created.push(inserted);
-
-      // eslint-disable-next-line no-await-in-loop
-      await createNotificationsForUsers([l1UserId], {
-        ticketId: inserted.ticket_id,
-        type: 'SUBMISSION_FREQUENCY',
-        category: 'Tickets',
-        priority: 'Medium',
-        title: `Submission frequency missed: ${config.screen_name}`,
-        body: violationDetails.message,
-        linkUrl: `/operator-tickets/${inserted.ticket_id}`,
-        payload: { ticket_id: inserted.ticket_id }
-      });
-    }
+    const missedTicket = await checkSubmissionFrequencyMissed(config);
+    if (missedTicket) created.push(missedTicket);
   }
 
   return created;
@@ -1514,7 +1560,7 @@ router.post('/submission-frequency', async (req, res, next) => {
       range,
       frequency = null,
       is_active = true,
-      approval_l1 = null,
+      approval_l2 = null,
       criticality = null,
     } = req.body || {};
 
@@ -1541,6 +1587,31 @@ router.post('/submission-frequency', async (req, res, next) => {
       });
     }
 
+    // Every L2 user tracked against this screen - Submission Threshold
+    // tickets are assigned straight to L2 (no L1 stage at all - see
+    // checkSubmissionFrequencyMissed), so "assigned to" here must be L2
+    // users. Multiple assignees means any ONE of them meeting the submission
+    // count is enough to avoid a ticket. Falls back to resolving approval_l2
+    // by name so older callers that only ever sent a name still work.
+    // approval_l2 here is stored in the shared screen_submission_frequency.
+    // approval_l1 column (also used by /thresholds' genuine L1 approver, so
+    // that physical column can't be renamed) - only the wire/payload name is
+    // L2, aliased back to approval_l2 in the response below.
+    const trackedL2UserIds = await resolveApproverUserIds({
+      levelLabel: 'assigned_to',
+      expectedLevel: 'L2',
+      userIdValue: req.body?.approval_l2_user_ids ?? req.body?.approvalL2UserIds,
+      nameValue: approval_l2,
+    });
+    if (!trackedL2UserIds.length) {
+      return res.status(400).json({
+        error: 'Invalid parameters',
+        message: 'At least one L2 user must be assigned'
+      });
+    }
+    const trackedL2Names = await Promise.all(trackedL2UserIds.map(async (id) => (await getUserById(id))?.full_name));
+    const approvalL2Display = trackedL2Names.filter(Boolean).join(', ');
+
     const result = await client.query(
       `INSERT INTO ticketing_system.screen_submission_frequency
        (
@@ -1552,9 +1623,10 @@ router.post('/submission-frequency', async (req, res, next) => {
          is_active,
          approval_l1,
          criticality,
+         tracked_l2_user_ids,
          updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::int[], NOW())
        ON CONFLICT (screen_name, department, sub_department)
        DO UPDATE SET
          range = EXCLUDED.range,
@@ -1562,8 +1634,11 @@ router.post('/submission-frequency', async (req, res, next) => {
          is_active = EXCLUDED.is_active,
          approval_l1 = EXCLUDED.approval_l1,
          criticality = EXCLUDED.criticality,
+         tracked_l2_user_ids = EXCLUDED.tracked_l2_user_ids,
          updated_at = NOW()
-       RETURNING *`,
+       RETURNING
+         id, screen_name, department, sub_department, range, frequency, is_active,
+         approval_l1 AS approval_l2, criticality, tracked_l2_user_ids, created_at, updated_at`,
       [
         screen_name,
         department,
@@ -1571,8 +1646,9 @@ router.post('/submission-frequency', async (req, res, next) => {
         normalizedRange,
         normalizedFrequency,
         is_active,
-        approval_l1,
+        approvalL2Display,
         criticality,
+        trackedL2UserIds,
       ]
     );
 
@@ -1607,7 +1683,8 @@ router.get('/submission-frequency', async (req, res, next) => {
          range,
          frequency,
          is_active,
-         approval_l1,
+         approval_l1 AS approval_l2,
+         tracked_l2_user_ids,
          created_at,
          updated_at
        FROM ticketing_system.screen_submission_frequency
@@ -2619,9 +2696,24 @@ router.get('/:id', async (req, res, next) => {
           ot.violation_details->>'entry_id' AS entry_id,
           ot.tat_current_level,
           (
+            -- Whoever it's actually assigned to right now, not always L1 -
+            -- Wheel Change/PP Approval/Acknowledgement/Submission Threshold
+            -- tickets can have no L1 assignee at all (only approval_l2_user_ids
+            -- upward), so hardcoding approval_l1_user_ids here left this
+            -- endpoint (unlike the ticket list) always showing "Assigned to"
+            -- blank for those. Same CASE pattern the list query already uses.
             SELECT string_agg(ud.full_name, ', ' ORDER BY ud.full_name)
             FROM users.user_details ud
-            WHERE ud.id = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
+            WHERE ud.id = ANY(COALESCE(
+              CASE UPPER(COALESCE(ot.tat_current_level, 'L1'))
+                WHEN 'L2' THEN ot.approval_l2_user_ids
+                WHEN 'L3' THEN ot.approval_l3_user_ids
+                WHEN 'L4' THEN ot.approval_l4_user_ids
+                WHEN 'L5' THEN ot.approval_l5_user_ids
+                ELSE ot.approval_l1_user_ids
+              END,
+              ARRAY[]::int[]
+            ))
           ) AS assigned_user_names
 
       FROM ticketing_system.operator_tickets ot
@@ -3359,7 +3451,7 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
       range,
       frequency,
       is_active,
-      approval_l1,
+      approval_l2,
       criticality,
     } = req.body || {};
 
@@ -3383,6 +3475,34 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
     ) {
       return res.status(400).json({ message: 'frequency must be a positive integer' });
     }
+
+    // Only re-resolve the assignees when the caller actually sent something
+    // for them - COALESCE below then leaves the existing
+    // tracked_l2_user_ids/approval_l2 untouched for a partial update (e.g. a
+    // status-only or frequency-only edit) instead of wiping the assignment.
+    // These hold L2 users (Submission Threshold tickets are assigned
+    // straight to L2, no L1 stage - see checkSubmissionFrequencyMissed).
+    // approval_l2 is stored in the shared screen_submission_frequency.
+    // approval_l1 column (also used by /thresholds' genuine L1 approver, so
+    // that physical column can't be renamed) - only the wire/payload name is
+    // L2, aliased back in the RETURNING clause below.
+    const rawL2UserIds = req.body?.approval_l2_user_ids ?? req.body?.approvalL2UserIds;
+    let trackedL2UserIds;
+    let approvalL2Display;
+    if (rawL2UserIds !== undefined || approval_l2 !== undefined) {
+      trackedL2UserIds = await resolveApproverUserIds({
+        levelLabel: 'assigned_to',
+        expectedLevel: 'L2',
+        userIdValue: rawL2UserIds,
+        nameValue: approval_l2,
+      });
+      if (!trackedL2UserIds.length) {
+        return res.status(400).json({ message: 'At least one L2 user must be assigned' });
+      }
+      const trackedL2Names = await Promise.all(trackedL2UserIds.map(async (uid) => (await getUserById(uid))?.full_name));
+      approvalL2Display = trackedL2Names.filter(Boolean).join(', ');
+    }
+
     const result = await client.query(
       `UPDATE ticketing_system.screen_submission_frequency
        SET screen_name = COALESCE($1, screen_name),
@@ -3393,9 +3513,12 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
            is_active = COALESCE($6, is_active),
            approval_l1 = COALESCE($7, approval_l1),
            criticality = COALESCE($8, criticality),
+           tracked_l2_user_ids = COALESCE($10::int[], tracked_l2_user_ids),
            updated_at = NOW()
        WHERE id = $9
-       RETURNING *`,
+       RETURNING
+         id, screen_name, department, sub_department, range, frequency, is_active,
+         approval_l1 AS approval_l2, criticality, tracked_l2_user_ids, created_at, updated_at`,
       [
         screen_name,
         department,
@@ -3403,9 +3526,10 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
         normalizedRange,
         normalizedFrequency,
         is_active,
-        approval_l1,
+        approvalL2Display ?? approval_l2,
         criticality,
-        id
+        id,
+        trackedL2UserIds ?? null,
       ]
     );
 
@@ -4173,15 +4297,67 @@ router.put('/submit/:id', async (req, res, next) => {
       });
     }
 
-    // L1 submitting is what actually escalates the ticket. PP Entry Threshold
+    // Whoever is fixing/submitting must actually be the ticket's owner or one
+    // of the people assigned at its CURRENT level - this endpoint previously
+    // had no such check at all, so any authenticated user could Fix & Submit
+    // any ticket regardless of assignment. Admin/L5 always allowed, same as
+    // every other ticket action in this file.
+    const LEVEL_ORDER = ['L1', 'L2', 'L3', 'L4', 'L5'];
+    const currentLevel = LEVEL_ORDER.includes(String(ticket.tat_current_level || '').trim().toUpperCase())
+      ? String(ticket.tat_current_level).trim().toUpperCase()
+      : 'L1';
+    const requesterId = parsePositiveInt(req.user?.id);
+    const requesterEmployeeId = String(req.user?.employee_id || '').trim().toUpperCase();
+    const requesterRole = String(req.user?.role || '').trim().toLowerCase();
+    const isAdminRequester =
+      requesterEmployeeId === 'ADMIN001' ||
+      ['admin', 'super admin', 'superadmin'].includes(requesterRole) ||
+      String(req.user?.level || '').trim().toUpperCase() === 'L5';
+    const currentLevelApproverIds = Array.isArray(ticket[`approval_${currentLevel.toLowerCase()}_user_ids`])
+      ? ticket[`approval_${currentLevel.toLowerCase()}_user_ids`]
+      : [];
+    const directlyAuthorized =
+      isAdminRequester ||
+      (requesterId && requesterId === parsePositiveInt(ticket.user_id)) ||
+      (requesterId && currentLevelApproverIds.map(Number).includes(requesterId));
+    // Same delegate carve-out canApproveOrRejectTicket (supervisorTickets.routes.js)
+    // already uses for approve/reject - an owner/approver on leave can hand off
+    // to a delegate for a date range, and that delegate must be able to Fix &
+    // Submit on their behalf too, not just approve/reject.
+    const ownerCandidateIds = Array.from(
+      new Set([...currentLevelApproverIds.map(Number), parsePositiveInt(ticket.user_id)].filter((id) => Number.isInteger(id) && id > 0))
+    );
+    const isDelegateAuthorized = !directlyAuthorized && requesterId && ownerCandidateIds.length
+      ? (await client.query(
+          `SELECT 1 FROM users.delegations
+           WHERE delegate_user_id = $1
+             AND owner_user_id = ANY($2::int[])
+             AND from_date <= CURRENT_DATE
+             AND to_date >= CURRENT_DATE
+             AND revoked_at IS NULL
+           LIMIT 1`,
+          [requesterId, ownerCandidateIds]
+        )).rows.length > 0
+      : false;
+    if (!directlyAuthorized && !isDelegateAuthorized) {
+      return res.status(403).json({ message: 'You are not authorized to submit this ticket' });
+    }
+
+    // L1 (or, for tickets with no L1 stage at all - e.g. Submission Threshold
+    // tickets that go straight to L2 - whichever level currently owns it)
+    // submitting is what actually escalates the ticket. PP Entry Threshold
     // tickets (PP_BATCH_INCOMPLETE) have no L2/L3 configured anywhere in PP
     // Thresholds - only L1 and L4 - matching the same pattern as PP Approval,
     // Wheel Change Approval, and Acknowledgement, which all escalate straight
-    // to L4 too. Every other ticket type keeps going to L2 (manually
-    // configured approval_l2_user_ids first, then the submitter's real
-    // reporting-chain L2 manager). Previously this only set status='Submit'
-    // and left tat_current_level at 'L1' forever, so the ticket kept showing
-    // the L1 Fix & Resubmit action instead of the next level's review action.
+    // to L4 too. Every other ticket type escalates to the level immediately
+    // above its own current level (manually configured approval_<next>_user_ids
+    // first, then the submitter's - or, if there's no single owner, the
+    // acting user's own - real reporting-chain manager at that next level).
+    // Previously this only set status='Submit' and left tat_current_level at
+    // 'L1' forever, so the ticket kept showing the L1 Fix & Resubmit action
+    // instead of the next level's review action; and before that, the next
+    // level was hardcoded to always be 'L2', which broke for any ticket that
+    // starts above L1 or that's already escalated past L2 once before.
     const isPpBatchTicket = ticket.ticket_kind === 'pp_batch' || ticket.ticket_type === 'PP_BATCH_INCOMPLETE';
 
     let nextLevel;
@@ -4212,19 +4388,34 @@ router.put('/submit/:id', async (req, res, next) => {
       nextLevel = 'L4';
       nextApproverIds = Array.from(l4Set).filter((id) => Number.isInteger(id) && id > 0);
     } else {
-      const fallbackL2Ids = Array.isArray(ticket.approval_l2_user_ids) ? ticket.approval_l2_user_ids : [];
-      const hierarchyL2Ids = ticket.user_id
-        ? (await getManagerChain(ticket.user_id)).filter((manager) => String(manager.level || '').trim().toUpperCase() === 'L2').map((manager) => manager.id)
+      // Escalate to whatever level is immediately above the ticket's OWN
+      // current level, not a fixed 'L2' - a Submission Threshold ticket
+      // starting at L2 must go to L3 here, not back to L2.
+      nextLevel = LEVEL_ORDER[LEVEL_ORDER.indexOf(currentLevel) + 1] || currentLevel;
+      const nextLevelColumn = `approval_${nextLevel.toLowerCase()}_user_ids`;
+      const fallbackNextIds = Array.isArray(ticket[nextLevelColumn]) ? ticket[nextLevelColumn] : [];
+      // The chain is resolved from the ticket's own owner (ticket.user_id)
+      // when it has one - existing single-owner tickets (a normal L1
+      // operator's Value Threshold ticket, say) keep escalating off that
+      // person's real reporting chain regardless of who happens to click Fix
+      // & Submit (e.g. a delegate). For a ticket with no single owner (NULL
+      // user_id - Submission Threshold's L2-assigned tickets, where several
+      // L2 users could be assigned and each has their own manager), "their
+      // respective L3" has to mean whichever L2 actually did the fixing, so
+      // it falls back to the acting requester instead.
+      const chainAnchorUserId = ticket.user_id || requesterId;
+      const hierarchyNextIds = chainAnchorUserId
+        ? (await getManagerChain(chainAnchorUserId)).filter((manager) => String(manager.level || '').trim().toUpperCase() === nextLevel).map((manager) => manager.id)
         : [];
-      nextLevel = 'L2';
-      nextApproverIds = Array.from(new Set([...fallbackL2Ids, ...hierarchyL2Ids].map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)));
+      nextApproverIds = Array.from(new Set([...fallbackNextIds, ...hierarchyNextIds].map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)));
     }
+
+    const nextLevelColumnName = `approval_${nextLevel.toLowerCase()}_user_ids`;
     const updateResult = await client.query(
       `UPDATE ticketing_system.operator_tickets
        SET status = 'Submit',
            tat_current_level = $3,
-           approval_l2_user_ids = CASE WHEN $3 = 'L2' THEN $4::int[] ELSE approval_l2_user_ids END,
-           approval_l4_user_ids = CASE WHEN $3 = 'L4' THEN $4::int[] ELSE approval_l4_user_ids END,
+           ${nextLevelColumnName} = $4::int[],
            violation_details =
              COALESCE(violation_details, '{}'::jsonb)
              || CASE WHEN $2::text IS NULL OR btrim($2::text) = '' THEN '{}'::jsonb ELSE jsonb_build_object('operator_comment', $2::text) END
@@ -4250,9 +4441,10 @@ router.put('/submit/:id', async (req, res, next) => {
 
     await client.query(
       `INSERT INTO ticketing_system.ticket_approvals (ticket_id, level, action_status, performed_by, role)
-       VALUES ($1, 'L1', $2, $3, $4)`,
+       VALUES ($1, $2, $3, $4, $5)`,
       [
         ticketId,
+        currentLevel,
         normalizedStatus === 'reopened' ? 'Resubmitted' : 'Submitted',
         req.user?.full_name || req.user?.employee_id || 'Operator',
         req.user?.role || 'Operator'
@@ -4271,9 +4463,9 @@ router.put('/submit/:id', async (req, res, next) => {
         category: 'Tickets',
         priority: 'High',
         title: `Ticket submitted for ${nextLevel} review - ${ticketId}`,
-        body: `${ticket.user_name || ticket.user_id || 'An L1 user'} submitted ticket ${ticketId}.`,
+        body: `${ticket.user_name || ticket.user_id || `An ${currentLevel} user`} submitted ticket ${ticketId}.`,
         linkUrl: `/operator-tickets/${ticketId}`,
-        payload: { ticket_id: ticketId, level: 'L2' }
+        payload: { ticket_id: ticketId, level: nextLevel }
       });
     }
 

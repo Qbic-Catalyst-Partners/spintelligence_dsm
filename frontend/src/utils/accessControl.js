@@ -190,6 +190,7 @@ export const buildAccessibleDepartmentSet = (accessByDepartment) => {
     "pp finisher drawing": "draw frame",
     "pp autoconer q2": "autoconer",
     "pp autoconer q3": "autoconer",
+    "pp autoconer q4": "autoconer",
   };
   ppScreens.forEach((screen) => {
     // normalizeName collapses whitespace BEFORE turning "-" into " ", so

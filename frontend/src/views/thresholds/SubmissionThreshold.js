@@ -20,7 +20,9 @@ import styles from "@/styles/SubmissionThreshold.module.css";
 
 const createRule = () => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  l1User: "",
+  subDepartmentSlug: "",
+  screenName: "",
+  l1Users: [],
   frequency: "",
   everyDays: "",
   isActive: true,
@@ -154,15 +156,21 @@ const resolveUsers = (users, values) =>
 // value - unless that raw value is a bare numeric id, in which case showing
 // it would look like a broken name, so it renders blank ("-" downstream)
 // instead.
-const resolveApprovalL1Display = (users, item) => {
-  const nameCandidate = String(item?.approval_l1_name || item?.approvalL1Name || "").trim();
+const resolveApprovalL2Display = (users, item) => {
+  const trackedIds = Array.isArray(item?.tracked_l2_user_ids) ? item.tracked_l2_user_ids : [];
+  if (trackedIds.length) {
+    const names = trackedIds
+      .map((id) => getUserDisplayName(resolveUser(users, id)))
+      .filter(Boolean);
+    if (names.length) return names.join(", ");
+  }
+
+  const nameCandidate = String(item?.approval_l2_name || item?.approvalL2Name || "").trim();
   if (nameCandidate) return nameCandidate;
 
-  const idCandidate = item?.approval_l1 || item?.approvalL1;
-  const resolvedName =
-    getUserDisplayName(resolveUsers(users, idCandidate)[0]) ||
-    getUserDisplayName(resolveUser(users, idCandidate));
-  if (resolvedName) return resolvedName;
+  const idCandidate = item?.approval_l2 || item?.approvalL2;
+  const resolvedNames = resolveUsers(users, idCandidate).map(getUserDisplayName).filter(Boolean);
+  if (resolvedNames.length) return resolvedNames.join(", ");
 
   const rawValue = String(idCandidate ?? "").trim();
   return /^\d+$/.test(rawValue) ? "" : rawValue;
@@ -316,98 +324,6 @@ function SingleSelectDropdown({
   );
 }
 
-function SingleUserSelect({
-  value = "",
-  options = [],
-  onChange,
-  placeholder = "Select",
-  disabled = false,
-  emptyLabel = "No users available",
-}) {
-  const containerRef = useRef(null);
-  const [isOpen, setIsOpen] = useState(false);
-  const [searchText, setSearchText] = useState("");
-
-  useEffect(() => {
-    const handleOutsideClick = (event) => {
-      if (!containerRef.current?.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isOpen) setSearchText("");
-  }, [isOpen]);
-
-  const selectedValue = String(value || "").trim();
-  const buttonLabel = selectedValue || placeholder;
-  const filteredOptions = searchText.trim()
-    ? options.filter((option) => option.name?.toLowerCase().includes(searchText.trim().toLowerCase()))
-    : options;
-
-  return (
-    <div
-      ref={containerRef}
-      className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}
-    >
-      <div className={styles.multiSelectButton}>
-        <input
-          type="text"
-          className={styles.multiSelectValue}
-          value={isOpen ? searchText : ""}
-          placeholder={buttonLabel}
-          onFocus={() => !disabled && setIsOpen(true)}
-          onChange={(event) => {
-            setSearchText(event.target.value);
-            if (!disabled) setIsOpen(true);
-          }}
-          disabled={disabled}
-        />
-        <span
-          className={styles.multiSelectChevron}
-          onClick={() => {
-            if (!disabled) setIsOpen((current) => !current);
-          }}
-        >
-          {isOpen ? "^" : "v"}
-        </span>
-      </div>
-
-      {isOpen ? (
-        <div className={styles.multiSelectMenu}>
-          {filteredOptions.length ? (
-            filteredOptions.map((option) => {
-              const optionName = String(option.name || "").trim();
-              const isActive = optionName.toLowerCase() === selectedValue.toLowerCase();
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  className={`${styles.singleSelectOption} ${isActive ? styles.singleSelectOptionActive : ""}`}
-                  onClick={() => {
-                    onChange?.(optionName);
-                    setIsOpen(false);
-                  }}
-                >
-                  {optionName}
-                </button>
-              );
-            })
-          ) : (
-            <div className={styles.multiSelectEmpty}>{emptyLabel}</div>
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export default function SubmissionThreshold({ standalone = true, editItem = null, onEditItemHandled } = {}) {
   const dispatch = useDispatch();
   const router = useRouter();
@@ -424,8 +340,6 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [selectedDepartmentSlug, setSelectedDepartmentSlug] = useState("");
-  const [selectedSubDepartmentSlug, setSelectedSubDepartmentSlug] = useState("");
-  const [selectedScreenName, setSelectedScreenName] = useState("");
   const [rules, setRules] = useState([createRule()]);
   const [existingFilters, setExistingFilters] = useState(buildExistingFilters);
   const [openActionMenuId, setOpenActionMenuId] = useState("");
@@ -451,15 +365,18 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
     [availableSubDepartments]
   );
 
-  const selectedSubDepartmentName = subDepartmentNameBySlug[selectedSubDepartmentSlug] || "";
-
-  const l1Options = useMemo(
-    () =>
-      buildUserOptions(users, "L1").filter((option) =>
-        hasDepartmentAccess(option, selectedSubDepartmentName)
-      ),
-    [users, selectedSubDepartmentName, hasDepartmentAccess]
-  );
+  // Submission Threshold tickets are assigned straight to L2 (no L1 stage -
+  // see checkSubmissionFrequencyMissed in operatorTickets.routes.js), so
+  // "Assigned to" selects L2 users now, not L1. Sub-Department (and
+  // therefore which L2 users are eligible) is picked per rule row, not once
+  // for the whole form, so this is a function of that row's own
+  // sub-department rather than a single shared value.
+  const getL1OptionsForSubDepartment = (subDepartmentSlug) => {
+    const subDepartmentName = subDepartmentNameBySlug[subDepartmentSlug] || "";
+    return buildUserOptions(users, "L2").filter((option) =>
+      hasDepartmentAccess(option, subDepartmentName)
+    );
+  };
 
   const totalThresholds = configs.length;
   const activeThresholds = configs.filter((item) => item?.is_active).length;
@@ -575,22 +492,29 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
 
   const handleDepartmentChange = (event) => {
     setSelectedDepartmentSlug(event.target.value);
-    setSelectedSubDepartmentSlug("");
-    setSelectedScreenName("");
     setRules([createRule()]);
     setMessage("");
     setError("");
   };
 
-  const handleSubDepartmentChange = (event) => {
-    setSelectedSubDepartmentSlug(event.target.value);
-    setSelectedScreenName("");
+  // Sub-Department and Notebook Type are per rule row now (each row can
+  // target a different notebook), not a single shared selection - changing
+  // a row's Sub-Department clears that row's own Notebook Type and L2
+  // selection since those options depend on it.
+  const handleRuleSubDepartmentChange = (ruleId, value) => {
+    setRules((current) =>
+      current.map((rule) =>
+        rule.id === ruleId ? { ...rule, subDepartmentSlug: value, screenName: "", l1Users: [] } : rule
+      )
+    );
     setMessage("");
     setError("");
   };
 
-  const handleScreenNameChange = (event) => {
-    setSelectedScreenName(event.target.value);
+  const handleRuleScreenNameChange = (ruleId, value) => {
+    setRules((current) =>
+      current.map((rule) => (rule.id === ruleId ? { ...rule, screenName: value } : rule))
+    );
     setMessage("");
     setError("");
   };
@@ -623,8 +547,6 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
 
   const resetForm = ({ preserveFeedback = false } = {}) => {
     setSelectedDepartmentSlug("");
-    setSelectedSubDepartmentSlug("");
-    setSelectedScreenName("");
     setRules([createRule()]);
     setEditingConfigId("");
     if (!preserveFeedback) {
@@ -667,14 +589,14 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
         .find((department) => department.slug === departmentSlug)
         ?.subDepartments?.find((subDepartment) => subDepartment.name === item?.sub_department)?.slug ||
       "";
-    const resolvedL1Name = resolveApprovalL1Display(users, item);
+    const resolvedL1Names = normalizeNameList(resolveApprovalL2Display(users, item));
     setSelectedDepartmentSlug(departmentSlug);
-    setSelectedSubDepartmentSlug(subDepartmentSlug);
-    setSelectedScreenName(item?.screen_name || "");
     setRules([
       {
         id: `${Date.now()}-edit`,
-        l1User: resolvedL1Name,
+        subDepartmentSlug,
+        screenName: item?.screen_name || "",
+        l1Users: resolvedL1Names,
         frequency: String(item?.frequency ?? "1"),
         everyDays: String(item?.range ?? "1"),
         isActive: Boolean(item?.is_active),
@@ -759,25 +681,29 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
         throw new Error("Please select a department.");
       }
 
-      const subDepartmentName = subDepartmentNameBySlug[selectedSubDepartmentSlug] || "";
-
-      if (!selectedSubDepartmentSlug || !subDepartmentName) {
-        throw new Error("Please select a sub-department.");
-      }
-
-      if (!selectedScreenName) {
-        throw new Error("Please select a notebook type.");
-      }
-
+      // Sub-Department and Notebook Type are picked per row now, so each
+      // row is validated and built independently - two rows in the same
+      // save can target different notebooks.
       const payloads = rules.map((rule) => {
+        const subDepartmentName = subDepartmentNameBySlug[rule.subDepartmentSlug] || "";
+        if (!rule.subDepartmentSlug || !subDepartmentName) {
+          throw new Error("Please select a sub-department for each row.");
+        }
+
+        if (!rule.screenName) {
+          throw new Error("Please select a notebook type for each row.");
+        }
+
         const everyDaysValue = Number(rule.everyDays);
         if (!Number.isInteger(everyDaysValue) || everyDaysValue < 1) {
           throw new Error("Please enter a valid number of days for the frequency condition.");
         }
-        const selectedL1 = String(rule.l1User || "").trim();
-        if (!selectedL1) {
-          throw new Error("Please select an L1 user for each row.");
+        const selectedL1Users = resolveUsers(users, rule.l1Users);
+        if (!selectedL1Users.length) {
+          throw new Error("Please select at least one L2 user for each row.");
         }
+        const selectedL1UserIds = selectedL1Users.map((selectedUser) => selectedUser.id);
+        const selectedL1Names = selectedL1Users.map((selectedUser) => getUserDisplayName(selectedUser));
 
         const criticality = String(rule.criticality || "").trim();
         const frequencyValue = Number(rule.frequency);
@@ -786,21 +712,20 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
         }
 
         return {
-          screen_name: selectedScreenName,
+          screen_name: rule.screenName,
           department: selectedDepartment.name,
           sub_department: subDepartmentName,
           range: everyDaysValue,
           frequency: frequencyValue,
           is_active: rule.isActive,
-          approval_l1: selectedL1,
+          approval_l2: selectedL1Names.join(", "),
+          approval_l2_user_ids: selectedL1UserIds,
           criticality: criticality || null,
         };
       });
 
       setPreviewPayload({
         department: selectedDepartment.name,
-        subDepartment: subDepartmentName,
-        notebook: selectedScreenName,
         rows: payloads,
       });
     } catch (err) {
@@ -839,9 +764,6 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
     setPreviewPayload(null);
   };
 
-  const previewFrequency = previewPayload?.rows?.[0]?.frequency || 1;
-  const previewDays = previewPayload?.rows?.[0]?.range || 1;
-  const previewDaysLabel = Number(previewDays) === 1 ? "day" : "days";
 
   if (!isHydrated || !canAccessPage) {
     return null;
@@ -925,44 +847,46 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                     ))}
                   </select>
                 </label>
-
-                <label className={styles.field}>
-                  <span>Sub-Department</span>
-                  <select
-                    value={selectedSubDepartmentSlug}
-                    onChange={handleSubDepartmentChange}
-                    disabled={!selectedDepartment}
-                  >
-                    <option value="">Select Sub-Department</option>
-                    {availableSubDepartments.map((item) => (
-                      <option key={item.slug} value={item.slug}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className={styles.field}>
-                  <span>Notebook Type</span>
-                  <select
-                    value={selectedScreenName}
-                    onChange={handleScreenNameChange}
-                    disabled={!selectedSubDepartmentSlug}
-                  >
-                    <option value="">Select Notebook Type</option>
-                    {getAvailableScreens(selectedSubDepartmentSlug).map((screenName) => (
-                      <option key={screenName} value={screenName}>
-                        {screenName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
               </div>
 
               <div className={styles.rulesTable}>
-                {rules.map((rule, index) => (
+                {rules.map((rule, index) => {
+                  const ruleL1Options = getL1OptionsForSubDepartment(rule.subDepartmentSlug);
+                  return (
                   <div key={rule.id} className={styles.ruleCard}>
                     <div className={styles.ruleGrid}>
+                      <label className={styles.field}>
+                        <span>Sub-Department</span>
+                        <select
+                          value={rule.subDepartmentSlug}
+                          onChange={(event) => handleRuleSubDepartmentChange(rule.id, event.target.value)}
+                          disabled={!selectedDepartment}
+                        >
+                          <option value="">Select Sub-Department</option>
+                          {availableSubDepartments.map((item) => (
+                            <option key={item.slug} value={item.slug}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className={styles.field}>
+                        <span>Notebook Type</span>
+                        <select
+                          value={rule.screenName}
+                          onChange={(event) => handleRuleScreenNameChange(rule.id, event.target.value)}
+                          disabled={!rule.subDepartmentSlug}
+                        >
+                          <option value="">Select Notebook Type</option>
+                          {getAvailableScreens(rule.subDepartmentSlug).map((screenName) => (
+                            <option key={screenName} value={screenName}>
+                              {screenName}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
                       <label className={styles.field}>
                         <span>Frequency (times)</span>
                         <input
@@ -1010,16 +934,16 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
 
                       <label className={styles.field}>
                         <span>Assigned to</span>
-                        <SingleUserSelect
-                          value={rule.l1User}
-                          options={l1Options.map((user) => ({
+                        <SingleSelectDropdown
+                          value={rule.l1Users}
+                          options={ruleL1Options.map((user) => ({
                             id: user?.id,
                             name: getUserDisplayName(user),
                           }))}
-                          disabled={!l1Options.length}
-                          placeholder={l1Options.length ? "Select" : "No L1 users available"}
-                          emptyLabel="No L1 users available"
-                          onChange={(nextValue) => handleRuleChange(rule.id, "l1User", nextValue)}
+                          disabled={!ruleL1Options.length}
+                          placeholder={ruleL1Options.length ? "Select" : "No L2 users available"}
+                          emptyLabel="No L2 users available"
+                          onChange={(nextValue) => handleRuleChange(rule.id, "l1Users", nextValue)}
                         />
                       </label>
 
@@ -1047,7 +971,8 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className={styles.formFooter}>
@@ -1165,7 +1090,7 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                       <th>Department</th>
                       <th>Sub Department</th>
                       <th>Notebook</th>
-                      <th>L1</th>
+                      <th>L2</th>
                       <th>Criticality</th>
                       <th>Frequency</th>
                       <th>In Every (Days)</th>
@@ -1202,7 +1127,7 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                             <ExpandableCell values={item.screen_name} />
                           </td>
                           <td>
-                            <ExpandableCell values={resolveApprovalL1Display(users, item)} />
+                            <ExpandableCell values={resolveApprovalL2Display(users, item)} />
                           </td>
                           <td>
                             <span
@@ -1353,17 +1278,32 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                 !
               </div>
             </div>
-            <p style={{ marginTop: 0, color: "#0f172a", textAlign: "center", lineHeight: 1.7, fontWeight: 700 }}>
-              You have selected a submission frequency of{" "}
-              <span style={{ whiteSpace: "nowrap" }}>
-                {previewFrequency} time{Number(previewFrequency) === 1 ? "" : "s"} every {previewDays} {previewDaysLabel}
-              </span>{" "}
-              for
-              <br />
-              <span style={{ fontSize: 13, fontWeight: 800, color: "#4f63b6" }}>
-                {previewPayload.department} &gt; {previewPayload.subDepartment} &gt; {previewPayload.notebook}
-              </span>
+            <p style={{ marginTop: 0, marginBottom: 4, color: "#0f172a", textAlign: "center", fontWeight: 700 }}>
+              You're about to save the following submission threshold{previewPayload.rows.length > 1 ? "s" : ""}
+              {" "}for <span style={{ color: "#4f63b6" }}>{previewPayload.department}</span>:
             </p>
+            <div style={{ maxHeight: 240, overflowY: "auto", margin: "12px 0" }}>
+              {previewPayload.rows.map((row, index) => (
+                <div
+                  key={`${row.sub_department}-${row.screen_name}-${index}`}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    background: "#f4f6fb",
+                    marginBottom: 8,
+                    lineHeight: 1.6,
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#4f63b6" }}>
+                    {row.sub_department} &gt; {row.screen_name}
+                  </div>
+                  <div style={{ fontSize: 13, color: "#0f172a" }}>
+                    {row.frequency} time{Number(row.frequency) === 1 ? "" : "s"} every {row.range}{" "}
+                    {Number(row.range) === 1 ? "day" : "days"}
+                  </div>
+                </div>
+              ))}
+            </div>
 
             <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 24 }}>
               <button type="button" className={styles.clearButton} onClick={cancelPreview} disabled={saving}>
