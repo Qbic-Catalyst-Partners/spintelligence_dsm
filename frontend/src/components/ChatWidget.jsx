@@ -14,8 +14,10 @@ const nextMessageId = () => {
 const WELCOME_MESSAGE = {
   id: "welcome",
   role: "agent",
-  text: "Hi! I'm the Spinny Agent. Ask me anything about your data.",
+  text: "Hi! I'm YARNY. Ask me anything about your data.",
 };
+
+const LOGO_SRC = "/yarny-logo.png";
 
 const TYPING_INTERVAL_MS = 45;
 
@@ -37,6 +39,7 @@ export default function ChatWidget() {
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState("");
+  const [logoError, setLogoError] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const typingIntervalRef = useRef(null);
@@ -156,9 +159,20 @@ export default function ChatWidget() {
   return (
     <div className={styles.widgetRoot}>
       {isOpen && (
-        <div className={styles.panel} role="dialog" aria-label="AI Assistant Chat">
+        <div className={styles.panel} role="dialog" aria-label="YARNY Chat">
           <div className={styles.header}>
-            <span className={styles.headerTitle}>Spinny Agent</span>
+            <div className={styles.headerBrand}>
+              {!logoError && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={LOGO_SRC}
+                  alt=""
+                  className={styles.headerLogo}
+                  onError={() => setLogoError(true)}
+                />
+              )}
+              <span className={styles.headerTitle}>YARNY</span>
+            </div>
             <button
               type="button"
               className={styles.closeButton}
@@ -228,9 +242,21 @@ export default function ChatWidget() {
         type="button"
         className={styles.fab}
         onClick={handleToggle}
-        aria-label={isOpen ? "Close AI assistant" : "Open AI assistant"}
+        aria-label={isOpen ? "Close YARNY" : "Open YARNY"}
       >
-        {isOpen ? <FiX size={24} /> : <FiMessageCircle size={24} />}
+        {isOpen ? (
+          <FiX size={24} />
+        ) : logoError ? (
+          <FiMessageCircle size={24} />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={LOGO_SRC}
+            alt="YARNY"
+            className={styles.fabLogo}
+            onError={() => setLogoError(true)}
+          />
+        )}
       </button>
     </div>
   );
