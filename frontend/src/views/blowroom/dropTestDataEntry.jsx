@@ -50,13 +50,14 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
     const handleSubmit = async () => {
         if (!validate()) return;
         try {
-            let firstTuftEntryId = null;
+            // Drop Test still creates one row per tuft, but every row now shares the SAME
+            // reserved entry_id instead of a per-tuft "-01"/"-02" suffix - drop_id (the old
+            // shared-parent-id field distinct from entry_id) is no longer sent at all; the
+            // backend derives it from entry_id itself now that they're the same value.
+            const sharedEntryId = entryId || "BDT";
             for (let i = 0; i < tufts.length; i++) {
-                const tuftEntryId = `${entryId || "BDT"}-${String(i + 1).padStart(2, "0")}`;
-                if (i === 0) firstTuftEntryId = tuftEntryId;
                 await dispatch(saveBlowroomDropTest({
-                    entry_id: tuftEntryId,
-                    drop_id: entryId,
+                    entry_id: sharedEntryId,
                     date,
                     variety: formData.variety,
                     blend: formData.blend,
@@ -70,10 +71,9 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                 })).unwrap();
             }
 
-            // Drop Test creates one row per tuft (entry_id like BDT-0001-01, -02, ...), not one
-            // row per submission — there is no row with the bare entryId itself. Custom field
-            // values are saved against the first tuft's row so they land somewhere real.
-            const linkedEntryId = firstTuftEntryId;
+            // Custom field values are saved against the shared entry_id every tuft row now
+            // carries, so they land against the same id the whole submission is filed under.
+            const linkedEntryId = sharedEntryId;
             const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
             if (linkedEntryId && customFieldEntries.length) {
                 try {

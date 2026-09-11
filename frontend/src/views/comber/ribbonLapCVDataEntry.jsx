@@ -309,8 +309,6 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
 
     const getPreviewData = () => {
         const base = [
-            { label: "Type", value: selectedType || "Ribbon Lap CV1M Data Entry" },
-            { label: "Entry ID", value: entryId || "-" },
             { label: "Machine Name", value: machine },
             { label: "Variety", value: variety },
         ];
@@ -520,7 +518,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                         </div>
                     ) : null}
 
-                    <div style={{ margin: "16px -24px 0" }}>
+                    <div style={{ marginTop: "16px" }}>
                         <Footer
                             onBack={() => router.push("/departments/quality-control")}
                             onSecondary={calculateStats}

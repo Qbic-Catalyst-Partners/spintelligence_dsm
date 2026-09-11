@@ -561,6 +561,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
     const [existingMessage, setExistingMessage] = useState("");
     const [existingError, setExistingError] = useState("");
     const [openActionMenu, setOpenActionMenu] = useState(null);
+    const [previewPayload, setPreviewPayload] = useState(null);
 
     const percentModeCacheRef = useRef(null);
     if (percentModeCacheRef.current === null) {
@@ -801,6 +802,9 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
         String(item?.id || item?._id || item?.threshold_id || item?.thresholdId || "");
 
     const openEditThreshold = (item) => {
+        const resolvedApprovalL1Names = resolveSelectedUsers(users, item?.approval_l1_user_ids)
+            .map((userItem) => userItem?.name)
+            .filter(Boolean);
         const departmentSlug = availableDepartments.find(
             (department) => department.name === (item?.department || item?.management_field)
         )?.slug || "";
@@ -830,9 +834,16 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                         ? String(item?.negative_tolerance_percent ?? "")
                         : String(item?.minus_threshold ?? item?.negative_tolerance ?? ""),
                 criticality: getCriticalityLabel(item),
-                approvalL1: normalizeNameList(
-                    item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1
-                ),
+                // approval_l1_user_ids carries every assignee (l1_user_name/
+                // approval_l1_name only ever stored the primary one) - resolve
+                // the full set from the live users list first, falling back to
+                // the single stored name only if none of those ids still
+                // resolve to a real user.
+                approvalL1: resolvedApprovalL1Names.length
+                    ? resolvedApprovalL1Names
+                    : normalizeNameList(
+                        item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1
+                    ),
                 approvalL1Tat: formatTatHours(item?.l1_tat_hours),
             },
         ]);
@@ -960,8 +971,14 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
             const criticality = String(rule.criticality || "").trim();
             const approvalL1Names = normalizeNameList(rule.approvalL1);
             const approvalL1Users = resolveSelectedUsers(users, approvalL1Names);
+            // l1_user_id/approval_l1_user_ids are foreign keys into
+            // users.user_details(id) - the numeric primary key, not the
+            // human-readable employee_id business code (e.g. "2620", which
+            // isn't a real row id and fails that FK constraint). Submission
+            // Threshold's equivalent id resolution already uses .id directly;
+            // this previously preferred .employeeId instead.
             const approvalL1Ids = approvalL1Users
-                .map((userItem) => String(userItem?.employeeId || userItem?.id || "").trim())
+                .map((userItem) => String(userItem?.id || "").trim())
                 .filter(Boolean);
             const primaryApprovalL1Name = approvalL1Names[0] || "";
             const primaryApprovalL1Id = approvalL1Ids[0] || "";
@@ -1119,6 +1136,31 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
 
         thresholdItems.forEach(rememberPercentMode);
 
+        setFormError("");
+        setFormMessage("");
+        // Same two-step preview/confirm flow as Submission Threshold's New
+        // Threshold form - stage the built items here and only persist them
+        // once the reviewer confirms in the preview modal below, instead of
+        // saving straight off Save Threshold.
+        setPreviewPayload({
+            department: selectedDepartment.name,
+            rows: thresholdItems,
+        });
+    };
+
+    const cancelThresholdPreview = () => {
+        if (submitting) return;
+        setPreviewPayload(null);
+    };
+
+    const confirmSaveThreshold = async () => {
+        if (!previewPayload?.rows?.length) return;
+
+        const thresholdItems = previewPayload.rows;
+        const editingThreshold = editingThresholdId
+            ? thresholds.find((item) => getThresholdIdentifier(item) === editingThresholdId) || null
+            : null;
+
         setSubmitting(true);
         setFormError("");
         setFormMessage("");
@@ -1158,6 +1200,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
             }));
             setActiveTab("existing");
             resetForm();
+            setPreviewPayload(null);
             await loadThresholds();
         } catch (error) {
             setFormError(error?.response?.data?.message || error?.message || "Unable to save threshold values.");
@@ -1474,7 +1517,11 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                             className={styles.saveButton}
                                             disabled={submitting}
                                         >
-                                            {submitting ? "Saving..." : "Save Threshold"}
+                                            {submitting
+                                                ? "Saving..."
+                                                : editingThresholdId
+                                                    ? "Preview Update"
+                                                    : "Preview Save"}
                                         </button>
                                     </div>
                                 </div>
@@ -1639,9 +1686,19 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                 const notebookTypes = normalizeNameList(
                                                     item?.input_screen || item?.machine_name
                                                 );
-                                                const approvalL1Names = normalizeNameList(
-                                                    item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1
-                                                );
+                                                // l1_user_name/approval_l1_name only ever store the single
+                                                // "primary" approver - resolving every id in
+                                                // approval_l1_user_ids against the live users list (same as
+                                                // openEditThreshold above) shows everyone currently assigned,
+                                                // not just whichever one happened to save as primary.
+                                                const resolvedRowApprovalL1Names = resolveSelectedUsers(users, item?.approval_l1_user_ids)
+                                                    .map((userItem) => userItem?.name)
+                                                    .filter(Boolean);
+                                                const approvalL1Names = resolvedRowApprovalL1Names.length
+                                                    ? resolvedRowApprovalL1Names
+                                                    : normalizeNameList(
+                                                        item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1
+                                                    );
                                                 return (
                                                 <tr key={rowKey}>
                                                     <td>{item.sub_department || item.erp_product_code || "-"}</td>
@@ -1776,8 +1833,111 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
         </>
     );
 
+    // Same "You're about to save..." preview/confirm modal as Submission
+    // Threshold's New Threshold form - rendered outside the standalone/
+    // embedded branch below so it shows either way instead of only when
+    // this page owns its own shell.
+    const previewModal = previewPayload ? (
+        <div
+            style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(15, 23, 42, 0.72)",
+                display: "grid",
+                placeItems: "center",
+                zIndex: 50,
+                padding: 20,
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Value threshold preview"
+        >
+            <div
+                style={{
+                    width: "min(440px, calc(100vw - 40px))",
+                    background: "#fff",
+                    borderRadius: 20,
+                    padding: 24,
+                    boxShadow: "0 24px 70px rgba(0,0,0,0.28)",
+                    color: "#0f172a",
+                }}
+            >
+                <div style={{ display: "grid", placeItems: "center", marginBottom: 12 }}>
+                    <div
+                        aria-hidden="true"
+                        style={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: "999px",
+                            display: "grid",
+                            placeItems: "center",
+                            background: "#dbeafe",
+                            color: "#2563eb",
+                            fontSize: 22,
+                            fontWeight: 700,
+                        }}
+                    >
+                        !
+                    </div>
+                </div>
+                <p style={{ marginTop: 0, marginBottom: 4, color: "#0f172a", textAlign: "center", fontWeight: 700 }}>
+                    You're about to {editingThresholdId ? "update" : "save"} the following threshold value
+                    {previewPayload.rows.length > 1 ? "s" : ""}{" "}
+                    for <span style={{ color: "#4f63b6" }}>{previewPayload.department}</span>:
+                </p>
+                <div style={{ maxHeight: 240, overflowY: "auto", margin: "12px 0" }}>
+                    {previewPayload.rows.map((row, index) => (
+                        <div
+                            key={`${row.input_screen}-${row.input_field}-${index}`}
+                            style={{
+                                padding: "10px 12px",
+                                borderRadius: 10,
+                                background: "#f4f6fb",
+                                marginBottom: 8,
+                                lineHeight: 1.6,
+                            }}
+                        >
+                            <div style={{ fontSize: 13, fontWeight: 800, color: "#4f63b6" }}>
+                                {row.input_screen} &gt; {row.input_field}
+                            </div>
+                            <div style={{ fontSize: 13, color: "#0f172a" }}>
+                                Actual: {row.actual_value} (+{row.plus_threshold} / -{row.minus_threshold})
+                            </div>
+                            <div style={{ fontSize: 13, color: "#0f172a" }}>
+                                Criticality: {row.criticality || "-"}
+                            </div>
+                            <div style={{ fontSize: 13, color: "#0f172a" }}>
+                                Assigned to: {(row.approval_l1_names || []).join(", ") || row.approval_l1_name || "-"}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 24 }}>
+                    <button type="button" className={styles.clearButton} onClick={cancelThresholdPreview} disabled={submitting}>
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        className={styles.saveButton}
+                        onClick={confirmSaveThreshold}
+                        disabled={submitting}
+                        style={{ background: "#4f63b6", color: "#fff", borderColor: "#4f63b6" }}
+                    >
+                        {submitting ? "Saving..." : "Confirm"}
+                    </button>
+                </div>
+            </div>
+        </div>
+    ) : null;
+
     if (!standalone) {
-        return content;
+        return (
+            <>
+                {content}
+                {previewModal}
+            </>
+        );
     }
 
     return (
@@ -1789,6 +1949,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                 </div>
                 {content}
             </div>
+            {previewModal}
         </div>
     );
 }

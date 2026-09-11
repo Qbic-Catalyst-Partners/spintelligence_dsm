@@ -166,7 +166,6 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     customFieldsSubDepartment = "Blow Room",
     customFieldsNotebook = entryTypeLabel,
     useBlowroomRedux = true,
-    showEntryId = true,
     variety: externalVariety,
     onVarietyChange = null,
     hideVarietyField = false,
@@ -673,8 +672,9 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
 
     const getPreviewData = () => {
         const header = [
+            { label: "Type", value: entryTypeLabel },
+            { label: "Entry ID", value: entryId || "-" },
             { label: "Date", value: date },
-            ...(showEntryId ? [{ label: "BR Waste ID", value: entryId }] : []),
             { label: "Variety", value: formData.variety },
             { label: "Carding Production (KGs)", value: formData.cardingProduction },
             { label: "Study Type", value: formData.studyType },

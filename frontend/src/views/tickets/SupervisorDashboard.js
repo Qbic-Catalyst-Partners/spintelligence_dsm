@@ -202,11 +202,17 @@ const isL4SelfResolveTicket = (ticket) =>
 // L1 is always the one fixing/resubmitting the underlying data; every level
 // above that is reviewing what L1 (or the prior level) already did and either
 // approving it or kicking it back - except the L4 self-resolve types above.
+// Submission Threshold tickets are the other exception: they're assigned
+// straight to L2 (no L1 stage - see checkSubmissionFrequencyMissed in
+// operatorTickets.routes.js), so L2 is the one actually fixing/submitting
+// the missing entry there, same role L1 plays for every other ticket type -
+// matching isFixSubmitOwnedTicket in SupervisorDetails.js.
 const getLevelActionLabel = (levelType, ticket) => {
   const level = String(levelType || "").trim().toUpperCase();
   const stripped = level.startsWith("EXPIRED_") ? level.slice("EXPIRED_".length) : level;
   if (stripped === "L1") return "Fix and Submit";
   if (stripped === "L4" && isL4SelfResolveTicket(ticket)) return "Fix and Submit";
+  if (stripped === "L2" && isSubmissionTicketRecord(ticket)) return "Fix and Submit";
   if (["L2", "L3", "L4", "L5"].includes(stripped)) return "Approve or Reject";
   return "";
 };
@@ -357,17 +363,28 @@ const isUserApproverAtLevel = (ticket, level, userId) => {
 // the moment it escalates away, and L4 never sees a PP ticket still sitting
 // at L1/L2/L3 under a "Mapped" tab. L5 keeps full oversight as usual since
 // it's Mapped-only by design regardless of ticket type.
+// A Closed ticket is the one more exception: once it's Closed, whoever was actually the
+// assigned approver at their OWN level (e.g. the L2 who fixed a Submission Threshold ticket
+// that later got approved at L3) sees it under Owned again, not Mapped, regardless of where
+// it currently sits (approval_l{level}_user_ids is never cleared on escalation - see
+// /submit/:id in operatorTickets.routes.js, which only ever sets the NEXT level's column -
+// so this still resolves correctly after the ticket has moved on). PP tickets keep their
+// stricter "only while it's actually sitting with them" rule even when Closed - see the PP
+// carve-out below.
 const getOwnershipDisplay = (ticket, mode, delegateName, currentUserId) => {
   const viewLevel = String(mode || "L2").trim().toUpperCase();
   const currentLevel = getTicketCurrentLevel(ticket);
   const isPpTicket = ticket?.ticketType === "PP";
+  const isClosedTicket = String(ticket?.status || "").trim().toLowerCase() === "closed";
+  const wasOwnApproverAtOwnLevel =
+    !isPpTicket && viewLevel !== "L1" && viewLevel !== "L5" && isUserApproverAtLevel(ticket, viewLevel, currentUserId);
   const isOwned = isPpTicket
     ? viewLevel !== "L5" && currentLevel === viewLevel
     : viewLevel === "L1"
       ? true
       : viewLevel !== "L5" &&
-        currentLevel === viewLevel &&
-        isUserApproverAtLevel(ticket, viewLevel, currentUserId);
+        ((currentLevel === viewLevel && isUserApproverAtLevel(ticket, viewLevel, currentUserId)) ||
+          (isClosedTicket && wasOwnApproverAtOwnLevel));
   const kind = isOwned ? "owned" : isPpTicket && viewLevel !== "L5" ? "hidden" : "mapped";
   return {
     kind,

@@ -30,7 +30,7 @@ import { useThemeMode } from "@/utils/useThemeMode";
 import styles from "./carding/cardThickPlaceEntry.module.css";
 
 const cardingDepartmentTypes = [
-    { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameterDataEntry },
+    { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry", "Carding - PP"], component: ProcessParameterDataEntry },
     { id: 1, name: "Between & Within Card Data Entry", aliases: ["Between & Within Card Data Entry", "Between and Within Card Data Entry", "Between Within Card Entry"] },
     { id: 2, name: "Thick place & CV", aliases: ["Thick place & CV", "Card Thick Place Entry", "Card Thick Place Checking"] },
     { id: 3, name: "Carding NRE%", aliases: ["Carding NRE%", "Carding NRE", "Carding NRE Percent"] },
@@ -359,7 +359,6 @@ function Carding() {
                                 customFieldsSubDepartment="Carding"
                                 customFieldsNotebook="Individual Card Waste Study"
                                 useBlowroomRedux={false}
-                                showEntryId={false}
                                 variety={cardWasteVariety}
                                 onVarietyChange={setCardWasteVariety}
                                 onStudyTypeChange={setCardWasteStudyType}

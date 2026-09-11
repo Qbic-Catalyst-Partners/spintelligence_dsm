@@ -1083,6 +1083,10 @@ const saveWrappingCardingNotebook = async (req, res, next) => {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         RETURNING *`,
         [
+          // Every row of a multi-row OCR submission now shares the same reserved id instead
+          // of a per-row "-1"/"-2" suffix (same fix as Blow Room's Drop Test) - this table's
+          // old wrapping_carding_notebook_entry_id_uq unique index is dropped in connection.js
+          // to allow that reuse.
           submissionId,
           row.entry_id ?? row.id_no ?? row.sourceId ?? row.ID ?? row.id_value ?? row.notebook_id ?? null,
           toNullableNumber(row.serial_no ?? row.s_no ?? row.sno ?? row['S.No'] ?? row.SNo ?? (index + 1)),

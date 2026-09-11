@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
+import { useSelector } from "react-redux";
 import { FiFile, FiRefreshCw, FiUpload } from "react-icons/fi";
 import Footer from "@/components/Footer";
 import SuccessModal from "@/components/SuccessModal";
 import PreviewModal from "@/components/PreviewModal";
 import { runOcrForDocument } from "@/apis/ocrApi";
 import apiConfig from "@/apis/apiConfig";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 
 const wrappingTypes = ["Carding", "Drawing", "Simplex"];
 export const WRAPPING_INPUT_SCREEN_COUNT = wrappingTypes.length;
@@ -129,6 +132,7 @@ const normalizeWrappingSaveRows = (rows) =>
 
 function Wrapping({ fixedType = "", backPath = "/departments/quality-control", title = "Quality Control - Wrapping Notebook" }) {
   const router = useRouter();
+  const user = useSelector((state) => state.auth?.user);
   const inputRef = useRef(null);
   const initialType = wrappingTypes.find((type) => toDocType(type) === toDocType(fixedType)) || wrappingTypes[0];
   const [selectedType, setSelectedType] = useState(initialType);
@@ -270,6 +274,47 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
       setMessage("");
       setSuccessMessage(formatSavedRecordMessage(selectedType, response.data));
       setShowSuccess(true);
+
+      // Acknowledgement Threshold's screen catalog lists "Carding"/"Drawing"/"Simplex"
+      // under the Wrapping sub-department (see screenCatalog.js) — this screen never
+      // called recordSubmittedNotebook at all, so none of the three ever reached
+      // ticketing_system.submitted_notebooks. selectedType already matches those
+      // catalog strings exactly.
+      const savedRows = Array.isArray(response.data?.data) ? response.data.data : [];
+      const savedEntryId = String(
+        savedRows[0]?.entry_id ?? response.data?.id ?? response.data?.entry_id ?? response.data?.entryId ?? ""
+      ).trim();
+      try {
+        await recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Wrapping",
+          notebookName: selectedType,
+          entryId: savedEntryId,
+          previewItems: getPreviewTableRows(rows).flatMap((row, index) =>
+            MACHINE_FIELDS.map((field) => ({ label: `Row ${index + 1} - ${field}`, value: row[field] }))
+          ),
+          user,
+          extra: {
+            submitted_fields: { doc_type: docType, rows: normalizeWrappingSaveRows(rows) },
+          },
+        });
+      } catch (recordError) {
+        console.warn("Wrapping submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+      }
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Wrapping",
+          screenName: selectedType,
+          machineName: selectedType,
+          entryId: savedEntryId,
+          values: getPreviewTableRows(rows).flatMap((row, index) =>
+            MACHINE_FIELDS.map((field) => ({ label: `Row ${index + 1} - ${field}`, value: row[field] }))
+          ),
+        });
+      } catch (ticketError) {
+        console.error("Threshold ticket generation failed:", ticketError);
+      }
     } catch (error) {
       const message = error?.response?.data?.detail || error?.response?.data?.message || error.message || "Unknown error";
       setMessage(`Save failed: ${message}`);

@@ -28,7 +28,7 @@ import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 
 const autoconerTypes = [
-  { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameter },
+  { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry", "Autoconer - PP"], component: ProcessParameter },
   { id: 1, name: "PP - Autoconer Q2", aliases: ["PP - Autoconer Q2", "Autoconer Q2", "Q2"], component: AutoconerQ2 },
   { id: 2, name: "PP - Autoconer Q3", aliases: ["PP - Autoconer Q3", "Autoconer Q3", "Q3"], component: AutoconerQ3 },
   { id: 12, name: "PP - Autoconer Q4", aliases: ["PP - Autoconer Q4", "Autoconer Q4", "Q4"], component: AutoconerQ4 },

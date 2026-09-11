@@ -687,7 +687,7 @@ const getAcknowledgementThresholdSelectColumns = async () => {
 const getSubmissionFrequencyConfigForNotebook = async (submission) => {
   const result = await client.query(
     `SELECT id, screen_name, department, sub_department, "range", frequency,
-            approval_l1, criticality
+            approval_l2, tracked_l2_user_ids, criticality
      FROM ticketing_system.screen_submission_frequency
      WHERE is_active = true
        AND LOWER(TRIM(screen_name)) = LOWER(TRIM($1))
@@ -710,7 +710,7 @@ const getSubmissionFrequencyConfigForNotebook = async (submission) => {
 const getSubmissionFrequencyConfigForThreshold = async ({ screenName, department, subDepartment }) => {
   const result = await client.query(
     `SELECT id, screen_name, department, sub_department, "range", frequency,
-            approval_l1, criticality
+            approval_l2, tracked_l2_user_ids, criticality
      FROM ticketing_system.screen_submission_frequency
      WHERE is_active = true
        AND (
@@ -780,8 +780,21 @@ const resolveAcknowledgementDeadlineHours = async (submission) => {
   return { acknowledgementThreshold: null, frequencyConfig, hours };
 };
 
-const buildSubmissionId = ({ notebook, entryId, sourceTable, sourceRecordId }) => {
+// notebook_submission_id must be unique per PHYSICAL screen, not per display
+// name - several departments reuse the same notebook label with the same
+// entry-id prefix ("Nati Data Entry" -> "NAT" in both Carding and Comber,
+// "U% Data Entry" -> "U" in Carding/Comber/Drawframe/Simplex, etc), each with
+// its own independent id sequence. Without department/sub_department in the
+// key, two unrelated screens whose sequences happen to reach the same number
+// (e.g. both minting "NAT-0007") collide on this id - the newer submission's
+// ON CONFLICT DO UPDATE then overwrites the older, unrelated row's payload in
+// place (silently corrupting its history) while leaving that row's
+// submitted_at/department untouched, so the ticket/acknowledgement engines
+// that filter on those columns never see the new submission at all.
+const buildSubmissionId = ({ department, subDepartment, notebook, entryId, sourceTable, sourceRecordId }) => {
   const parts = [
+    department,
+    subDepartment,
     notebook,
     entryId || sourceRecordId || Date.now(),
     sourceTable || 'notebook'
@@ -804,7 +817,7 @@ const recordPpNotebookSubmission = async ({
   submittedByName,
   submittedPayload
 }) => {
-  const notebookSubmissionId = buildSubmissionId({ notebook, entryId, sourceTable, sourceRecordId });
+  const notebookSubmissionId = buildSubmissionId({ department, subDepartment, notebook, entryId, sourceTable, sourceRecordId });
 
   // ack_due_at was always a flat 24 hours regardless of what's actually
   // configured on the Acknowledgement Threshold screen for this notebook
@@ -1630,6 +1643,8 @@ router.post('/', async (req, res, next) => {
     const sourceTable = cleanText(req.body?.source_table);
     const sourceRecordId = cleanText(req.body?.source_record_id || req.body?.record_id);
     const notebookSubmissionId = cleanText(req.body?.notebook_submission_id) || buildSubmissionId({
+      department: cleanText(req.body?.department),
+      subDepartment: cleanText(req.body?.sub_department || req.body?.subDepartment),
       notebook,
       entryId,
       sourceTable,
@@ -1936,15 +1951,13 @@ router.get('/', async (req, res, next) => {
     const allUsersResult = await client.query(`SELECT id, employee_id, full_name FROM users.user_details`);
     const allUsers = allUsersResult.rows;
 
-    // ticketing_system.submitted_notebooks.status defaults to 'PENDING_ACK'
-    // for EVERY submission (recordPpNotebookSubmission never overrides it) -
-    // that column only ever meant "hasn't been acknowledged yet", not
-    // "acknowledgement is actually required for this screen". Without this,
-    // every single submitted notebook showed up in the Pending tab as
-    // needing acknowledgement, even ones with no Acknowledgement Threshold
-    // configured at all (generateOverdueNotebookTickets already gets this
-    // right - it silently skips raising a ticket when no threshold/L4
-        // resolves - this list just never matched that same rule).
+    // requiresAcknowledgement only gates whether an overdue ticket gets raised
+    // (see generateOverdueNotebookTickets, which skips that when no
+    // threshold/L4 resolves) - it must NOT also gate which tab a submission
+    // shows under, or notebooks from screens with no configured threshold
+    // silently fall into "Closed" while still unacknowledged. isPending
+    // reflects acknowledgement state alone; requiresAcknowledgement is kept
+    // on the row for the frontend to use for ticket-related UI.
 
     const activeThresholdsResult = await client.query(
       `SELECT screen_name FROM ticketing_system.notebook_acknowledgement_threshold WHERE is_active = true`
@@ -1974,7 +1987,7 @@ router.get('/', async (req, res, next) => {
         supervisor: getNotebookSupervisorNameText(withAssignments),
         createdAt: getNotebookCreatedAt(row),
         requiresAcknowledgement,
-        isPending: requiresAcknowledgement && isNotebookPendingAcknowledgementRow(row),
+        isPending: isNotebookPendingAcknowledgementRow(row),
       };
     });
 

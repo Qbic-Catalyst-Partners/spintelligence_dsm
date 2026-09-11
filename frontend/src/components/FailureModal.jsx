@@ -1,7 +1,7 @@
 import React from "react";
 import styles from "@/styles/failureModal.module.css";
 
-function FailureModal({ open, message = "Error Occured", onClose }) {
+function FailureModal({ open, message = "Error Occured", onClose, sessionExpired = false, onNavigateLogin }) {
   if (!open) return null;
 
   return (
@@ -12,9 +12,15 @@ function FailureModal({ open, message = "Error Occured", onClose }) {
         </div>
         <div className={styles.message}>{message}</div>
 
-        <button type="button" className={styles.button} onClick={onClose}>
-          Close
-        </button>
+        {sessionExpired ? (
+          <button type="button" className={styles.button} onClick={onNavigateLogin}>
+            Click here
+          </button>
+        ) : (
+          <button type="button" className={styles.button} onClick={onClose}>
+            Close
+          </button>
+        )}
       </div>
     </div>
   );
