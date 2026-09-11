@@ -4,6 +4,7 @@ import { Provider } from 'react-redux';
 import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useRouter } from "next/router";
+import ChatWidget from "@/components/ChatWidget";
 import FailureModal from "@/components/FailureModal";
 import Header from "@/components/Header";
 import SuccessModal from "@/components/SuccessModal";
@@ -229,6 +230,7 @@ function AppShell({ Component, pageProps }) {
         scope="global"
         onClose={() => setSuccessModal({ open: false, message: "Data Submitted" })}
       />
+      {!isLoginScreen && <ChatWidget />}
     </>
   );
 }

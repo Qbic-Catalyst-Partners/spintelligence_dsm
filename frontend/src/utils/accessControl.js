@@ -92,6 +92,11 @@ export const isSubmittedNotebookApproverUser = (user) =>
 // of their role field.
 export const isDelegationManagerUser = (user) => getUserLevelKey(user) === "L5";
 
+// AI chat agent (floating assistant widget) is restricted to L5 (Admin/MD) -
+// the same top-of-hierarchy level as the Delegation System, kept as its own
+// export since the two features are unrelated and may diverge later.
+export const isAiAgentUser = (user) => getUserLevelKey(user) === "L5";
+
 export const isDashboardManagerUser = (user) =>
   isFullAccessUser(user) || getRoleKeys(user).some((role) => role.includes("admin"));
 
