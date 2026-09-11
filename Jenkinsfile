@@ -18,15 +18,22 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                // This pipeline definition lives on ci/deploy-staging (kept separate from
-                // app code so staging<->main merges never carry Jenkinsfile/k8s across
-                // branches), but the code to actually build always comes from staging -
-                // reuses this job's already-configured repo URL/credentials (scm.userRemoteConfigs),
-                // just overriding the branch, so nothing needs to be hardcoded here.
+                // Re-checkout this same branch (ci/deploy-staging) at the workspace root
+                // so k8s/ is guaranteed present for the Deploy stage below, regardless of
+                // whether this job has "Lightweight checkout" enabled (which would
+                // otherwise only fetch the Jenkinsfile's text, not the rest of the tree).
+                checkout scm
+
+                // App code always comes from staging, checked out into app/ - a separate
+                // directory so it never collides with (or wipes out) this branch's own
+                // Jenkinsfile/k8s/ at the root. Reuses this job's already-configured repo
+                // URL/credentials (scm.userRemoteConfigs), just overriding the branch, so
+                // nothing needs to be hardcoded here.
                 checkout([
                     $class: 'GitSCM',
                     branches: [[name: '*/staging']],
-                    userRemoteConfigs: scm.userRemoteConfigs
+                    userRemoteConfigs: scm.userRemoteConfigs,
+                    extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'app']]
                 ])
             }
         }
@@ -34,8 +41,8 @@ pipeline {
         stage('Load env files') {
             steps {
                 sh """
-                    cp ${ENV_FILES_DIR}/env_backend.txt backend/.env
-                    cp ${ENV_FILES_DIR}/env_frontend.txt frontend/.env
+                    cp ${ENV_FILES_DIR}/env_backend.txt app/backend/.env
+                    cp ${ENV_FILES_DIR}/env_frontend.txt app/frontend/.env
                 """
             }
         }
@@ -50,7 +57,7 @@ pipeline {
 
         stage('Build & Push Backend') {
             steps {
-                dir('backend') {
+                dir('app/backend') {
                     sh """
                         docker build -t ${BACKEND_IMAGE}:${IMAGE_TAG} -t ${BACKEND_IMAGE}:latest .
                         docker push ${BACKEND_IMAGE}:${IMAGE_TAG}
@@ -62,7 +69,7 @@ pipeline {
 
         stage('Build & Push Frontend') {
             steps {
-                dir('frontend') {
+                dir('app/frontend') {
                     // .env (copied above) is picked up by `next build` automatically and
                     // baked into the JS bundle as NEXT_PUBLIC_API_URL — no build-arg needed.
                     sh """
@@ -81,11 +88,11 @@ pipeline {
                 sh """
                     kubectl apply -f k8s/namespace.yaml
 
-                    # Refresh the backend Secret from backend/.env on every deploy, so
+                    # Refresh the backend Secret from app/backend/.env on every deploy, so
                     # editing env_backend.txt on the VPS is enough to roll out changes —
                     # create-or-update, since the Secret already exists after the first run.
                     kubectl create secret generic backend-env \
-                      --from-env-file=backend/.env \
+                      --from-env-file=app/backend/.env \
                       -n ${NAMESPACE} \
                       --dry-run=client -o yaml | kubectl apply -f -
 

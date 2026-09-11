@@ -6,8 +6,12 @@ kubectl-deploy config into `main` (pm2/Hostinger, no kubectl there) or leaves
 `staging`'s Jenkins job silently reading a stale copy. The Jenkins job's
 "Pipeline script from SCM" branch specifier points here; the `Checkout` stage
 inside the Jenkinsfile then explicitly pulls the actual app code from
-`staging` regardless of that. Change the deploy pipeline only on this branch;
-change app code only on `staging`/`main`.
+`staging` into an `app/` subdirectory (keeping this branch's own `k8s/` intact
+at the workspace root, since a plain `git checkout` of `staging` at the root
+would otherwise wipe `k8s/`, which doesn't exist on `staging`). Env files land
+at `app/backend/.env` / `app/frontend/.env` accordingly — see "Env files"
+below. Change the deploy pipeline only on this branch; change app code only
+on `staging`/`main`.
 
 Run these once on the VPS (k3s already installed) before the first Jenkins deploy.
 Everything after this is automated by the root `Jenkinsfile`.
@@ -33,9 +37,10 @@ This is **outside** the Jenkins workspace on purpose: a clean checkout
 (`git clean -fdx`) doesn't know these files are supposed to survive and
 would delete them if they lived inside the repo checkout.
 
-The Jenkinsfile's `Load env files` stage copies these into `backend/.env`
-and `frontend/.env` at the start of every run, and the `Deploy to
-Kubernetes` stage re-creates the `backend-env` Secret from `backend/.env`
+The Jenkinsfile's `Load env files` stage copies these into `app/backend/.env`
+and `app/frontend/.env` at the start of every run (the `app/` prefix is where
+the `staging` branch's code gets checked out — see above), and the `Deploy to
+Kubernetes` stage re-creates the `backend-env` Secret from `app/backend/.env`
 each time — so editing `env_backend.txt` and re-running the Jenkins job is
 enough to roll out a config change. Nothing to do here manually beyond
 keeping those two files up to date.
