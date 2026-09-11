@@ -1,5 +1,14 @@
 # One-time cluster setup
 
+This `Jenkinsfile`/`k8s/` pair lives on `ci/deploy-staging`, not on `staging` or
+`main` — kept off both app branches so merging code between them never drags
+kubectl-deploy config into `main` (pm2/Hostinger, no kubectl there) or leaves
+`staging`'s Jenkins job silently reading a stale copy. The Jenkins job's
+"Pipeline script from SCM" branch specifier points here; the `Checkout` stage
+inside the Jenkinsfile then explicitly pulls the actual app code from
+`staging` regardless of that. Change the deploy pipeline only on this branch;
+change app code only on `staging`/`main`.
+
 Run these once on the VPS (k3s already installed) before the first Jenkins deploy.
 Everything after this is automated by the root `Jenkinsfile`.
 

@@ -1,7 +1,0 @@
-SyntaxError: src/views/tickets/SupervisorDashboard.js: Unexpected token (45:10)
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return value;
-  }
-};

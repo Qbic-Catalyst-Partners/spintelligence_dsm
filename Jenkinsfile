@@ -18,7 +18,16 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                // This pipeline definition lives on ci/deploy-staging (kept separate from
+                // app code so staging<->main merges never carry Jenkinsfile/k8s across
+                // branches), but the code to actually build always comes from staging -
+                // reuses this job's already-configured repo URL/credentials (scm.userRemoteConfigs),
+                // just overriding the branch, so nothing needs to be hardcoded here.
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/staging']],
+                    userRemoteConfigs: scm.userRemoteConfigs
+                ])
             }
         }
 
