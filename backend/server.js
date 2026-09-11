@@ -111,7 +111,25 @@ const PP_MANAGED_ROUTES = new Set([
 // this exclusion the generic auto-entry-id middleware below still tried to mint/validate an
 // entry_id for them, failing every save with "Invalid entry_id" or "Duplicate entry_id".
 const NON_ENTRY_DEPARTMENT_ROUTES = new Set([
-  '/spinning/wheel-change/approval-config'
+  '/spinning/wheel-change/approval-config',
+  // The three Wrapping notebook screens (wrapping.jsx) generate their own entry_id
+  // independently via a dedicated Postgres sequence per table (nextWrappingDrawframeSubmissionId
+  // /nextWrappingCardingSubmissionId/nextWrappingSimplexSubmissionId in drawframe.js/carding.js/
+  // simplex.js, producing DWR-/CWR-/SWR-NNNN) and never read req.body.entry_id at all - none of
+  // these routes are in ENTRY_ID_ROUTE_PREFIXES, so this middleware's own auto-reservation has
+  // no prefix to mint one with and would now fail outright (see getNextEntryIdForRoute's removed
+  // bare-number fallback) for a value the real handler was going to ignore and replace anyway.
+  // Excluded outright rather than mapped, since a route with its own self-contained id scheme
+  // has nothing for this shared reservation system to manage.
+  '/drawframe/wrapping-drawframe-notebook',
+  '/drawframe/wrapping/drawframe-notebook',
+  '/drawframe/drawframe-notebook/wrapping',
+  '/carding/wrapping-carding-notebook',
+  '/carding/wrapping/carding-notebook',
+  '/carding/carding-notebook/wrapping',
+  '/simplex/wrapping-simplex-notebook',
+  '/simplex/wrapping/simplex-notebook',
+  '/simplex/simplex-notebook/wrapping'
 ]);
 
 const normalizeEntryRoutePath = (value) => {
@@ -123,8 +141,6 @@ const normalizeEntryRoutePath = (value) => {
 
 const getEntryModuleName = (routePath) =>
   DEPARTMENT_ROUTE_PREFIXES.find((prefix) => routePath.startsWith(prefix))?.slice(1) || 'unknown';
-
-const formatNextEntryId = (value) => String(value).padStart(4, '0');
 
 const ENTRY_ID_ROUTE_TABLES = {
   '/mixing/cotton-hvi': 'mixing.cotton_hvi_data_entry',
@@ -409,6 +425,20 @@ const extractFrontendEntryId = (body) => {
 
 const getNextEntryIdForRoute = async ({ routePath, moduleName }) => {
   const mappedTable = ENTRY_ID_ROUTE_TABLES[routePath];
+  const routePrefix = ENTRY_ID_ROUTE_PREFIXES[routePath];
+  // No bare-number fallback anymore - every route that reaches here MUST have a real prefix
+  // configured in ENTRY_ID_ROUTE_PREFIXES. The old fallback (formatNextEntryId, plain padded
+  // digits with no prefix) never actually produced a stored row - the PREFIX-NUMBER regex
+  // guard downstream in the auto-entry-id middleware always rejected it first (that's what
+  // the Wrapping notebook routes hit before they were mapped) - but it still let a route with
+  // a missing mapping fail late, with a confusing "Invalid entry_id" message that gave no hint
+  // the real problem was an unmapped route. Failing here instead, immediately and by name, is
+  // the same outcome (no bad data ever reaches the database either way) with a clearer cause.
+  if (!routePrefix) {
+    const err = new Error(`No entry_id prefix configured for route "${routePath}" - add it to ENTRY_ID_ROUTE_PREFIXES in server.js.`);
+    err.statusCode = 500;
+    throw err;
+  }
   // Always check the registry, even when a mapped table exists — a mapped-table-only
   // computation ignores any id already RESERVED in ticketing_system.frontend_entry_registry
   // (e.g. a prior attempt that reserved an id, then failed before the department-table insert
@@ -416,13 +446,10 @@ const getNextEntryIdForRoute = async ({ routePath, moduleName }) => {
   // every retry with "Duplicate entry_id" even though the real department table is empty.
   const registryResult = await db.query(getRegisteredEntryIdMaxSql, [routePath]);
   const registryMax = Number(registryResult?.rows[0]?.max_number || 0);
-  const routePrefix = ENTRY_ID_ROUTE_PREFIXES[routePath];
-  const tableEntryIdPrefix = routePrefix ? `${routePrefix.prefix}${routePrefix.separator}` : null;
+  const tableEntryIdPrefix = `${routePrefix.prefix}${routePrefix.separator}`;
   const tableMax = await getTableEntryIdMax(mappedTable, tableEntryIdPrefix);
   const nextNumber = Math.max(registryMax, tableMax) + 1;
-  const entryId = routePrefix
-    ? `${routePrefix.prefix}${routePrefix.separator}${String(nextNumber).padStart(routePrefix.width, '0')}`
-    : formatNextEntryId(nextNumber);
+  const entryId = `${routePrefix.prefix}${routePrefix.separator}${String(nextNumber).padStart(routePrefix.width, '0')}`;
 
   return {
     source: 'postgres',
@@ -507,6 +534,15 @@ app.use(async (req, res, next) => {
     // truth - the real uniqueness lives on each department table), silently
     // minting a fresh id and retrying is safe and keeps genuine user
     // submissions from being lost over a bookkeeping collision.
+    //
+    // Blow Room's Drop Test is the one deliberate exception: every tuft row of a
+    // submission now POSTs the SAME entry_id to this SAME route on purpose (see
+    // dropTestDataEntry.jsx - one shared id per submission, not the old per-tuft "-01"/"-02"
+    // suffix), so the 2nd/3rd tuft's (route_path, entry_id) pair is EXPECTED to already be
+    // registered from the 1st tuft's request. Without this carve-out that collision looked
+    // identical to a genuine double-booking, so the retry logic below silently substituted a
+    // DIFFERENT id for every tuft after the first - the opposite of what the screen needs.
+    const REUSABLE_ENTRY_ID_ROUTES = new Set(['/blowroom/drop-test']);
     const MAX_ATTEMPTS = 3;
     let lastError = null;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
@@ -520,6 +556,10 @@ app.use(async (req, res, next) => {
         lastError = null;
         break;
       } catch (insertError) {
+        if (insertError?.code === '23505' && REUSABLE_ENTRY_ID_ROUTES.has(routePath)) {
+          lastError = null;
+          break;
+        }
         if (insertError?.code !== '23505' || attempt === MAX_ATTEMPTS) {
           lastError = insertError;
           break;

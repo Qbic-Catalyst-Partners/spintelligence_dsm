@@ -1301,6 +1301,9 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
                     {row.frequency} time{Number(row.frequency) === 1 ? "" : "s"} every {row.range}{" "}
                     {Number(row.range) === 1 ? "day" : "days"}
                   </div>
+                  <div style={{ fontSize: 13, color: "#0f172a" }}>
+                    Assigned to: {row.approval_l2 || "-"}
+                  </div>
                 </div>
               ))}
             </div>

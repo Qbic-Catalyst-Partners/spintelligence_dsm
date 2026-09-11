@@ -66,7 +66,8 @@ const THRESHOLD_TYPE_COLUMNS = {
     { key: "detail", label: "Plus (+) / Minus (-)" },
   ],
   submission: [
-    { key: "l1", label: "L1" },
+    { key: "l2", label: "L2" },
+    { key: "criticality", label: "Criticality" },
     { key: "days", label: "Days" },
     { key: "frequency", label: "Frequency" },
   ],
@@ -164,7 +165,12 @@ const normalizeValueThresholdRow = (item, users) => {
   subDepartment: item?.sub_department || item?.erp_product_code || "-",
   notebookType: item?.notebook || item?.input_screen || item?.machine_name || "-",
   field: item?.field || item?.input_field || item?.parameter_name || "-",
-  l1: item?.l1_user_name || item?.approval_l1_name || item?.approval_l1_names || l1UserNames.join(", ") || item?.approval_l1 || item?.approval_l1_user_name || "-",
+  // l1_user_name/approval_l1_name only ever store the single "primary"
+  // approver - resolving every id in approval_l1_user_ids against the live
+  // users list (l1UserNames) shows everyone currently assigned instead of
+  // just whichever one happened to save as primary. Checked first so it
+  // wins over the single-name fields below whenever it resolves anything.
+  l1: l1UserNames.length ? l1UserNames.join(", ") : (item?.l1_user_name || item?.approval_l1_name || item?.approval_l1_names || item?.approval_l1 || item?.approval_l1_user_name || "-"),
   typicalValue: item?.typical_value ?? item?.actual_value ?? "-",
   detail: `${item?.plus_value ?? item?.plus_threshold ?? item?.positive_tolerance ?? "-"} / ${item?.minus_value ?? item?.minus_threshold ?? item?.negative_tolerance ?? "-"}`,
   isActive: getActiveValue(item),
@@ -181,7 +187,8 @@ const normalizeSubmissionThresholdRow = (item) => ({
   subDepartment: item?.sub_department || "-",
   notebookType: item?.screen_name || "-",
   field: "-",
-  l1: nameListToText(item?.approval_l1_name || item?.approval_l1),
+  l2: nameListToText(item?.approval_l2_name || item?.approval_l2),
+  criticality: item?.criticality || "-",
   days: item?.range ?? "-",
   frequency: item?.frequency ?? "-",
   detail: `Every ${item?.range ?? "-"}d x ${item?.frequency ?? "-"}`,
@@ -442,10 +449,9 @@ function RowActionsMenu({ row, loader, onEdit, onToggleStatus, onDelete, busy })
   );
 }
 
-function ExistingThresholdsTab({ onEditRow }) {
+function ExistingThresholdsTab({ onEditRow, thresholdType, setThresholdType }) {
   const dispatch = useDispatch();
   const users = useSelector((state) => state.users?.users || []);
-  const [thresholdType, setThresholdType] = useState("");
   const [filters, setFilters] = useState(buildExistingFilters);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -454,6 +460,17 @@ function ExistingThresholdsTab({ onEditRow }) {
 
   useEffect(() => {
     if (!users.length) dispatch(fetchUsers());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // thresholdType is lifted to ThresholdsHub so it survives this tab
+  // unmounting (e.g. while the viewer edits a row on another tab) - without
+  // re-fetching here on mount, coming back to Existing Thresholds after an
+  // edit kept showing whatever `rows` this fresh instance started with
+  // (empty, since local state resets on remount) until the viewer manually
+  // reselected the same type from the dropdown to force a refetch.
+  useEffect(() => {
+    if (thresholdType) loadRows(thresholdType);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1363,6 +1380,11 @@ export default function ThresholdsHub() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("value");
   const [editItems, setEditItems] = useState({});
+  // Lifted here (rather than local state inside ExistingThresholdsTab) so it
+  // survives that tab unmounting while the viewer edits a row elsewhere -
+  // see the mount effect in ExistingThresholdsTab that re-fetches using this
+  // once they come back.
+  const [existingThresholdType, setExistingThresholdType] = useState("");
   const user = useSelector((state) => state.auth?.user);
   const canAccessAcknowledgement = isSubmittedNotebookManagerUser(user);
   const canAccessOthers = isFullAccessUser(user);
@@ -1454,7 +1476,13 @@ export default function ThresholdsHub() {
             onEditItemHandled={() => clearEditItem("wheel-change-approval")}
           />
         ) : null}
-        {activeTab === "existing" ? <ExistingThresholdsTab onEditRow={handleEditRow} /> : null}
+        {activeTab === "existing" ? (
+          <ExistingThresholdsTab
+            onEditRow={handleEditRow}
+            thresholdType={existingThresholdType}
+            setThresholdType={setExistingThresholdType}
+          />
+        ) : null}
       </div>
     </div>
   );

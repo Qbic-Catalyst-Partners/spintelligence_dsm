@@ -74,8 +74,8 @@ function createUrlPool(raw, isSupabase, optionPrefix = 'DB') {
     connectionString: getPoolConnectionString(raw, isSupabase),
     ssl: isSupabase ? { rejectUnauthorized: false } : (process.env[`${optionPrefix}_SSL`] === 'true'),
     max: Number(process.env[`${optionPrefix}_POOL_MAX`] || (isSupabase ? 5 : 20)),
-    min: Number(process.env[`${optionPrefix}_POOL_MIN`] || (isSupabase ? 0 : 2)),
-    idleTimeoutMillis: Number(process.env[`${optionPrefix}_IDLE_TIMEOUT_MS`] || (isSupabase ? 10000 : 30000)),
+    min: Number(process.env[`${optionPrefix}_POOL_MIN`] || (isSupabase ? 1 : 2)),
+    idleTimeoutMillis: Number(process.env[`${optionPrefix}_IDLE_TIMEOUT_MS`] || (isSupabase ? 300000 : 30000)),
     connectionTimeoutMillis: Number(process.env[`${optionPrefix}_CONNECT_TIMEOUT_MS`] || 10000),
     statement_timeout: Number(process.env[`${optionPrefix}_STATEMENT_TIMEOUT_MS`] || 30000),
     keepAlive: true,
@@ -142,8 +142,8 @@ const pool = new Pool(
         connectionString: getConnectionString(),
         ssl: isSupabaseUrl ? { rejectUnauthorized: false } : (process.env.DB_SSL === 'true'),
         max: Number(process.env.DB_POOL_MAX || (isSupabaseUrl ? 5 : 20)),
-        min: Number(process.env.DB_POOL_MIN || (isSupabaseUrl ? 0 : 2)),
-        idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS || (isSupabaseUrl ? 10000 : 30000)),
+        min: Number(process.env.DB_POOL_MIN || (isSupabaseUrl ? 1 : 2)),
+        idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS || (isSupabaseUrl ? 300000 : 30000)),
         connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS || 10000),
         statement_timeout: Number(process.env.DB_STATEMENT_TIMEOUT_MS || 30000),
         keepAlive: true,
@@ -280,6 +280,34 @@ const initPromise = (async () => {
   await pool.query(`
     ALTER TABLE IF EXISTS blowroom.drop_test
       ADD COLUMN IF NOT EXISTS average_weight NUMERIC;
+  `);
+
+  // Drop Test now shares ONE entry_id across every tuft row of the same submission (the
+  // per-tuft "-01"/"-02" suffix was removed from dropTestDataEntry.jsx/routes/blowroom.js) -
+  // uniqueness only needs to hold PER SUBMISSION, which the entry_id reservation system
+  // already guarantees on its own (each new submission gets a genuinely new id), not per row
+  // within a submission. The old drop_test_entry_id_uq index enforced uniqueness per ROW,
+  // which would reject every tuft after the first one under the new scheme.
+  await pool.query(`
+    DROP INDEX IF EXISTS blowroom.drop_test_entry_id_uq;
+  `);
+
+  // drop_id is retired - Drop Test's entry_id already IS the shared per-submission id every
+  // tuft row carries now, so there's nothing left for a separate parent-id column to add.
+  // Kept (per instruction) rather than dropped outright, but no longer required - the route
+  // handler stops populating it, so it must be nullable or every insert would fail.
+  await pool.query(`
+    ALTER TABLE IF EXISTS blowroom.drop_test
+      ALTER COLUMN drop_id DROP NOT NULL;
+  `);
+
+  // Same fix as Drop Test, for Wrapping's Carding notebook: every row of a multi-row OCR
+  // submission now shares the same reserved entry_id instead of a per-row "-1"/"-2" suffix
+  // (see routes/carding.js's saveWrappingCardingNotebook) - the old per-ROW unique index would
+  // reject every row after the first one under that new scheme. drawframe_notebook/
+  // simplex_notebook never had an equivalent unique index, so only this one needs dropping.
+  await pool.query(`
+    DROP INDEX IF EXISTS wrapping.wrapping_carding_notebook_entry_id_uq;
   `);
 
   await pool.query(`
@@ -570,6 +598,50 @@ const initPromise = (async () => {
     END $$;
   `);
 
+  // approval_l1/approval_l1_name predate Submission Threshold moving to a
+  // straight-to-L2 flow (same history as tracked_l1_user_ids above) - the
+  // route layer has been reading/writing them as "approval_l2" via a SELECT
+  // alias ever since, which only masks the mismatch in query results, not in
+  // the actual INSERT/UPDATE column names. Renamed in place for the same
+  // reason as tracked_l2_user_ids: no other feature/table reads this column,
+  // so there's no shared-column risk, and renaming keeps existing
+  // assignments. Safe to run repeatedly: renames only the first time (once
+  // approval_l2/approval_l2_name exist, this is a no-op).
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'ticketing_system' AND table_name = 'screen_submission_frequency'
+      ) THEN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'ticketing_system' AND table_name = 'screen_submission_frequency'
+            AND column_name = 'approval_l1'
+        ) AND NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'ticketing_system' AND table_name = 'screen_submission_frequency'
+            AND column_name = 'approval_l2'
+        ) THEN
+          ALTER TABLE ticketing_system.screen_submission_frequency
+            RENAME COLUMN approval_l1 TO approval_l2;
+        END IF;
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'ticketing_system' AND table_name = 'screen_submission_frequency'
+            AND column_name = 'approval_l1_name'
+        ) AND NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'ticketing_system' AND table_name = 'screen_submission_frequency'
+            AND column_name = 'approval_l2_name'
+        ) THEN
+          ALTER TABLE ticketing_system.screen_submission_frequency
+            RENAME COLUMN approval_l1_name TO approval_l2_name;
+        END IF;
+      END IF;
+    END $$;
+  `);
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS notifications_ticket_id_idx
     ON ticketing_system.notifications (ticket_id);
@@ -785,6 +857,29 @@ if (supabaseMirrorPool) {
     const message = err?.message || String(err);
     console.warn(`[Supabase mirror pool] idle client dropped and will be replaced: ${message}`);
   });
+}
+
+// During low-traffic windows (e.g. night shift) gaps between real requests can exceed the
+// pool's idle timeout, so the connection gets dropped and the *next* user request pays the
+// cost of reconnecting from scratch - which can be slow enough to blow past the frontend's
+// request timeout and surface as a false "timed out" error. This heartbeat keeps a connection
+// warm (and transparently re-establishes one if it was dropped) off the request path, so user
+// requests almost always hit an already-open connection instead of reconnecting themselves.
+const HEARTBEAT_INTERVAL_MS = Number(process.env.DB_HEARTBEAT_INTERVAL_MS || 120000);
+
+function startHeartbeat(targetPool, label) {
+  const timer = setInterval(() => {
+    targetPool.query('SELECT 1').catch((err) => {
+      console.warn(`[${label}] heartbeat query failed: ${err?.message || err}`);
+    });
+  }, HEARTBEAT_INTERVAL_MS);
+  timer.unref();
+  return timer;
+}
+
+startHeartbeat(pool, 'PostgreSQL pool');
+if (supabaseMirrorPool) {
+  startHeartbeat(supabaseMirrorPool, 'Supabase mirror pool');
 }
 
 pool.query('SELECT 1')

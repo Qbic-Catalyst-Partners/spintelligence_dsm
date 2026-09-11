@@ -452,6 +452,15 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
       });
     });
 
+    // The TOTAL No. OF BREAKS/100SH summary box (grandTotalBreakPercent) was never included
+    // here before - only sent to the separate /simplex/study relational-table submission via
+    // other_field_values.overall_breakage_percent, so the submitted-notebook record (what the
+    // Submitted Notebooks preview actually reads) never had it at all.
+    items.push({
+      label: "Total No. of Breaks/100SH",
+      value: grandTotalBreakPercent ? `${grandTotalBreakPercent}%` : "-",
+    });
+
     return items;
   };
 

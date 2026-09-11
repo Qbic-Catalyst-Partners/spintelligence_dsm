@@ -1084,12 +1084,20 @@ const checkSubmissionFrequencyMissed = async (config) => {
   const windowDays = Number(config.range) > 0 ? Number(config.range) : 7;
   const requiredCount = Number(config.frequency) > 0 ? Number(config.frequency) : 1;
 
-  // No full day has elapsed since this config was created/last edited yet -
-  // e.g. created today at 11am, so "yesterday" (the only fully completed day
-  // so far) is still pre-config history. Wait for the day after creation
+  // No full day has elapsed since this config was created OR last edited yet -
+  // e.g. edited today at 11am (frequency/range/assignees changed), so
+  // "yesterday" (the only fully completed day so far) is still pre-edit
+  // history under the OLD config. Wait for the day after creation/edit
   // before judging anything, same as the "today isn't judged until it ends"
-  // rule below applied to the config's own creation day.
-  const createdDay = new Date(config.created_at);
+  // rule below applied to the config's own creation/edit day. Previously
+  // this only looked at created_at, never updated_at, so editing an
+  // existing threshold (change the frequency, reassign L2 users, etc.)
+  // didn't reset this grace period at all - a check running right after the
+  // edit could immediately judge against history that predates it.
+  const configEffectiveAt = config.updated_at && new Date(config.updated_at) > new Date(config.created_at)
+    ? config.updated_at
+    : config.created_at;
+  const createdDay = new Date(configEffectiveAt);
   createdDay.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -1097,10 +1105,10 @@ const checkSubmissionFrequencyMissed = async (config) => {
 
   // Only evaluate fully completed days. "Every 1 day" means today's
   // submission is not judged until the day ends. The window's lower bound
-  // is clamped to this config's created_at day - without that clamp, a
-  // threshold saved today would immediately look back `range` days into
-  // history that predates the threshold entirely. Counts every submission
-  // to the screen regardless of who made it - not scoped to
+  // is clamped to this config's created/last-edited day - without that
+  // clamp, a threshold saved or edited today would immediately look back
+  // `range` days into history that predates it. Counts every submission to
+  // the screen regardless of who made it - not scoped to
   // submitted_by_user_id at all - since the requirement is "did this screen
   // get filled in enough times," not "did a specific tracked user do it."
   const submissionCount = await client.query(
@@ -1111,7 +1119,7 @@ const checkSubmissionFrequencyMissed = async (config) => {
              DATE_TRUNC('day', $3::timestamp)
            )
        AND submitted_at < DATE_TRUNC('day', NOW())`,
-    [config.screen_name, windowDays, config.created_at]
+    [config.screen_name, windowDays, configEffectiveAt]
   );
   const actualCount = Number(submissionCount.rows[0]?.count) || 0;
   const requirementMet = actualCount >= requiredCount;
@@ -1195,6 +1203,34 @@ const checkSubmissionFrequencyMissed = async (config) => {
     }
     return null;
   }
+
+  // A ticket for this exact config was already closed (approved) earlier
+  // TODAY - don't immediately raise a new one on the very next check just
+  // because the underlying screen still hasn't actually caught up. Fix &
+  // Submit only escalates the ticket itself; it doesn't create a real
+  // submitted_notebooks row, so actualCount can easily stay short even
+  // after a genuine L3 approval, and without this guard the very next
+  // periodic run (whatever the check interval is, often minutes) would
+  // immediately recreate "the same ticket" for L2 again. operator_tickets
+  // has no updated_at column, so "closed today" is read off the real
+  // approval event in ticket_logs instead of the ticket row itself. Wait
+  // for the next calendar day - the same boundary requirementMet's own
+  // rolling window already judges by - before re-raising.
+  const closedTodayTicket = await client.query(
+    `SELECT ot.ticket_id FROM ticketing_system.operator_tickets ot
+     WHERE ot.submission_frequency_config_id = $1
+       AND ot.ticket_reason = 'MISSING_VALUE'
+       AND ot.status = 'Closed'
+       AND EXISTS (
+         SELECT 1 FROM ticketing_system.ticket_logs tl
+         WHERE tl.ticket_id = ot.ticket_id
+           AND UPPER(tl.action) = 'APPROVED'
+           AND tl.created_at >= DATE_TRUNC('day', NOW())
+       )
+     LIMIT 1`,
+    [config.id]
+  );
+  if (closedTodayTicket.rows[0]?.ticket_id) return null;
 
   // No TAT-hours column exists on this config table (unlike the other
   // threshold types) - there's nothing configured to derive a due date from,
@@ -1593,10 +1629,10 @@ router.post('/submission-frequency', async (req, res, next) => {
     // users. Multiple assignees means any ONE of them meeting the submission
     // count is enough to avoid a ticket. Falls back to resolving approval_l2
     // by name so older callers that only ever sent a name still work.
-    // approval_l2 here is stored in the shared screen_submission_frequency.
-    // approval_l1 column (also used by /thresholds' genuine L1 approver, so
-    // that physical column can't be renamed) - only the wire/payload name is
-    // L2, aliased back to approval_l2 in the response below.
+    // screen_submission_frequency.approval_l2 was originally named
+    // approval_l1 from before this table's L1 fields were split out into
+    // value_threshold_rules for /thresholds - renamed in place (see
+    // connection.js) since nothing else reads/writes this column now.
     const trackedL2UserIds = await resolveApproverUserIds({
       levelLabel: 'assigned_to',
       expectedLevel: 'L2',
@@ -1621,7 +1657,7 @@ router.post('/submission-frequency', async (req, res, next) => {
          range,
          frequency,
          is_active,
-         approval_l1,
+         approval_l2,
          criticality,
          tracked_l2_user_ids,
          updated_at
@@ -1632,13 +1668,13 @@ router.post('/submission-frequency', async (req, res, next) => {
          range = EXCLUDED.range,
          frequency = EXCLUDED.frequency,
          is_active = EXCLUDED.is_active,
-         approval_l1 = EXCLUDED.approval_l1,
+         approval_l2 = EXCLUDED.approval_l2,
          criticality = EXCLUDED.criticality,
          tracked_l2_user_ids = EXCLUDED.tracked_l2_user_ids,
          updated_at = NOW()
        RETURNING
          id, screen_name, department, sub_department, range, frequency, is_active,
-         approval_l1 AS approval_l2, criticality, tracked_l2_user_ids, created_at, updated_at`,
+         approval_l2, criticality, tracked_l2_user_ids, created_at, updated_at`,
       [
         screen_name,
         department,
@@ -1683,7 +1719,8 @@ router.get('/submission-frequency', async (req, res, next) => {
          range,
          frequency,
          is_active,
-         approval_l1 AS approval_l2,
+         approval_l2,
+         criticality,
          tracked_l2_user_ids,
          created_at,
          updated_at
@@ -3245,16 +3282,24 @@ router.get('/thresholds/list', async (req, res, next) => {
         vt.department,
         vt.sub_department,
         vt.notebook,
+        vt.notebook AS input_screen,
+        vt.notebook AS machine_name,
         vt.field,
+        vt.field AS input_field,
+        vt.field AS parameter_name,
         vt.l1_user_id,
         vt.approval_l1_user_ids,
         vt.l1_user_name,
+        vt.l1_user_name AS approval_l1_name,
         vt.criticality,
         vt.comparison_mode,
         vt.typical_value,
+        vt.typical_value AS actual_value,
         vt.value_mode,
         vt.plus_value,
+        vt.plus_value AS plus_threshold,
         vt.minus_value,
+        vt.minus_value AS minus_threshold,
         vt.is_active,
         vt.created_at,
         vt.updated_at
@@ -3482,10 +3527,10 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
     // status-only or frequency-only edit) instead of wiping the assignment.
     // These hold L2 users (Submission Threshold tickets are assigned
     // straight to L2, no L1 stage - see checkSubmissionFrequencyMissed).
-    // approval_l2 is stored in the shared screen_submission_frequency.
-    // approval_l1 column (also used by /thresholds' genuine L1 approver, so
-    // that physical column can't be renamed) - only the wire/payload name is
-    // L2, aliased back in the RETURNING clause below.
+    // screen_submission_frequency.approval_l2 was originally named
+    // approval_l1 from before this table's L1 fields were split out into
+    // value_threshold_rules for /thresholds - renamed in place (see
+    // connection.js) since nothing else reads/writes this column now.
     const rawL2UserIds = req.body?.approval_l2_user_ids ?? req.body?.approvalL2UserIds;
     let trackedL2UserIds;
     let approvalL2Display;
@@ -3511,14 +3556,14 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
            range = COALESCE($4, range),
            frequency = COALESCE($5, frequency),
            is_active = COALESCE($6, is_active),
-           approval_l1 = COALESCE($7, approval_l1),
+           approval_l2 = COALESCE($7, approval_l2),
            criticality = COALESCE($8, criticality),
            tracked_l2_user_ids = COALESCE($10::int[], tracked_l2_user_ids),
            updated_at = NOW()
        WHERE id = $9
        RETURNING
          id, screen_name, department, sub_department, range, frequency, is_active,
-         approval_l1 AS approval_l2, criticality, tracked_l2_user_ids, created_at, updated_at`,
+         approval_l2, criticality, tracked_l2_user_ids, created_at, updated_at`,
       [
         screen_name,
         department,

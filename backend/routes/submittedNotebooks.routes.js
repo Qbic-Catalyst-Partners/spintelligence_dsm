@@ -687,7 +687,7 @@ const getAcknowledgementThresholdSelectColumns = async () => {
 const getSubmissionFrequencyConfigForNotebook = async (submission) => {
   const result = await client.query(
     `SELECT id, screen_name, department, sub_department, "range", frequency,
-            approval_l1 AS approval_l2, tracked_l2_user_ids, criticality
+            approval_l2, tracked_l2_user_ids, criticality
      FROM ticketing_system.screen_submission_frequency
      WHERE is_active = true
        AND LOWER(TRIM(screen_name)) = LOWER(TRIM($1))
@@ -710,7 +710,7 @@ const getSubmissionFrequencyConfigForNotebook = async (submission) => {
 const getSubmissionFrequencyConfigForThreshold = async ({ screenName, department, subDepartment }) => {
   const result = await client.query(
     `SELECT id, screen_name, department, sub_department, "range", frequency,
-            approval_l1 AS approval_l2, tracked_l2_user_ids, criticality
+            approval_l2, tracked_l2_user_ids, criticality
      FROM ticketing_system.screen_submission_frequency
      WHERE is_active = true
        AND (

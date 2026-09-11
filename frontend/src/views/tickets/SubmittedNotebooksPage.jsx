@@ -1425,6 +1425,234 @@ const getCardingBetweenWithinSections = (notebook) => {
     };
 };
 
+// Card DFK Data (cardingdfk.jsx) has no dedicated detail-fetch endpoint of its own - it
+// records straight to submitted_notebooks as a flat "<machine> <column label>" list
+// (see submittedNotebookItems in cardingdfk.jsx), which the generic buildFieldCards fallback
+// below turned into one field card per machine/column cell instead of the per-machine table
+// the entry screen itself shows. Reconstructed here by grouping those flattened keys back by
+// machine, same approach as getCardingBetweenWithinSections above.
+const CARD_DFK_COLUMNS = [
+    { key: "dfk", label: "DFK" },
+    { key: "ccd", label: "CCD" },
+    { key: "icfd_1", label: "ICFD (1)" },
+    { key: "lt", label: "LT" },
+    { key: "cds", label: "CDS" },
+    { key: "silver_draft", label: "SILVER DRAFT" },
+    { key: "icfd_2", label: "ICFD (2)" },
+    { key: "idf_in", label: "IDF IN" },
+    { key: "idf_out", label: "IDF OUT" },
+    { key: "al_on", label: "AL ON" },
+];
+
+const getCardDfkSections = (notebook) => {
+    const payload = getPayload(notebook);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+
+    const machinePrefixes = [];
+    Object.keys(payload).forEach((key) => {
+        const match = key.match(/^(.+)_machine_name$/);
+        if (match) machinePrefixes.push(match[1]);
+    });
+    if (!machinePrefixes.length) return null;
+
+    const rows = machinePrefixes.map((prefix) => ({
+        machine: payload[`${prefix}_machine_name`] ?? prefix,
+        values: CARD_DFK_COLUMNS.map(({ key, label }) => ({ label, value: payload[`${prefix}_${key}`] ?? "-" })),
+    }));
+
+    const consumedKeys = new Set();
+    machinePrefixes.forEach((prefix) => {
+        consumedKeys.add(`${prefix}_machine_name`);
+        CARD_DFK_COLUMNS.forEach(({ key }) => consumedKeys.add(`${prefix}_${key}`));
+    });
+    const metaEntries = Object.entries(payload).filter(
+        ([key, value]) => !consumedKeys.has(key) && value !== undefined && value !== null && value !== ""
+    );
+
+    return { metaEntries, rows };
+};
+
+// Ring Frame Log Book (spinning.js's isRingFrame branch) actually records its own
+// structured {rows, summary} payload (see the isRingFrame block building `rows`/`summary`
+// in spinning.js) rather than the flattened "MC <no> - <field>" previewItems list that
+// feeds the generic submitted_notebooks record for other screens - so unlike Card DFK,
+// this one is read straight off payload.rows/payload.summary instead of reconstructed from
+// flattened keys.
+// Labels match the entry screen's own <th> text exactly (spinning.js's isRingFrame table
+// header row) - "Mc.No"/"Bobbin"/bare "1".."6", not the friendlier names used elsewhere.
+const RING_FRAME_ROW_FIELDS = [
+    { key: "mc_no", label: "Mc.No" },
+    { key: "lycra", label: "Lycra" },
+    { key: "bobbin_color", label: "Bobbin" },
+    { key: "spindle_1", label: "1" },
+    { key: "spindle_2", label: "2" },
+    { key: "spindle_3", label: "3" },
+    { key: "spindle_4", label: "4" },
+    { key: "spindle_5", label: "5" },
+    { key: "spindle_6", label: "6" },
+    { key: "guide_roll_lapping", label: "Guide Roll Lapping" },
+    { key: "lycra_missing", label: "Lycra Missing" },
+    { key: "others", label: "Others" },
+    { key: "total", label: "Total" },
+];
+
+// Matches the ring frame summary box's own <label> text exactly (spinning.js's
+// ringFrameSummaryGrid/ringFrameExtraSummaryGrid) - out_of_center/fault_cops (the combined
+// AC+RF totals) and lycra_missing_rf are computed into `summary` but never actually shown as
+// their own field on screen, so they're left out here rather than inventing labels for them.
+const RING_FRAME_SUMMARY_LABELS = {
+    out_of_center_ac: "Out of Center AC",
+    out_of_center_rf: "Out of Center RF",
+    fault_cops_ac: "Fault Cops AC",
+    fault_cops_rf: "Fault Cops RF",
+    total_cops_ac: "Total Cops AC",
+    total_cops_rf: "Total Cops RF",
+    total_cops: "Grand Total",
+    guide_roll_total: "Guide Roll",
+    lycra_missing: "Lycra Missing",
+    others_total: "Others",
+    comments: "Comments",
+};
+
+const RING_FRAME_META_LABELS = {
+    entry_id: "Entry ID",
+    entry_date: "Date",
+    checker_name: "Checker Name",
+    shift: "Shift",
+};
+
+const getRingFrameSections = (notebook) => {
+    const payload = getPayload(notebook);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+
+    const rawRows = Array.isArray(payload.rows) ? payload.rows : null;
+    if (!rawRows || !rawRows.length || !rawRows.every((row) => row && typeof row === "object" && "mc_no" in row)) {
+        return null;
+    }
+
+    const rows = rawRows.map((row) => ({
+        machine: row.mc_no ?? "-",
+        values: RING_FRAME_ROW_FIELDS.slice(1).map(({ key, label }) => ({ label, value: row[key] ?? "-" })),
+    }));
+
+    const metaEntries = Object.entries(RING_FRAME_META_LABELS)
+        .map(([key, label]) => [label, payload[key]])
+        .filter(([, value]) => value !== undefined && value !== null && value !== "");
+
+    const summary = payload.summary && typeof payload.summary === "object" ? payload.summary : {};
+    const summaryEntries = Object.entries(RING_FRAME_SUMMARY_LABELS)
+        .map(([key, label]) => [label, summary[key]])
+        .filter(([, value]) => value !== undefined && value !== null && value !== "");
+
+    return { metaEntries, rows, summaryEntries };
+};
+
+// SMX Breaks Study Report (SMXBreaksStudyReport.jsx) does NOT go through buildStudyPayload
+// for its submitted_notebooks record - that structured {items, other_field_values} shape only
+// ever reaches POST /simplex/study (a separate relational-table write, smx_breaks_study_header/
+// smx_breaks_inspection_items). The submitted_notebooks record instead comes from the parent
+// simplex.js wrapper calling recordSubmittedNotebook with childRef.current.getPreviewData()'s
+// flat {label, value} list (see getPreviewData in SMXBreaksStudyReport.jsx) - same flattening
+// mechanism as Card DFK/Ring Frame, keyed by previewItemsToPayload's slugified label. Matrix
+// cells are looked up by recomputing that exact slug per row/column instead of trying to parse
+// it back out of the flattened key (the row label's own "801 - 1000" already contains the same
+// " - " separator the row/column join uses, so a parse can't tell them apart reliably).
+const SMX_BREAK_COLUMNS = [
+    "Roving Breaks at Finger",
+    "Roving Breaks at Front Roller Nip",
+    "Roving Breaks at Between Flyer",
+    "Undraft",
+    "Top Roller Lapping",
+    "Bottom Roller Lapping",
+    "SLIVER BREAKS",
+    "Can Exhaust",
+    "Unknown Stop",
+];
+
+const SMX_BREAK_ROWS_ORDER = [
+    "0 - 200", "201 - 400", "401 - 600", "601 - 800", "801 - 1000", "1001 - 1200",
+    "1201 - 1400", "1401 - 1600", "1601 - 1800", "1801 - 2000", "2001 - 2200",
+    "2201 - 2400", "2401 - 2600",
+];
+
+// Matches SMXBreaksStudyReport.jsx's own header field list (its `form` state / formFields
+// array) so the preview's Meta section shows the same fields the entry screen does.
+const SMX_META_LABELS = {
+    type: "Type",
+    entry_id: "Entry ID",
+    simplex_no: "Simplex No",
+    start_time: "Start Time",
+    end_time: "End Time",
+    total_minutes: "Total Minutes",
+    tpi: "TPI",
+    tpm: "TPM",
+    start_hk: "Start Hank",
+    finish_hk: "Finish Hank",
+    average_speed: "Average Speed",
+    hank: "Hank",
+    mixing: "Mixing",
+    roving_hk: "Roving HK",
+    doff_length: "Doff Length",
+    rh: "RH%",
+    temp: "TEMP%",
+    tt_spdl: "Total Spindles",
+    running_spdl: "Running Spindles",
+    ideals: "Idle Spindles",
+    s_name: "Sider Name",
+};
+
+// Mirrors previewItemsToPayload's own transform (submittedNotebookRecorder.js) exactly, so a
+// recomputed label always lands on the same key that recording used.
+const slugifySmxLabel = (label) =>
+    String(label || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+
+const getSmxBreaksStudySections = (notebook) => {
+    const payload = getPayload(notebook);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    if (String(payload.type || "").trim() !== "SMX Breaks Study Report") return null;
+
+    const matrix = {};
+    const rows = SMX_BREAK_ROWS_ORDER.filter((row) =>
+        SMX_BREAK_COLUMNS.some((column) => {
+            const value = payload[slugifySmxLabel(`${row} - ${column}`)];
+            if (value === undefined || value === null || value === "") return false;
+            matrix[row] = matrix[row] || {};
+            matrix[row][column] = value;
+            return true;
+        })
+    );
+    if (!rows.length) return null;
+
+    const metaEntries = Object.entries(SMX_META_LABELS)
+        .map(([key, label]) => [label, payload[key]])
+        .filter(([, value]) => value !== undefined && value !== null && value !== "");
+
+    const columnTotals = {};
+    SMX_BREAK_COLUMNS.forEach((column) => {
+        const totalValue = payload[slugifySmxLabel(`Total Breaks - ${column}`)];
+        if (totalValue !== undefined && totalValue !== null && totalValue !== "") columnTotals[column] = totalValue;
+    });
+
+    // "No. of Breaks 100 Spindles/HR" only ever covers the 7 columns through SLIVER BREAKS on
+    // the entry screen itself (percentageBreakColumns in SMXBreaksStudyReport.jsx) - Can
+    // Exhaust/Unknown Stop have no percentage cell there, so this matches that same subset
+    // instead of all 9 columns.
+    const percentageColumns = SMX_BREAK_COLUMNS.slice(0, SMX_BREAK_COLUMNS.indexOf("SLIVER BREAKS") + 1);
+    const columnBreaksPer100Sh = {};
+    percentageColumns.forEach((column) => {
+        const percentValue = payload[slugifySmxLabel(`Breaks % - ${column}`)];
+        if (percentValue !== undefined && percentValue !== null && percentValue !== "") columnBreaksPer100Sh[column] = percentValue;
+    });
+
+    const grandTotal = payload[slugifySmxLabel("Total Breaks (Grand)")];
+    const totalBreaksPer100Sh = payload[slugifySmxLabel("Total No. of Breaks/100SH")];
+
+    return { matrix, rows, columns: SMX_BREAK_COLUMNS, percentageColumns, metaEntries, columnTotals, columnBreaksPer100Sh, grandTotal, totalBreaksPer100Sh };
+};
+
 const buildFieldCards = (notebook) => {
     const payload = getPayload(notebook);
     const fields = [];
@@ -1840,7 +2068,11 @@ const SubmittedNotebooksPage = () => {
 
     const ocrReportSections = selectedNotebook ? getOcrReportSections(selectedNotebook) : null;
     const cardingSections = !ocrReportSections && selectedNotebook ? getCardingBetweenWithinSections(selectedNotebook) : null;
-    const selectedFields = ocrReportSections || cardingSections ? [] : buildFieldCards(selectedNotebook);
+    const cardDfkSections = !ocrReportSections && !cardingSections && selectedNotebook ? getCardDfkSections(selectedNotebook) : null;
+    const ringFrameSections = !ocrReportSections && !cardingSections && !cardDfkSections && selectedNotebook ? getRingFrameSections(selectedNotebook) : null;
+    const smxBreaksStudySections = !ocrReportSections && !cardingSections && !cardDfkSections && !ringFrameSections && selectedNotebook ? getSmxBreaksStudySections(selectedNotebook) : null;
+    const hasCustomSections = ocrReportSections || cardingSections || cardDfkSections || ringFrameSections || smxBreaksStudySections;
+    const selectedFields = hasCustomSections ? [] : buildFieldCards(selectedNotebook);
     const simpleFields = selectedFields.filter((field) => !field.rows);
     const rowListFields = selectedFields.filter((field) => field.rows);
     const selectedNotebookDepartment = selectedNotebook ? resolveNotebookDepartment(selectedNotebook) : { department: "Quality Control", subDepartment: "Mixing Department" };
@@ -2254,6 +2486,140 @@ const SubmittedNotebooksPage = () => {
                                         </div>
                                     );
                                 })}
+                            </>
+                        ) : cardDfkSections ? (
+                            <>
+                                <div className={styles.rowListSection}>
+                                    <small>DFK Values</small>
+                                    <div className={styles.rowListTableWrap}>
+                                        <table className={styles.rowListTable}>
+                                            <thead>
+                                                <tr>
+                                                    <th>Machine Name</th>
+                                                    {cardDfkSections.rows[0]?.values.map(({ label }) => (
+                                                        <th key={label}>{label}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {cardDfkSections.rows.map((row) => (
+                                                    <tr key={row.machine}>
+                                                        <td>{row.machine}</td>
+                                                        {row.values.map(({ label, value }) => (
+                                                            <td key={label}>{String(value)}</td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </>
+                        ) : ringFrameSections ? (
+                            <>
+                                <div className={styles.rowListSection}>
+                                    <small>Ring Frame Rows</small>
+                                    <div className={styles.rowListTableWrap}>
+                                        <table className={styles.rowListTable}>
+                                            <thead>
+                                                <tr>
+                                                    <th>Mc.No</th>
+                                                    {ringFrameSections.rows[0]?.values.map(({ label }) => (
+                                                        <th key={label}>{label}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {ringFrameSections.rows.map((row) => (
+                                                    <tr key={row.machine}>
+                                                        <td>{row.machine}</td>
+                                                        {row.values.map(({ label, value }) => (
+                                                            <td key={label}>{String(value)}</td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                {ringFrameSections.summaryEntries.length ? (
+                                    <div className={styles.rowListSection}>
+                                        <small>Summary</small>
+                                        <div className={styles.fieldGrid}>
+                                            {ringFrameSections.summaryEntries.map(([label, value]) => (
+                                                <div key={label} className={styles.fieldCard}>
+                                                    <small>{label}</small>
+                                                    <strong>{String(value)}</strong>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : null}
+                            </>
+                        ) : smxBreaksStudySections ? (
+                            <>
+                                <div className={styles.rowListSection}>
+                                    <small>Meta</small>
+                                    <div className={styles.fieldGrid}>
+                                        {smxBreaksStudySections.metaEntries.map(([label, value]) => (
+                                            <div key={label} className={styles.fieldCard}>
+                                                <small>{label}</small>
+                                                <strong>{String(value)}</strong>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className={styles.rowListSection}>
+                                    <small>Breaks Study Matrix</small>
+                                    <div className={styles.rowListTableWrap}>
+                                        <table className={styles.rowListTable}>
+                                            <thead>
+                                                <tr>
+                                                    <th>Length Range</th>
+                                                    {smxBreaksStudySections.columns.map((column) => (
+                                                        <th key={column}>{column}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {smxBreaksStudySections.rows.map((row) => (
+                                                    <tr key={row}>
+                                                        <td>{row}</td>
+                                                        {smxBreaksStudySections.columns.map((column) => (
+                                                            <td key={column}>{smxBreaksStudySections.matrix[row]?.[column] ?? "-"}</td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                                <tr>
+                                                    <td><strong>Total Breaks</strong></td>
+                                                    {smxBreaksStudySections.columns.map((column) => (
+                                                        <td key={column}>{smxBreaksStudySections.columnTotals[column] ?? "-"}</td>
+                                                    ))}
+                                                </tr>
+                                                {smxBreaksStudySections.grandTotal !== undefined ? (
+                                                    <tr>
+                                                        <td><strong>Grand Total</strong></td>
+                                                        <td>{String(smxBreaksStudySections.grandTotal)}</td>
+                                                    </tr>
+                                                ) : null}
+                                                <tr>
+                                                    <td><strong>No. of Breaks 100 Spindles/HR</strong></td>
+                                                    {smxBreaksStudySections.percentageColumns.map((column) => (
+                                                        <td key={column}>{smxBreaksStudySections.columnBreaksPer100Sh[column] ?? "-"}</td>
+                                                    ))}
+                                                </tr>
+                                                {smxBreaksStudySections.totalBreaksPer100Sh !== undefined ? (
+                                                    <tr>
+                                                        <td><strong>Total No. of Breaks/100SH</strong></td>
+                                                        <td>{String(smxBreaksStudySections.totalBreaksPer100Sh)}</td>
+                                                    </tr>
+                                                ) : null}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </>
                         ) : (
                             <>
