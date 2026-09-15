@@ -231,27 +231,46 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
     };
 
     const getPreviewData = () => {
-        const base = [
+        return [
             { label: "Variety", value: variety },
+            { label: "Entry Date", value: entryDate },
             { label: "Number of Neps Entries", value: entryCount },
         ];
+    };
 
-        const entryItems = entries
-            .filter((entry) => entry.mc_no !== "")
-            .flatMap((entry, index) => [
-                { label: `Row ${index + 1} - MC No`, value: entry.mc_no },
-                { label: `Row ${index + 1} - Ratio size-1.0`, value: entry.ratio_size_1 || "-" },
-                { label: `Row ${index + 1} - Ratio size-0.7`, value: entry.ratio_size_07 || "-" },
-                { label: `Row ${index + 1} - Ratio size-0.5`, value: entry.ratio_size_05 || "-" },
-            ]);
+    const getPreviewGroups = () => {
+        // entry.mc_no holds the raw master-table id (SearchableSelect's option `value`), not
+        // the machine code/name the user actually picked from the dropdown (option `label`) -
+        // look the label back up here so the preview (and, via getPreviewGroups feeding
+        // recordSubmittedNotebook, the Submitted Notebooks popup too) shows the readable
+        // machine name instead of a bare numeric id.
+        const mcNoLabelByValue = Object.fromEntries(mcNoOptions.map((option) => [option.value, option.label]));
 
-        return [...base, ...entryItems];
+        return [
+            {
+                key: "neps-entries",
+                title: "Neps Details",
+                columns: [
+                    { key: "mcNo", label: "MC No" },
+                    { key: "ratio1", label: "Ratio into size-1.0" },
+                    { key: "ratio07", label: "Ratio into size-0.7" },
+                    { key: "ratio05", label: "Ratio into size-0.5" },
+                ],
+                rows: entries.map((entry) => ({
+                    mcNo: mcNoLabelByValue[entry.mc_no] || entry.mc_no || "-",
+                    ratio1: entry.ratio_size_1 || "-",
+                    ratio07: entry.ratio_size_07 || "-",
+                    ratio05: entry.ratio_size_05 || "-",
+                })),
+            },
+        ];
     };
 
     useImperativeHandle(ref, () => ({
         clear: resetForm,
         validate,
         getPreviewData,
+        getPreviewGroups,
         submit: handleSubmit,
     }));
 

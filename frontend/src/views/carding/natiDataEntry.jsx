@@ -216,6 +216,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
                     notebookName: selectedType,
                     entryId: nextEntryId,
                     previewItems,
+                    previewGroups,
                     user,
                 });
             } catch (recordError) {
@@ -271,16 +272,29 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
         { label: "Entry ID", value: entryId || "-" },
         { label: "Variety", value: variety },
         { label: "Entry Count", value: entryCount },
-        ...entries.flatMap((entry, index) => ([
-            { label: `Row ${index + 1} MC No`, value: entry.mc_no },
-            { label: `Row ${index + 1} Ratio 1.0`, value: entry.ratio_size_1 },
-            { label: `Row ${index + 1} Ratio 0.7`, value: entry.ratio_size_07 },
-            { label: `Row ${index + 1} Ratio 0.5`, value: entry.ratio_size_05 },
-        ])),
         ...customFieldDefs.map((field) => ({
             label: field.field_label,
             value: customFieldValues[field.id],
         })),
+    ];
+
+    const previewGroups = [
+        {
+            key: "neps-details",
+            title: "Neps Details",
+            columns: [
+                { key: "mc_no", label: "MC No" },
+                { key: "ratio_size_1", label: "Ratio into size-1.0" },
+                { key: "ratio_size_07", label: "Ratio into size-0.7" },
+                { key: "ratio_size_05", label: "Ratio into size-0.5" },
+            ],
+            rows: entries.map((entry) => ({
+                mc_no: entry.mc_no,
+                ratio_size_1: entry.ratio_size_1,
+                ratio_size_07: entry.ratio_size_07,
+                ratio_size_05: entry.ratio_size_05,
+            })),
+        },
     ];
 
     return (
@@ -449,6 +463,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
                         title="Carding Preview"
                         subtitle="Carding Notebook / Nati Data Entry"
                         items={previewItems}
+                        groups={previewGroups}
                         typeValue={selectedType}
                         onCancel={() => setShowPreview(false)}
                         onConfirm={handleSubmit}

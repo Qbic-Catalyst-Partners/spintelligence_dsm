@@ -403,6 +403,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                     notebookName: `Between & Within Data Entry - ${inspectionType}`,
                     entryId: nextEntryId || entryId,
                     previewItems,
+                    previewGroups,
                     user,
                 });
             } catch (recordError) {
@@ -453,22 +454,41 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
         { label: "MC Name", value: mcName },
         { label: "Inspection Type", value: inspectionType },
         { label: "Number of Entries", value: entryCount },
-        ...rows.slice(0, Number(entryCount) || rows.length).flatMap((row, index) => ([
-            { label: `Row ${index + 1} Sample Weight`, value: row.sampleWeight },
-            { label: `Row ${index + 1} Hank`, value: normalizeHankValue(row.hank) },
-        ])),
-        ...statFields.map((field) => ({
-            label: `Sample Weight Calculations - ${field.label === "Avg" ? "Avg" : field.label}`,
-            value: sampleWeightStats[field.key],
-        })),
-        ...statFields.map((field) => ({
-            label: `Hank Calculations - ${field.label === "Avg" ? "Avg" : field.label}`,
-            value: hankStats[field.key],
-        })),
         ...customFieldDefs.map((field) => ({
             label: field.field_label,
             value: customFieldValues[field.id],
         })),
+    ];
+
+    const activePreviewRows = rows.slice(0, Number(entryCount) || rows.length);
+
+    const previewGroups = [
+        {
+            key: "entries",
+            title: "Sample Weight & Hank Entries",
+            columns: [
+                { key: "index", label: "#" },
+                { key: "sampleWeight", label: "Sample Weight" },
+                { key: "hank", label: "Hank" },
+            ],
+            rows: activePreviewRows.map((row, index) => ({
+                index: index + 1,
+                sampleWeight: row.sampleWeight,
+                hank: normalizeHankValue(row.hank),
+            })),
+        },
+        {
+            key: "sample-weight-calc",
+            title: "Sample Weight Calculations",
+            columns: statFields.map((field) => ({ key: field.key, label: field.label })),
+            rows: [statFields.reduce((acc, field) => ({ ...acc, [field.key]: sampleWeightStats[field.key] }), {})],
+        },
+        {
+            key: "hank-calc",
+            title: "Hank Calculations",
+            columns: statFields.map((field) => ({ key: field.key, label: field.label })),
+            rows: [statFields.reduce((acc, field) => ({ ...acc, [field.key]: hankStats[field.key] }), {})],
+        },
     ];
 
     if (!showForm) return null;
@@ -693,6 +713,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                 title="Carding Preview"
                 subtitle="Carding Notebook / Between & Within Card Data Entry"
                 items={previewItems}
+                groups={previewGroups}
                 typeValue={selectedType}
                 onCancel={() => setShowPreview(false)}
                 onConfirm={handleSubmit}

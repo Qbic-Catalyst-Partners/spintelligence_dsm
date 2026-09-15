@@ -422,18 +422,103 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
         }
     };
 
+    const singleRowGroup = (key, title, pairs) => ({
+        key,
+        title,
+        columns: pairs.map(([label, name]) => ({ key: name, label })),
+        rows: [pairs.reduce((acc, [, name]) => ({ ...acc, [name]: formData[name] }), {})],
+    });
+
     const previewItems = [
         { label: "Type", value: selectedType },
         { label: "Entry ID", value: entryId || "-" },
         { label: "Time", value: time },
-        ...requiredFields.map((field) => ({
-            label: field,
-            value: formData[field],
-        })),
+        { label: "Carding Machine No.", value: formData.cardingMachine },
+        { label: "Raw Material / Mixing", value: formData.materialMixing },
+        { label: "Count Name", value: formData.count },
+        { label: "Spinning Machine Name", value: formData.machine },
+        { label: "Autoconer Machine Name", value: formData.autoMachine },
+        { label: "Product", value: formData.product },
+        { label: "Type (Trial/Sample)", value: formData.trialtype },
+        { label: "Nature of Trials/Sample", value: formData.nature },
         ...customFieldDefs.map((field) => ({
             label: field.field_label,
             value: customFieldValues[field.id],
         })),
+    ];
+
+    const previewGroups = [
+        singleRowGroup("draw-frame", "Draw Frame", [
+            ["Drg Mc. No.", "dfDrgMcNo"],
+            ["Finish U%", "dfFinishU"],
+            ["CVIM", "dfCvim"],
+            ["CVB", "dfCvb"],
+        ]),
+        singleRowGroup("simplex", "Simplex", [
+            ["SMX No.", "smxNo"],
+            ["SPL No.", "splNo"],
+            ["Roving%", "rovingPercent"],
+            ["CVIM", "smxCvim"],
+        ]),
+        singleRowGroup("cuts-summary", "Cuts Summary", topCutFields),
+        singleRowGroup(
+            "cuts-grid",
+            "Cuts and Imperfection Parameters",
+            cutsGridFields.flat().map((item) => [cutsGridLabelOverrides[item] || item.toUpperCase(), item])
+        ),
+        singleRowGroup("user-tester", "User Tester Parameters", [
+            ["User ID", "userId"],
+            ["U%", "uPercent"],
+            ["CVM", "cvm"],
+            ["CVM cv%", "cvmCvPercent"],
+            ["CVM 10 mtr", "cvm10mtr"],
+            ["DR 1.5m", "dr15m"],
+        ]),
+        {
+            key: "ipi-regular",
+            title: "IPI Parameters - Regular",
+            columns: [
+                { key: "thin50", label: "Thin -50%" },
+                { key: "thick50", label: "Thick +50%" },
+                { key: "neps200", label: "Neps +200%" },
+                { key: "totalRegular", label: "Total (Regular)" },
+            ],
+            rows: [
+                {
+                    thin50: formData.thin50,
+                    thick50: formData.thick50,
+                    neps200: formData.neps200,
+                    totalRegular: totalRegularValue ? totalRegularValue.toFixed(2) : "0.00",
+                },
+            ],
+        },
+        {
+            key: "ipi-hs",
+            title: "IPI Parameters - Higher Sensitive",
+            columns: [
+                { key: "thin40", label: "Thin -40%" },
+                { key: "thick35", label: "Thick +35%" },
+                { key: "neps140", label: "Neps +140%" },
+                { key: "totalHs", label: "Total (HS)" },
+            ],
+            rows: [
+                {
+                    thin40: formData.thin40,
+                    thick35: formData.thick35,
+                    neps140: formData.neps140,
+                    totalHs: totalHsValue ? totalHsValue.toFixed(2) : "0.00",
+                },
+            ],
+        },
+        singleRowGroup("other-ipi", "Other IPI / Final Values", [
+            ["Thin -30%", "thin30"],
+            ["Count", "countFinal"],
+            ["CSP", "csp"],
+        ]),
+        singleRowGroup("remarks", "Yarn Results & Remarks", [
+            ["Yarn Results", "yarnresults"],
+            ["Yarn Remarks", "yarnremarks"],
+        ]),
     ];
 
     const fieldClass = (name) => (errors[name] ? styles.errorField : "");
@@ -757,6 +842,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                 title="Carding Preview"
                 subtitle="Individual Card Performance Notebook / Individual Card performance Data"
                 items={previewItems}
+                groups={previewGroups}
                 typeValue={selectedType}
                 onCancel={() => setShowPreview(false)}
                 onConfirm={handleSave}

@@ -30,15 +30,10 @@ function PreviewModal({
   modalClassName,
 }) {
   const [isMounted, setIsMounted] = useState(false);
-  const [openGroup, setOpenGroup] = useState(0);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
-
-  useEffect(() => {
-    if (open) setOpenGroup(0);
-  }, [open]);
 
   if (!open || !isMounted) return null;
 
@@ -92,52 +87,41 @@ function PreviewModal({
 
         {groups.length > 0 ? (
           <div className={styles.accordionList}>
-            {groups.map((group, groupIndex) => {
-              const isOpen = openGroup === groupIndex;
-              return (
-                <div key={group.key || group.title || groupIndex} className={styles.accordionSection}>
-                  <button
-                    type="button"
-                    className={styles.accordionToggle}
-                    onClick={() => setOpenGroup((current) => (current === groupIndex ? -1 : groupIndex))}
-                    aria-expanded={isOpen}
-                  >
-                    <span>{group.title}</span>
-                    <span className={`${styles.chevron} ${isOpen ? styles.chevronOpen : ""}`}>˅</span>
-                  </button>
-
-                  {isOpen ? (
-                    <div className={`${styles.tableWrap}${compactGroups ? ` ${styles.tableWrapCompact}` : ""}`}>
-                      <table className={`${styles.table}${compactGroups ? ` ${styles.tableCompact}` : ""}`}>
-                        <colgroup>
-                          {group.columns.map((column) => (
-                            <col key={column.key || column.label} style={{ width: column.width || "auto" }} />
-                          ))}
-                        </colgroup>
-                        <thead>
-                          <tr>
-                            {group.columns.map((column) => (
-                              <th key={column.key || column.label}>{column.label}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {group.rows.map((row, rowIndex) => (
-                            <tr key={rowIndex}>
-                              {group.columns.map((column) => (
-                                <td key={column.key || column.label}>
-                                  {formatValue(row?.[column.key] ?? row?.[column.label])}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : null}
+            {groups.map((group, groupIndex) => (
+              <div key={group.key || group.title || groupIndex} className={styles.accordionSection}>
+                <div className={styles.accordionToggle}>
+                  <span>{group.title}</span>
                 </div>
-              );
-            })}
+
+                <div className={`${styles.tableWrap}${compactGroups ? ` ${styles.tableWrapCompact}` : ""}`}>
+                  <table className={`${styles.table}${compactGroups ? ` ${styles.tableCompact}` : ""}`}>
+                    <colgroup>
+                      {group.columns.map((column) => (
+                        <col key={column.key || column.label} style={{ width: column.width || "auto" }} />
+                      ))}
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        {group.columns.map((column) => (
+                          <th key={column.key || column.label}>{column.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.rows.map((row, rowIndex) => (
+                        <tr key={rowIndex}>
+                          {group.columns.map((column) => (
+                            <td key={column.key || column.label}>
+                              {formatValue(row?.[column.key] ?? row?.[column.label])}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
           </div>
         ) : null}
 

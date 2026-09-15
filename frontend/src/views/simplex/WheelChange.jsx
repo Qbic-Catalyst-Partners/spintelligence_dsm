@@ -697,27 +697,44 @@ const WheelChange = forwardRef(function WheelChange(
     return Object.keys(nextErrors).length === 0;
   };
 
-  const getPreviewData = () => [
-    ...(unapprovedEntry
-      ? [
-          {
-            label: "⚠ Overwrite Warning",
-            value:
-              unapprovedEntry.status === "rejected"
-                ? "This machine has a rejected entry still pending resubmission. Submitting will replace it — there is no undo."
-                : "This machine already has an entry awaiting L4 verification. Submitting will overwrite it — there is no undo.",
-            wide: true,
-          },
-        ]
-      : []),
-    { label: "SMX No.", value: form.smxNo || "-" },
-    { label: "SMX No. (Proposed)", value: form.smxNoProposed || "-" },
-    ...PARAMETER_ROWS.map((row) => ({
-      label: `${row.label} - Proposed`,
-      value: rows.find((item) => item.key === row.key)?.proposed || "-",
-    })),
-    { label: "Remarks", value: form.remarks || "-" },
-  ];
+  const getPreviewData = () => {
+    const items = [
+      ...(unapprovedEntry
+        ? [
+            {
+              label: "⚠ Overwrite Warning",
+              value:
+                unapprovedEntry.status === "rejected"
+                  ? "This machine has a rejected entry still pending resubmission. Submitting will replace it — there is no undo."
+                  : "This machine already has an entry awaiting L4 verification. Submitting will overwrite it — there is no undo.",
+              wide: true,
+            },
+          ]
+        : []),
+      { label: "SMX No.", value: form.smxNo || "-" },
+      { label: "SMX No. (Proposed)", value: form.smxNoProposed || "-" },
+      { label: "Remarks", value: form.remarks || "-" },
+    ];
+
+    const groups = [
+      {
+        key: "wheel-change-parameters",
+        title: "Parameters (Existing / Proposed)",
+        columns: [
+          { key: "label", label: "Parameter" },
+          { key: "existing", label: "Existing" },
+          { key: "proposed", label: "Proposed" },
+        ],
+        rows: PARAMETER_ROWS.map((row) => ({
+          label: row.label,
+          existing: rows.find((item) => item.key === row.key)?.existing || "-",
+          proposed: rows.find((item) => item.key === row.key)?.proposed || "-",
+        })),
+      },
+    ];
+
+    return { items, groups };
+  };
 
   const submit = async () => {
     setSubmitError("");

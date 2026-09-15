@@ -231,22 +231,38 @@ function SpliceStrength({
     return Object.keys(nextErrors).length === 0;
   };
 
-  const getPreviewData = () => [
-    { label: "Type", value: selectedType || "-" },
-    { label: "Entry ID", value: entryId || "-" },
-    { label: "Test No", value: testNo || "-" },
-    { label: "Count Name", value: countName || "-" },
-    { label: "Auto Coner No.", value: autoconerNo || "-" },
-    { label: "Drum From", value: drumFrom || "-" },
-    { label: "Drum To", value: drumTo || "-" },
-    { label: "Cone Tip", value: coneTip || "-" },
-    { label: "CSP Value", value: cspValue || "-" },
-    { label: "Average", value: average.splice || "-" },
-    ...rowsWithPercent.map((row, index) => ({
-      label: `Reading ${index + 1}`,
-      value: `${row.spliceStrength || "-"} | ${row.parentYarn || "-"} | ${row.percent || "-"}`,
-    })),
-  ];
+  const getPreviewData = () => {
+    const items = [
+      { label: "Type", value: selectedType || "-" },
+      { label: "Entry ID", value: entryId || "-" },
+      { label: "Test No", value: testNo || "-" },
+      { label: "Count Name", value: countName || "-" },
+      { label: "Auto Coner No.", value: autoconerNo || "-" },
+      { label: "Cone Tip", value: coneTip || "-" },
+      { label: "CSP Value", value: cspValue || "-" },
+      { label: "Average", value: cspAverage || "-" },
+      { label: "Drum From", value: drumFrom || "-" },
+      { label: "Drum To", value: drumTo || "-" },
+      { label: "No. of Readings", value: readingCount || "-" },
+    ];
+
+    const groups = [
+      {
+        key: "drum-readings",
+        title: "Drum Readings",
+        columns: [
+          { key: "drumNo", label: "Drum No." },
+          { key: "readingNumber", label: "Reading Number" },
+          { key: "spliceStrength", label: "Splice Strength" },
+          { key: "parentYarn", label: "Parent Yarn Strength" },
+          { key: "percent", label: "Percent Yarn" },
+        ],
+        rows: rowsWithPercent,
+      },
+    ];
+
+    return { items, groups };
+  };
 
   const submit = async () => {
     if (!validate()) return false;

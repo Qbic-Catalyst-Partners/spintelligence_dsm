@@ -269,6 +269,9 @@ const META_FIELD_KEYS = new Set([
     "l3_approver_user_ids",
     "l3approveruserids",
     "l3ApproverUserIds",
+    "l4_approver_user_ids",
+    "l4approveruserids",
+    "l4ApproverUserIds",
     "assigned_l1",
     "assignedl1",
     "assigned_l1_users",
@@ -306,6 +309,11 @@ const META_FIELD_KEYS = new Set([
     "acknowledgedat",
     "acknowledged_by",
     "acknowledgedby",
+    "requires_acknowledgement",
+    "requiresacknowledgement",
+    "requiresAcknowledgement",
+    "__field_labels",
+    "fieldlabels",
 ]);
 
 const ACKNOWLEDGEMENT_TIME_KEYS = new Set([
@@ -502,7 +510,13 @@ const parseMetaBlobRows = (value) => {
     return rows.length >= 2 ? rows : null;
 };
 
-const addDisplayField = (fields, usedKeys, key, value, label = "") => {
+// recordSubmittedNotebook always writes a lot_no key into submitted_fields, even for screens
+// that have no Lot No field at all (it's just blank there) - so unlike a genuine input field
+// left blank, an empty Lot No means "not on this screen" and should stay hidden rather than
+// showing as "-".
+const HIDE_WHEN_BLANK_KEYS = new Set(["lot_no", "lotno"]);
+
+const addDisplayField = (fields, usedKeys, key, value, label = "", labelOverrides = {}) => {
     const normalizedKey = normalizeKey(key);
     if (
         !normalizedKey ||
@@ -513,13 +527,19 @@ const addDisplayField = (fields, usedKeys, key, value, label = "") => {
         return;
     }
 
+    if (HIDE_WHEN_BLANK_KEYS.has(normalizedKey) && getDisplayValue(value) === "") {
+        return;
+    }
+
+    const resolvedLabel = label || labelOverrides[key] || FIELD_LABELS[key] || formatTitle(key);
+
     if (normalizedKey === "meta") {
         const metaRows = parseMetaBlobRows(value);
         if (metaRows) {
             usedKeys.add(normalizedKey);
             fields.push({
                 key,
-                label: label || FIELD_LABELS[key] || formatTitle(key),
+                label: resolvedLabel,
                 value: "",
                 rows: metaRows,
             });
@@ -528,40 +548,36 @@ const addDisplayField = (fields, usedKeys, key, value, label = "") => {
     }
 
     const parsed = parseJsonValue(value);
-    const displayValue = getDisplayValue(value);
-    if (displayValue === "") return;
+    // A blank/zero value is still a field that exists on the entry screen - show it (as "-")
+    // rather than silently dropping it, so no input field from the screen goes missing here.
+    const rawDisplayValue = getDisplayValue(value);
+    const displayValue = rawDisplayValue === "" ? "-" : rawDisplayValue;
 
     usedKeys.add(normalizedKey);
     fields.push({
         key,
-        label: label || FIELD_LABELS[key] || formatTitle(key),
+        label: resolvedLabel,
         value: displayValue,
         rows: isRowListValue(parsed) ? parsed : null,
     });
 };
 
-const flattenDisplayFields = (value, fields, usedKeys, prefix = "") => {
+const flattenDisplayFields = (value, fields, usedKeys, prefix = "", labelOverrides = {}) => {
     const parsed = parseJsonValue(value);
     if (!parsed || typeof parsed !== "object") {
-        if (prefix) addDisplayField(fields, usedKeys, prefix, parsed);
+        if (prefix) addDisplayField(fields, usedKeys, prefix, parsed, "", labelOverrides);
         return;
     }
 
     if (Array.isArray(parsed)) {
-        if (prefix) addDisplayField(fields, usedKeys, prefix, parsed);
+        if (prefix) addDisplayField(fields, usedKeys, prefix, parsed, "", labelOverrides);
         return;
     }
 
     Object.entries(parsed).forEach(([key, item]) => {
         const nextKey = prefix ? `${prefix}_${key}` : key;
         const parsedItem = parseJsonValue(item);
-
-        if (Array.isArray(parsedItem) || (parsedItem && typeof parsedItem === "object" && !(parsedItem instanceof Date))) {
-            addDisplayField(fields, usedKeys, nextKey, parsedItem);
-            return;
-        }
-
-        addDisplayField(fields, usedKeys, nextKey, parsedItem);
+        addDisplayField(fields, usedKeys, nextKey, parsedItem, "", labelOverrides);
     });
 };
 
@@ -1302,6 +1318,13 @@ const reconstructLabeledSummaryRows = (source, prefix) => {
     });
 };
 
+// Every notebook-specific custom section below (Carding Between & Within, Card DFK, this OCR
+// group, ...) builds its own "meta" leftover-fields list straight off the raw payload, bypassing
+// the generic buildFieldCards()/addDisplayField() path entirely - so each one needs its own check
+// to keep internal bookkeeping keys like __field_labels (see previewItemsToPayload in
+// submittedNotebookRecorder.js) from leaking through as a literal "Field Labels" card.
+const isDisplayableMetaKey = (key) => !META_FIELD_KEYS.has(normalizeKey(key));
+
 const buildFlatOcrGroup = (source, title = "") => {
     const sampleRows = reconstructIndexedSampleRows(source, "sample_");
     const summaryRows = reconstructLabeledSummaryRows(source, "summary_");
@@ -1309,7 +1332,7 @@ const buildFlatOcrGroup = (source, title = "") => {
 
     const metaEntries = Object.entries(source).filter(([key, value]) => {
         if (/^sample_\d+_/.test(key) || /^summary_.+_/.test(key)) return false;
-        return value !== undefined && value !== null && value !== "";
+        return isDisplayableMetaKey(key) && value !== undefined && value !== null && value !== "";
     });
 
     return { title, metaEntries, sampleRows, summaryRows };
@@ -1331,7 +1354,7 @@ const getOcrReportSections = (notebook) => {
             return [{
                 title: "",
                 metaEntries: Object.entries(payload.meta).filter(
-                    ([, value]) => value !== undefined && value !== null && value !== ""
+                    ([key, value]) => isDisplayableMetaKey(key) && value !== undefined && value !== null && value !== ""
                 ),
                 sampleRows,
                 summaryRows,
@@ -1414,7 +1437,8 @@ const getCardingBetweenWithinSections = (notebook) => {
         }
     });
     const metaEntries = Object.entries(payload).filter(
-        ([key, value]) => !consumedKeys.has(key) && value !== undefined && value !== null && value !== ""
+        ([key, value]) =>
+            !consumedKeys.has(key) && isDisplayableMetaKey(key) && value !== undefined && value !== null && value !== ""
     );
 
     return {
@@ -1466,7 +1490,60 @@ const getCardDfkSections = (notebook) => {
         CARD_DFK_COLUMNS.forEach(({ key }) => consumedKeys.add(`${prefix}_${key}`));
     });
     const metaEntries = Object.entries(payload).filter(
-        ([key, value]) => !consumedKeys.has(key) && value !== undefined && value !== null && value !== ""
+        ([key, value]) =>
+            !consumedKeys.has(key) && isDisplayableMetaKey(key) && value !== undefined && value !== null && value !== ""
+    );
+
+    return { metaEntries, rows };
+};
+
+// Thick place & CV (cardThickPlaceEntry.jsx) flattens its one-row-per-machine grid (machine,
+// Card Thick Place Value, 5m CV) into two preview items per machine - "<machine> (5m CV 1)" /
+// "<machine> (5m CV 2)" - which the generic fallback then shows as one flat card per value
+// (~50 cards for 25 machines) instead of the entry screen's own table. Reconstructed here the
+// same way as getCardDfkSections/getCardingBetweenWithinSections above, grouping the two
+// suffixed keys back together per machine.
+const THICK_PLACE_VALUE_SUFFIXES = [
+    { keySuffix: "_5m_cv_1", labelSuffix: /\(?\s*5m\s*cv\s*1\)?$/i, column: "Card Thick Place Value" },
+    { keySuffix: "_5m_cv_2", labelSuffix: /\(?\s*5m\s*cv\s*2\)?$/i, column: "5m CV" },
+];
+
+const getCardThickPlaceSections = (notebook) => {
+    const payload = getPayload(notebook);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+
+    const fieldLabelOverrides = parseJsonValue(payload.__field_labels) || {};
+    const consumedKeys = new Set();
+    const machineSlugs = [];
+
+    Object.keys(payload).forEach((key) => {
+        const match = THICK_PLACE_VALUE_SUFFIXES.find(({ keySuffix }) => key.endsWith(keySuffix));
+        if (!match) return;
+        consumedKeys.add(key);
+        const machineSlug = key.slice(0, key.length - match.keySuffix.length);
+        if (machineSlug && !machineSlugs.includes(machineSlug)) machineSlugs.push(machineSlug);
+    });
+    if (!machineSlugs.length) return null;
+
+    const rows = machineSlugs.map((machineSlug) => {
+        const machineLabel = THICK_PLACE_VALUE_SUFFIXES.reduce((label, { keySuffix, labelSuffix }) => {
+            if (label) return label;
+            const rawLabel = fieldLabelOverrides[`${machineSlug}${keySuffix}`];
+            return rawLabel ? String(rawLabel).replace(labelSuffix, "").trim() : "";
+        }, "") || formatTitle(machineSlug);
+
+        return {
+            machine: machineLabel,
+            values: THICK_PLACE_VALUE_SUFFIXES.map(({ keySuffix, column }) => ({
+                label: column,
+                value: payload[`${machineSlug}${keySuffix}`] ?? "-",
+            })),
+        };
+    });
+
+    const metaEntries = Object.entries(payload).filter(
+        ([key, value]) =>
+            !consumedKeys.has(key) && isDisplayableMetaKey(key) && value !== undefined && value !== null && value !== ""
     );
 
     return { metaEntries, rows };
@@ -1653,46 +1730,494 @@ const getSmxBreaksStudySections = (notebook) => {
     return { matrix, rows, columns: SMX_BREAK_COLUMNS, percentageColumns, metaEntries, columnTotals, columnBreaksPer100Sh, grandTotal, totalBreaksPer100Sh };
 };
 
+// Individual Card Performance (trialsDataEntry.jsx) saves its ~65 fields as one flat object
+// via buildTrialsPayload() - the generic fallback below turned that into a wall of ~50+
+// individual field cards with awkward raw-key labels (cp/a1/df_drg_mc_no/...) instead of the
+// entry screen's own sectioned layout (Draw Frame, Simplex, Cuts and Imperfection Parameters,
+// User Tester Parameters, IPI Regular/Higher Sensitive, Other IPI/Final). Reconstructed here
+// the same way as the other custom sections above, grouping the flat keys back into the
+// entry screen's own section tables.
+const TRIALS_META_LABELS = {
+    mc_no: "Carding Machine No.",
+    spinning_machine: "Spinning Machine Name",
+    autoconer_machine: "Autoconer Machine Name",
+    count_name: "Count Name",
+    product: "Product",
+    trial_type: "Type (Trial/Sample)",
+    nature: "Nature of Trials/Sample",
+    raw_material_mixing: "Raw Material / Mixing",
+};
+
+const TRIALS_GROUPS = [
+    {
+        title: "Draw Frame",
+        fields: [["Drg Mc. No.", "df_drg_mc_no"], ["Finish U%", "df_finish_u_percent"], ["CVIM", "df_cvim"], ["CVB", "df_cvb"]],
+    },
+    {
+        title: "Simplex",
+        fields: [["SMX No.", "smx_no"], ["SPL No.", "spl_no"], ["Roving%", "roving_percent"], ["CVIM", "smx_cvim"]],
+    },
+    {
+        title: "Cuts Summary",
+        fields: [["Total Cuts", "total_cuts"], ["Neps Cuts", "neps_cuts"], ["Short Cuts", "shorts_cuts"], ["Long Cuts", "long_cuts"], ["Thin Cuts", "thin_cuts"]],
+    },
+    {
+        title: "Cuts and Imperfection Parameters",
+        fields: [
+            ["CP", "cp"], ["CM", "cm"], ["CCP", "ccp"], ["CCM", "ccm"], ["JP", "jp"], ["JM", "jm"],
+            ["A1", "a1"], ["A2", "a2"], ["A3", "a3"], ["A4", "a4"],
+            ["B1", "b1"], ["B2", "b2"], ["B3", "b3"], ["B4", "b4"],
+            ["C1", "c1"], ["C2", "c2"], ["C3", "c3"], ["C4", "c4"],
+            ["D1", "d1"], ["D2", "d2"], ["D3", "d3"], ["D4", "d4"],
+            ["E", "e"], ["F", "f"], ["G", "g"], ["H1", "h1"], ["H2", "h2"],
+            ["I1", "l1"], ["I2", "l2"], ["CVB", "cvb"], ["FL CUT", "fl_cut"], ["FD CUT", "fd_cut"],
+        ],
+    },
+    {
+        title: "User Tester Parameters",
+        fields: [["User ID", "user_id"], ["U%", "u_percent"], ["CVM", "cvm"], ["CVM cv%", "cvm_cv_percent"], ["CVM 10 mtr", "cvm_10mtr"], ["DR 1.5m", "dr_1_5m"]],
+    },
+    {
+        title: "IPI Parameters - Regular",
+        fields: [["Thin -50%", "thin_minus_50"], ["Thick +50%", "thick_plus_50"], ["Neps +200%", "neps_plus_200"], ["Total (Regular)", "total_regular"]],
+    },
+    {
+        title: "IPI Parameters - Higher Sensitive",
+        fields: [["Thin -40%", "thin_minus_40"], ["Thick +35%", "thick_plus_35"], ["Neps +140%", "neps_plus_140"], ["Total (HS)", "total_hs"]],
+    },
+    {
+        title: "Other IPI / Final Values",
+        fields: [["Thin -30%", "thin_minus_30"], ["Count", "yarn_count"], ["CSP", "csp"]],
+    },
+    {
+        title: "Yarn Results & Remarks",
+        fields: [["Yarn Results", "yarn_results"], ["Yarn Remarks", "yarn_remarks"]],
+    },
+];
+
+const getTrialsSections = (notebook) => {
+    const payload = getPayload(notebook);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    const hasTrialsShape = ["df_drg_mc_no", "total_regular", "total_hs", "smx_cvim"].every((key) => key in payload);
+    if (!hasTrialsShape) return null;
+
+    const consumedKeys = new Set(["entry_id", "date", "time", "type", "entry_date", "entry_time", "entry_type", "lot_no"]);
+    const groups = TRIALS_GROUPS.map((group) => {
+        const columns = group.fields.map(([label, key]) => ({ key, label }));
+        const row = group.fields.reduce((acc, [, key]) => {
+            consumedKeys.add(key);
+            acc[key] = payload[key] ?? "-";
+            return acc;
+        }, {});
+        return { title: group.title, columns, row };
+    });
+
+    const metaEntries = Object.entries(payload).filter(
+        ([key, value]) => !consumedKeys.has(key) && isDisplayableMetaKey(key) && value !== undefined && value !== null && value !== ""
+    );
+
+    return { metaEntries, groups };
+};
+
+// Draw Frame's "1 Yard / Half Yard CV Entry" (and its Cots variant) saves its readings/results
+// as nested objects - readings: { one_yard: [...], half_yard: [...] }, results: { avg_1yd, ... } -
+// via its own extra.submitted_fields override (see draw-frame.js's handleSubmit), bypassing the
+// generic groupsToPayload/__field_labels fallback entirely. The generic buildFieldCards renderer
+// then flattens those nested objects into one comma-joined "key: value, key: value" card each,
+// instead of the entry screen's own Readings/Calculation Results tables. Reconstructed here to
+// match that layout, detected structurally by the readings/results shape rather than by name.
+const getYarnCvSections = (notebook) => {
+    const payload = getPayload(notebook);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    const readings = parseJsonValue(payload.readings);
+    const results = parseJsonValue(payload.results);
+    if (!readings || typeof readings !== "object") return null;
+    if (!Array.isArray(readings.one_yard) && !Array.isArray(readings.half_yard)) return null;
+
+    const oneYard = Array.isArray(readings.one_yard) ? readings.one_yard : [];
+    const halfYard = Array.isArray(readings.half_yard) ? readings.half_yard : [];
+    const rowCount = Math.max(oneYard.length, halfYard.length);
+
+    const groups = [
+        {
+            title: "Readings",
+            columns: [
+                { key: "serial", label: "S.No" },
+                { key: "oneYard", label: "1 Yard Reading" },
+                { key: "halfYard", label: "1/2 Yard Reading" },
+            ],
+            rows: Array.from({ length: rowCount }, (_, index) => ({
+                serial: index + 1,
+                oneYard: oneYard[index] ?? "-",
+                halfYard: halfYard[index] ?? "-",
+            })),
+        },
+    ];
+
+    if (results && typeof results === "object") {
+        groups.push({
+            title: "Calculation Results",
+            columns: [
+                { key: "avg_1yd", label: "AVG (1 Yard)" },
+                { key: "hank_1yd", label: "HANK (1 Yard)" },
+                { key: "sd_1yd", label: "SD (1 Yard)" },
+                { key: "cv_1yd", label: "CV% (1 Yard)" },
+                { key: "avg_half", label: "AVG (1/2 Yard)" },
+                { key: "hank_half", label: "HANK (1/2 Yard)" },
+                { key: "sd_half", label: "SD (1/2 Yard)" },
+                { key: "cv_half", label: "CV% (1/2 Yard)" },
+            ],
+            rows: [results],
+        });
+    }
+
+    const consumedKeys = new Set(["readings", "results"]);
+    const metaEntries = Object.entries(payload).filter(
+        ([key, value]) =>
+            !consumedKeys.has(key) && isDisplayableMetaKey(key) && value !== undefined && value !== null && value !== ""
+    );
+
+    return { metaEntries, groups };
+};
+
+// Spinning's "Count Change" screen saves via the generic checkingType submit path shared with
+// Ring Frame/Cots/Wheel Change (buildPayload() -> extra.submitted_fields override in spinning.js),
+// bypassing previewGroups entirely, so the entry screen's own "Readings"/"Averages" tables never
+// reached the submitted-notebook record - the real payload's readings[] array (each row still
+// carrying the duplicated overall cv_percent/cv_percent_2 - see deriveCountChangeRow in
+// spinning.js) fell to the generic array-of-rows renderer instead, with avg_reading/avg_count/
+// avg_strength/overall_csp left as individual flat cards. Reconstructed here to match the entry
+// screen's own layout, detected structurally by the readings[]/avg_reading/overall_csp shape.
+const getSpinningCountChangeSections = (notebook) => {
+    const payload = getPayload(notebook);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    const readings = parseJsonValue(payload.readings);
+    if (!Array.isArray(readings) || !readings.length) return null;
+    if (!("avg_reading" in payload) || !("overall_csp" in payload)) return null;
+    const hasShape = readings.every((row) => row && typeof row === "object" && "reading_no" in row && "csp" in row);
+    if (!hasShape) return null;
+
+    const groups = [
+        {
+            title: "Readings",
+            columns: [
+                { key: "reading_no", label: "Reading No." },
+                { key: "reading_value", label: "Reading Value" },
+                { key: "count", label: "Count" },
+                { key: "strength", label: "Strength" },
+                { key: "mean", label: "Mean (Strength)" },
+                { key: "csp", label: "CSP" },
+            ],
+            rows: readings.map((row, index) => ({
+                reading_no: row.reading_no ?? index + 1,
+                reading_value: row.reading_value ?? "-",
+                count: row.count ?? "-",
+                strength: row.strength ?? "-",
+                mean: row.mean ?? "-",
+                csp: row.csp ?? "-",
+            })),
+        },
+        {
+            title: "Averages",
+            columns: [
+                { key: "avg_reading", label: "Avg Reading" },
+                { key: "avg_count", label: "Avg Count" },
+                { key: "avg_strength", label: "Avg Strength" },
+                { key: "cv_percent", label: "CV% (Count)" },
+                { key: "cv_percent_2", label: "CV% (Strength)" },
+                { key: "overall_csp", label: "Overall CSP" },
+            ],
+            rows: [
+                {
+                    avg_reading: payload.avg_reading ?? "-",
+                    avg_count: payload.avg_count ?? "-",
+                    avg_strength: payload.avg_strength ?? "-",
+                    cv_percent: readings[0]?.cv_percent ?? "-",
+                    cv_percent_2: readings[0]?.cv_percent_2 ?? "-",
+                    overall_csp: payload.overall_csp ?? "-",
+                },
+            ],
+        },
+    ];
+
+    const consumedKeys = new Set(["readings", "avg_reading", "avg_count", "avg_strength", "overall_csp"]);
+    const metaEntries = Object.entries(payload).filter(
+        ([key, value]) =>
+            !consumedKeys.has(key) && isDisplayableMetaKey(key) && value !== undefined && value !== null && value !== ""
+    );
+
+    return { metaEntries, groups };
+};
+
+// Many entry screens across departments (Between & Within Card, Card Thick Place, Nati Data
+// Entry, Individual Card Waste Study, Blow Room Sync, Drop Test, BR Waste Study, Ribbon Lap Cv%,
+// Comber Nati Data, Simplex Cots Checking/Wheel Change, all five Autoconer
+// screens, ...) were converted to show their pre-submit preview as PreviewModal `groups` (real
+// per-section tables) instead of one flat `items` list, but have no dedicated getPayload() of
+// their own - recordSubmittedNotebook falls back to flattening those groups via
+// groupsToPayload() in submittedNotebookRecorder.js, which writes each cell under a
+// "<group title> <row#> - <column label>" (or "<group title> - <column label>" for a single-row
+// group) entry in the saved __field_labels map. Reconstructed generically here by parsing that
+// convention back into the same grouped tables, rather than writing one bespoke detector per
+// screen.
+const GROUPED_FIELD_LABEL_RE = /^(.+?)(?:\s+(\d+))? - (.+)$/;
+
+const getGroupedFieldSections = (notebook) => {
+    const payload = getPayload(notebook);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    const fieldLabels = parseJsonValue(payload.__field_labels);
+    if (!fieldLabels || typeof fieldLabels !== "object") return null;
+
+    const groupMap = new Map();
+    const consumedKeys = new Set();
+
+    Object.entries(fieldLabels).forEach(([key, label]) => {
+        const match = String(label || "").match(GROUPED_FIELD_LABEL_RE);
+        if (!match) return;
+        const [, title, rowIndexStr, columnLabel] = match;
+        const rowIndex = rowIndexStr ? Number(rowIndexStr) : 0;
+        if (!groupMap.has(title)) groupMap.set(title, new Map());
+        const rows = groupMap.get(title);
+        if (!rows.has(rowIndex)) rows.set(rowIndex, {});
+        rows.get(rowIndex)[columnLabel] = payload[key];
+        consumedKeys.add(key);
+    });
+
+    if (!groupMap.size) return null;
+
+    const groups = Array.from(groupMap.entries()).map(([title, rowsMap]) => {
+        const sortedRowIndexes = Array.from(rowsMap.keys()).sort((a, b) => a - b);
+        const columnLabels = [];
+        sortedRowIndexes.forEach((idx) => {
+            Object.keys(rowsMap.get(idx)).forEach((col) => {
+                if (!columnLabels.includes(col)) columnLabels.push(col);
+            });
+        });
+        return {
+            title,
+            columns: columnLabels.map((label) => ({ key: label, label })),
+            rows: sortedRowIndexes.map((idx) => rowsMap.get(idx)),
+        };
+    });
+
+    consumedKeys.add("__field_labels");
+    const metaEntries = Object.entries(payload).filter(
+        ([key, value]) =>
+            !consumedKeys.has(key) && isDisplayableMetaKey(key) && value !== undefined && value !== null && value !== ""
+    );
+
+    return { metaEntries, groups };
+};
+
+// Every "Wheel Change" screen (Carding, Spinning) saves each Existing/Proposed parameter row as
+// two sibling top-level keys sharing one field prefix - "<field>_existing"/"<field>_proposed" -
+// rather than a row array, so the generic getGroupedFieldSections/buildFieldCards paths would
+// otherwise show one flat card per field instead of the entry screen's own Parameter/Existing/
+// Proposed table. Detected structurally (any key ending "_existing" with a matching "_proposed"
+// sibling) rather than by notebook name, so it covers every department's Wheel Change screen that
+// uses this convention without a per-screen detector.
+const getWheelChangeFlatPairSections = (notebook) => {
+    const payload = getPayload(notebook);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    // A payload carrying __field_labels came through the generic (non-getPayload) capture path
+    // (see previewItemsToPayload/groupsToPayload in submittedNotebookRecorder.js) and must be
+    // reconstructed via getGroupedFieldSections instead - its group-title slug can itself contain
+    // "_existing"/"_proposed" (e.g. a group literally titled "Parameters (Existing / Proposed)"),
+    // which otherwise false-matches this structural heuristic before the real key-label mapping
+    // ever gets a chance to run.
+    if (parseJsonValue(payload.__field_labels)) return null;
+
+    const fields = [];
+    Object.keys(payload).forEach((key) => {
+        if (key.endsWith("_existing") && `${key.slice(0, -9)}_proposed` in payload) {
+            fields.push(key.slice(0, -9));
+        }
+    });
+    if (!fields.length) return null;
+
+    const rows = fields.map((field) => ({
+        parameter: formatTitle(field),
+        existing: payload[`${field}_existing`] ?? "-",
+        proposed: payload[`${field}_proposed`] ?? "-",
+    }));
+
+    const consumedKeys = new Set();
+    fields.forEach((field) => {
+        consumedKeys.add(`${field}_existing`);
+        consumedKeys.add(`${field}_proposed`);
+    });
+    const metaEntries = Object.entries(payload).filter(
+        ([key, value]) =>
+            !consumedKeys.has(key) && isDisplayableMetaKey(key) && value !== undefined && value !== null && value !== ""
+    );
+
+    return { metaEntries, rows };
+};
+
+// Draw Frame's and Simplex's "Wheel Change" screens save their Existing/Proposed rows as a
+// `parameters` array of {key, label, existing, proposed} objects instead of flat sibling keys
+// (see getWheelChangeFlatPairSections above for the other convention) - detected structurally by
+// that array's shape, again so one detector covers every department using this convention.
+const getWheelChangeParametersArraySections = (notebook) => {
+    const payload = getPayload(notebook);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    // Same reasoning as getWheelChangeFlatPairSections above - a generically-captured payload
+    // must go through getGroupedFieldSections, not this structural heuristic.
+    if (parseJsonValue(payload.__field_labels)) return null;
+    const parameters = parseJsonValue(payload.parameters);
+    if (!Array.isArray(parameters) || !parameters.length) return null;
+    const hasShape = parameters.every(
+        (item) => item && typeof item === "object" && "label" in item && "existing" in item && "proposed" in item
+    );
+    if (!hasShape) return null;
+
+    const rows = parameters.map((item) => ({
+        parameter: item.label,
+        existing: item.existing ?? "-",
+        proposed: item.proposed ?? "-",
+    }));
+
+    // Carding's and Spinning's Wheel Change payloads carry their own legacy flat
+    // "<field>_existing"/"<field>_proposed" keys ALONGSIDE this `parameters` array (added purely
+    // for this popup's benefit - see registeredActions.getPayload in carding/WheelChange.jsx and
+    // the extra.submitted_fields override in spinning.js) - excluding only "parameters"/"rows"
+    // would leave every one of those flat keys to leak through as its own duplicate flat card
+    // showing the exact same data already in the table above. Exclude the whole convention here.
+    const consumedKeys = new Set(["parameters", "rows"]);
+    Object.keys(payload).forEach((key) => {
+        if (key.endsWith("_existing") || key.endsWith("_proposed")) consumedKeys.add(key);
+    });
+    const metaEntries = Object.entries(payload).filter(
+        ([key, value]) =>
+            !consumedKeys.has(key) && isDisplayableMetaKey(key) && value !== undefined && value !== null && value !== ""
+    );
+
+    return { metaEntries, rows };
+};
+
+// Several entry screens (Blow Room Sync, Drop Test, BR Waste Study, ...) build their pre-submit
+// preview by flattening each grid row into one field per row - e.g. label "Row 1" with value
+// "Run Time:5s | Idle Time:2s | Sub Total:00:00:07 | Sync:71.43%" - which is what ends up stored
+// as the submitted field. Rather than showing those as a wall of "Row 1: Run Time:5s | ..." cards,
+// detect the "Label:Value | Label:Value" shape and the shared numbered-label prefix (Row/Entry/
+// Waste KGs ...) across sibling fields and rebuild them into one real table matching the entry
+// screen's own grid, using the same row-list rendering already used for structured array fields.
+const NUMBERED_FIELD_LABEL_RE = /^(.*?)[\s_-]*(\d+)$/;
+
+const parsePipeDelimitedPairs = (value) => {
+    if (typeof value !== "string" || !value.includes("|") || !value.includes(":")) return null;
+
+    const segments = value.split("|").map((segment) => segment.trim()).filter(Boolean);
+    if (segments.length < 2) return null;
+
+    const pairs = {};
+    for (const segment of segments) {
+        const colonIndex = segment.indexOf(":");
+        if (colonIndex === -1) return null;
+        const key = segment.slice(0, colonIndex).trim();
+        if (!key) return null;
+        pairs[key] = segment.slice(colonIndex + 1).trim();
+    }
+    return pairs;
+};
+
+const mergeNumberedRowFields = (fields) => {
+    const groups = new Map();
+    const totalCandidates = [];
+    const untouched = [];
+
+    fields.forEach((field) => {
+        const match = typeof field.label === "string" ? field.label.match(NUMBERED_FIELD_LABEL_RE) : null;
+        const pairs = match ? parsePipeDelimitedPairs(field.value) : null;
+
+        if (match && pairs) {
+            const prefix = match[1].trim() || field.label;
+            if (!groups.has(prefix)) groups.set(prefix, []);
+            groups.get(prefix).push({ num: parseInt(match[2], 10), pairs });
+            return;
+        }
+
+        // A trailing "Totals" field (no numeric suffix, so it doesn't match the group above)
+        // is folded into its matching row group as the last row, provided its pipe-delimited
+        // keys are exactly the same set as that group's rows - otherwise it's left as-is.
+        const totalPairs = /total/i.test(String(field.label || "")) ? parsePipeDelimitedPairs(field.value) : null;
+        if (totalPairs) {
+            totalCandidates.push({ field, pairs: totalPairs });
+            return;
+        }
+
+        untouched.push(field);
+    });
+
+    const mergedFields = [];
+    groups.forEach((entries, prefix) => {
+        entries.sort((a, b) => a.num - b.num);
+        const rows = entries.map(({ num, pairs }) => ({ "S. No.": num, ...pairs }));
+
+        const rowKeys = new Set(Object.keys(rows[0] || {}).filter((key) => key !== "S. No."));
+        const matchIndex = totalCandidates.findIndex(({ pairs }) => {
+            const keys = Object.keys(pairs);
+            return keys.length === rowKeys.size && keys.every((key) => rowKeys.has(key));
+        });
+        if (matchIndex !== -1) {
+            const [totalMatch] = totalCandidates.splice(matchIndex, 1);
+            rows.push({ "S. No.": "Total", ...totalMatch.pairs });
+        }
+
+        mergedFields.push({
+            key: normalizeKey(prefix) || prefix,
+            label: prefix,
+            value: "",
+            rows,
+        });
+    });
+
+    return [...untouched, ...totalCandidates.map(({ field }) => field), ...mergedFields];
+};
+
 const buildFieldCards = (notebook) => {
     const payload = getPayload(notebook);
     const fields = [];
     const usedKeys = new Set();
 
     if (Array.isArray(payload)) {
-        return payload
-            .map((item, index) => {
-                if (!item || typeof item !== "object") {
-                    return null;
-                }
+        return mergeNumberedRowFields(
+            payload
+                .map((item, index) => {
+                    if (!item || typeof item !== "object") {
+                        return null;
+                    }
 
-                const key = String(
-                    item.key ||
-                    item.name ||
-                    item.field ||
-                    item.field_name ||
-                    item.input_field ||
-                    item.label ||
-                    `field_${index}`
-                );
-                const value =
-                    item.value ??
-                    item.field_value ??
-                    item.input_value ??
-                    item.actual_value ??
-                    item.submitted_value;
+                    const key = String(
+                        item.key ||
+                        item.name ||
+                        item.field ||
+                        item.field_name ||
+                        item.input_field ||
+                        item.label ||
+                        `field_${index}`
+                    );
+                    const value =
+                        item.value ??
+                        item.field_value ??
+                        item.input_value ??
+                        item.actual_value ??
+                        item.submitted_value;
 
-                const displayValue = getDisplayValue(value);
-                if (displayValue === "") {
-                    return null;
-                }
+                    const rawDisplayValue = getDisplayValue(value);
+                    if (HIDE_WHEN_BLANK_KEYS.has(normalizeKey(key)) && rawDisplayValue === "") {
+                        return null;
+                    }
+                    const displayValue = rawDisplayValue === "" ? "-" : rawDisplayValue;
 
-                return {
-                    key,
-                    label: item.label || FIELD_LABELS[key] || formatTitle(key),
-                    value: displayValue,
-                };
-            })
-            .filter(Boolean);
+                    return {
+                        key,
+                        label: item.label || FIELD_LABELS[key] || formatTitle(key),
+                        value: displayValue,
+                    };
+                })
+                .filter(Boolean)
+        );
     }
 
     const payloadHasDisplayValues =
@@ -1700,14 +2225,33 @@ const buildFieldCards = (notebook) => {
         typeof payload === "object" &&
         Object.keys(payload).some((key) => !META_FIELD_KEYS.has(normalizeKey(key)));
 
+    // Preserve the exact label the entry screen showed (e.g. "Lap Weight (KGs)") instead of
+    // reconstructing a lossy approximation from its slugified key ("Lap Weight Kgs") - see
+    // previewItemsToPayload in submittedNotebookRecorder.js, which writes this alongside the
+    // slugged fields for any screen using the generic (non-getPayload) capture path.
+    const fieldLabelOverrides =
+        (payload && typeof payload === "object" && !Array.isArray(payload) && parseJsonValue(payload.__field_labels)) ||
+        {};
+
     FALLBACK_FIELDS.forEach((key) => {
         const value = payload?.[key] ?? notebook?.[key];
-        if (value !== undefined && value !== null && value !== "") {
+        // Only skip a fallback field when it's genuinely absent from this notebook type
+        // (undefined/null) - a blank-but-present value ("") is still shown, as "-", except
+        // for keys like lot_no that get written for every notebook regardless of whether
+        // that screen actually has the field.
+        if (value !== undefined && value !== null) {
+            if (HIDE_WHEN_BLANK_KEYS.has(normalizeKey(key)) && value === "") {
+                return;
+            }
             if (!payloadHasDisplayValues && META_FIELD_KEYS.has(normalizeKey(key))) {
                 return;
             }
             usedKeys.add(normalizeKey(key));
-            fields.push({ key, label: FIELD_LABELS[key] || formatTitle(key), value });
+            fields.push({
+                key,
+                label: fieldLabelOverrides[key] || FIELD_LABELS[key] || formatTitle(key),
+                value: value === "" ? "-" : value,
+            });
         }
     });
 
@@ -1726,20 +2270,20 @@ const buildFieldCards = (notebook) => {
             usedKeys.has(normalizeKey(key)) ||
             META_FIELD_KEYS.has(normalizeKey(key)) ||
             value === undefined ||
-            value === null ||
-            value === ""
+            value === null
         ) {
             return;
         }
-        addDisplayField(fields, usedKeys, key, value);
+        addDisplayField(fields, usedKeys, key, value, "", fieldLabelOverrides);
     });
 
-    flattenDisplayFields(payload, fields, usedKeys);
-    if (notebook && typeof notebook === "object") {
-        flattenDisplayFields(notebook, fields, usedKeys);
-    }
+    // Only ever display what was actually captured on the entry screen (the submitted
+    // payload) - never fall back to flattening the raw notebook DB row here, since that
+    // row carries columns (status, timestamps, approver ids, ...) that were never on the
+    // UI and must not leak into this view as if they were submitted fields.
+    flattenDisplayFields(payload, fields, usedKeys, "", fieldLabelOverrides);
 
-    return fields;
+    return mergeNumberedRowFields(fields);
 };
 
 const SubmittedNotebooksPage = () => {
@@ -2069,9 +2613,29 @@ const SubmittedNotebooksPage = () => {
     const ocrReportSections = selectedNotebook ? getOcrReportSections(selectedNotebook) : null;
     const cardingSections = !ocrReportSections && selectedNotebook ? getCardingBetweenWithinSections(selectedNotebook) : null;
     const cardDfkSections = !ocrReportSections && !cardingSections && selectedNotebook ? getCardDfkSections(selectedNotebook) : null;
-    const ringFrameSections = !ocrReportSections && !cardingSections && !cardDfkSections && selectedNotebook ? getRingFrameSections(selectedNotebook) : null;
-    const smxBreaksStudySections = !ocrReportSections && !cardingSections && !cardDfkSections && !ringFrameSections && selectedNotebook ? getSmxBreaksStudySections(selectedNotebook) : null;
-    const hasCustomSections = ocrReportSections || cardingSections || cardDfkSections || ringFrameSections || smxBreaksStudySections;
+    const thickPlaceSections = !ocrReportSections && !cardingSections && !cardDfkSections && selectedNotebook ? getCardThickPlaceSections(selectedNotebook) : null;
+    const ringFrameSections = !ocrReportSections && !cardingSections && !cardDfkSections && !thickPlaceSections && selectedNotebook ? getRingFrameSections(selectedNotebook) : null;
+    const smxBreaksStudySections = !ocrReportSections && !cardingSections && !cardDfkSections && !thickPlaceSections && !ringFrameSections && selectedNotebook ? getSmxBreaksStudySections(selectedNotebook) : null;
+    const trialsSections = !ocrReportSections && !cardingSections && !cardDfkSections && !thickPlaceSections && !ringFrameSections && !smxBreaksStudySections && selectedNotebook ? getTrialsSections(selectedNotebook) : null;
+    const priorCustomSections = ocrReportSections || cardingSections || cardDfkSections || thickPlaceSections || ringFrameSections || smxBreaksStudySections || trialsSections;
+    // Parameters-array (exact on-screen labels) takes priority over the flat-pair heuristic
+    // (which guesses a label from the raw backend key) - Carding's and Spinning's Wheel Change
+    // payloads carry both a `parameters` array AND the legacy flat "<field>_existing"/
+    // "<field>_proposed" keys side by side, so without this ordering the lossy heuristic would
+    // win just because it's checked first.
+    const wheelChangeParametersArraySections = !priorCustomSections && selectedNotebook ? getWheelChangeParametersArraySections(selectedNotebook) : null;
+    const wheelChangeFlatPairSections = !priorCustomSections && !wheelChangeParametersArraySections && selectedNotebook ? getWheelChangeFlatPairSections(selectedNotebook) : null;
+    const yarnCvSections = !priorCustomSections && !wheelChangeFlatPairSections && !wheelChangeParametersArraySections && selectedNotebook ? getYarnCvSections(selectedNotebook) : null;
+    const countChangeSections = !priorCustomSections && !wheelChangeFlatPairSections && !wheelChangeParametersArraySections && !yarnCvSections && selectedNotebook ? getSpinningCountChangeSections(selectedNotebook) : null;
+    const groupedFieldSections = !priorCustomSections && !wheelChangeFlatPairSections && !wheelChangeParametersArraySections && !yarnCvSections && !countChangeSections && selectedNotebook ? getGroupedFieldSections(selectedNotebook) : null;
+    const entryIdValue = selectedNotebook?.entry_id || selectedNotebook?.entryId || "-";
+    const entryIdMetaCard = (
+        <div className={styles.fieldCard}>
+            <small>Entry ID</small>
+            <strong>{entryIdValue}</strong>
+        </div>
+    );
+    const hasCustomSections = priorCustomSections || wheelChangeFlatPairSections || wheelChangeParametersArraySections || yarnCvSections || countChangeSections || groupedFieldSections;
     const selectedFields = hasCustomSections ? [] : buildFieldCards(selectedNotebook);
     const simpleFields = selectedFields.filter((field) => !field.rows);
     const rowListFields = selectedFields.filter((field) => field.rows);
@@ -2376,6 +2940,7 @@ const SubmittedNotebooksPage = () => {
                                         <div className={styles.rowListSection}>
                                             <small>Meta</small>
                                             <div className={styles.fieldGrid}>
+                                                {entryIdMetaCard}
                                                 {section.metaEntries.map(([key, value]) => (
                                                     <div key={key} className={styles.fieldCard}>
                                                         <small>{OCR_META_FIELD_LABELS[key] || formatTitle(key)}</small>
@@ -2433,6 +2998,7 @@ const SubmittedNotebooksPage = () => {
                                 <div className={styles.rowListSection}>
                                     <small>Meta</small>
                                     <div className={styles.fieldGrid}>
+                                        {entryIdMetaCard}
                                         {cardingSections.metaEntries.map(([key, value]) => (
                                             <div key={key} className={styles.fieldCard}>
                                                 <small>{FIELD_LABELS[key] || formatTitle(key)}</small>
@@ -2490,6 +3056,11 @@ const SubmittedNotebooksPage = () => {
                         ) : cardDfkSections ? (
                             <>
                                 <div className={styles.rowListSection}>
+                                    <small>Meta</small>
+                                    <div className={styles.fieldGrid}>{entryIdMetaCard}</div>
+                                </div>
+
+                                <div className={styles.rowListSection}>
                                     <small>DFK Values</small>
                                     <div className={styles.rowListTableWrap}>
                                         <table className={styles.rowListTable}>
@@ -2515,8 +3086,46 @@ const SubmittedNotebooksPage = () => {
                                     </div>
                                 </div>
                             </>
+                        ) : thickPlaceSections ? (
+                            <>
+                                <div className={styles.rowListSection}>
+                                    <small>Meta</small>
+                                    <div className={styles.fieldGrid}>{entryIdMetaCard}</div>
+                                </div>
+
+                                <div className={styles.rowListSection}>
+                                    <small>Card Thick Place Values</small>
+                                    <div className={styles.rowListTableWrap}>
+                                        <table className={styles.rowListTable}>
+                                            <thead>
+                                                <tr>
+                                                    <th>Machine</th>
+                                                    {thickPlaceSections.rows[0]?.values.map(({ label }) => (
+                                                        <th key={label}>{label}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {thickPlaceSections.rows.map((row) => (
+                                                    <tr key={row.machine}>
+                                                        <td>{row.machine}</td>
+                                                        {row.values.map(({ label, value }) => (
+                                                            <td key={label}>{String(value)}</td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </>
                         ) : ringFrameSections ? (
                             <>
+                                <div className={styles.rowListSection}>
+                                    <small>Meta</small>
+                                    <div className={styles.fieldGrid}>{entryIdMetaCard}</div>
+                                </div>
+
                                 <div className={styles.rowListSection}>
                                     <small>Ring Frame Rows</small>
                                     <div className={styles.rowListTableWrap}>
@@ -2562,6 +3171,7 @@ const SubmittedNotebooksPage = () => {
                                 <div className={styles.rowListSection}>
                                     <small>Meta</small>
                                     <div className={styles.fieldGrid}>
+                                        {entryIdMetaCard}
                                         {smxBreaksStudySections.metaEntries.map(([label, value]) => (
                                             <div key={label} className={styles.fieldCard}>
                                                 <small>{label}</small>
@@ -2621,18 +3231,154 @@ const SubmittedNotebooksPage = () => {
                                     </div>
                                 </div>
                             </>
+                        ) : trialsSections ? (
+                            <>
+                                <div className={styles.rowListSection}>
+                                    <small>Meta</small>
+                                    <div className={styles.fieldGrid}>
+                                        {entryIdMetaCard}
+                                        {trialsSections.metaEntries.map(([key, value]) => (
+                                            <div key={key} className={styles.fieldCard}>
+                                                <small>{TRIALS_META_LABELS[key] || FIELD_LABELS[key] || formatTitle(key)}</small>
+                                                <strong>{isDateField(key) ? formatDateValue(value) : String(value)}</strong>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {trialsSections.groups.map((group) => (
+                                    <div key={group.title} className={styles.rowListSection}>
+                                        <small>{group.title}</small>
+                                        <div className={styles.rowListTableWrap}>
+                                            <table className={styles.rowListTable}>
+                                                <thead>
+                                                    <tr>
+                                                        {group.columns.map((column) => (
+                                                            <th key={column.key}>{column.label}</th>
+                                                        ))}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        {group.columns.map((column) => (
+                                                            <td key={column.key}>{String(group.row[column.key])}</td>
+                                                        ))}
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                ))}
+                            </>
+                        ) : wheelChangeFlatPairSections || wheelChangeParametersArraySections ? (
+                            (() => {
+                                const section = wheelChangeFlatPairSections || wheelChangeParametersArraySections;
+                                return (
+                                    <>
+                                        <div className={styles.rowListSection}>
+                                            <small>Meta</small>
+                                            <div className={styles.fieldGrid}>
+                                                {entryIdMetaCard}
+                                                {section.metaEntries.map(([key, value]) => (
+                                                    <div key={key} className={styles.fieldCard}>
+                                                        <small>{FIELD_LABELS[key] || formatTitle(key)}</small>
+                                                        <strong>{isDateField(key) ? formatDateValue(value) : String(value)}</strong>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className={styles.rowListSection}>
+                                            <small>Parameters (Existing / Proposed)</small>
+                                            <div className={styles.rowListTableWrap}>
+                                                <table className={styles.rowListTable}>
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Parameter</th>
+                                                            <th>Existing</th>
+                                                            <th>Proposed</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {section.rows.map((row, rowIndex) => (
+                                                            <tr key={rowIndex}>
+                                                                <td>{String(row.parameter)}</td>
+                                                                <td>{String(row.existing)}</td>
+                                                                <td>{String(row.proposed)}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </>
+                                );
+                            })()
+                        ) : groupedFieldSections || yarnCvSections || countChangeSections ? (
+                            (() => {
+                                const section = groupedFieldSections || yarnCvSections || countChangeSections;
+                                return (
+                                    <>
+                                        <div className={styles.rowListSection}>
+                                            <small>Meta</small>
+                                            <div className={styles.fieldGrid}>
+                                                {entryIdMetaCard}
+                                                {section.metaEntries.map(([key, value]) => (
+                                                    <div key={key} className={styles.fieldCard}>
+                                                        <small>{FIELD_LABELS[key] || formatTitle(key)}</small>
+                                                        <strong>{isDateField(key) ? formatDateValue(value) : String(value)}</strong>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {section.groups.map((group) => (
+                                            <div key={group.title} className={styles.rowListSection}>
+                                                <small>{group.title}</small>
+                                                <div className={styles.rowListTableWrap}>
+                                                    <table className={styles.rowListTable}>
+                                                        <thead>
+                                                            <tr>
+                                                                {group.columns.map((column) => (
+                                                                    <th key={column.key}>{column.label}</th>
+                                                                ))}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {group.rows.map((row, rowIndex) => (
+                                                                <tr key={rowIndex}>
+                                                                    {group.columns.map((column) => (
+                                                                        <td key={column.key}>
+                                                                            {row[column.key] === undefined || row[column.key] === null || row[column.key] === ""
+                                                                                ? "-"
+                                                                                : String(row[column.key])}
+                                                                        </td>
+                                                                    ))}
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </>
+                                );
+                            })()
                         ) : (
                             <>
                                 <div className={styles.fieldGrid}>
                                     {isDetailLoading ? (
                                         <div className={styles.emptyState}>Loading notebook details...</div>
                                     ) : selectedFields.length ? (
-                                        simpleFields.map((field) => (
-                                            <div key={field.key} className={styles.fieldCard}>
-                                                <small>{field.label}</small>
-                                                <strong>{isDateField(field.key) ? formatDateValue(field.value) : String(field.value)}</strong>
-                                            </div>
-                                        ))
+                                        <>
+                                            {simpleFields.some((field) => normalizeKey(field.key) === "entryid") ? null : entryIdMetaCard}
+                                            {simpleFields.map((field) => (
+                                                <div key={field.key} className={styles.fieldCard}>
+                                                    <small>{field.label}</small>
+                                                    <strong>{isDateField(field.key) ? formatDateValue(field.value) : String(field.value)}</strong>
+                                                </div>
+                                            ))}
+                                        </>
                                     ) : (
                                         <div className={styles.emptyState}>No submitted fields available.</div>
                                     )}

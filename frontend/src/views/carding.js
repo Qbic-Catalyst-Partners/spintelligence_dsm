@@ -90,6 +90,7 @@ function Carding() {
     const [checkingType, setCheckingType] = useState(typeOptions[0]?.id ?? null);
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
+    const [previewGroups, setPreviewGroups] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [validationMessage, setValidationMessage] = useState("");
   const [bwcInspectionType, setBwcInspectionType] = useState("Within");    const [lotNo, setLotNo] = useState("");
@@ -124,6 +125,7 @@ function Carding() {
         setLotNo("");
         setValidationMessage("");
         setPreviewItems([]);
+        setPreviewGroups([]);
         setShowPreview(false);
         setShowSuccess(false);
 
@@ -196,8 +198,10 @@ function Carding() {
         }
 
         setValidationMessage("");
-        const items = childRef.current?.getPreviewData ? childRef.current.getPreviewData() : [];
-        setPreviewItems(items);
+        const result = childRef.current?.getPreviewData ? childRef.current.getPreviewData() : [];
+        const isStructuredResult = result && !Array.isArray(result);
+        setPreviewItems(isStructuredResult ? result.items || [] : result);
+        setPreviewGroups(isStructuredResult ? result.groups || [] : []);
         setShowPreview(true);
     };
 
@@ -224,6 +228,7 @@ function Carding() {
                     lotNo,
                     childRef,
                     previewItems,
+                    previewGroups,
                     user,
                 });
                 // "Carding NRE%" already raises its own threshold ticket inside
@@ -602,6 +607,7 @@ function Carding() {
                 title="Quality Control - Carding Notebook"
                 subtitle="Preview"
                 items={previewItems}
+                groups={previewGroups}
                 typeValue={selectedType}
                 onCancel={() => setShowPreview(false)}
                 onConfirm={confirmSubmit}

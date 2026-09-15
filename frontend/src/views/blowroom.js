@@ -89,6 +89,7 @@ function BlowRoom() {
   const [sampleCount, setSampleCount] = useState(5);
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
+  const [previewGroups, setPreviewGroups] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [headerErrors, setHeaderErrors] = useState({});
   const [validationMessage, setValidationMessage] = useState("");
@@ -165,15 +166,24 @@ function BlowRoom() {
       childRef.current?.submit?.();
       return;
     }
-    const headerItems = [
-      { label: "Type", value: selectedTypeName },
-      { label: "Entry ID", value: entryId },
-    ];
+    // BR Waste Study Entry's own getPreviewData() already includes Type/Entry ID in its
+    // header (needed since carding.js's Individual Card Waste Study screen reuses the same
+    // component without adding its own header) - skip them here to avoid showing each twice.
+    const headerItems = isBrWasteStudyType
+      ? []
+      : [
+          { label: "Type", value: selectedTypeName },
+          { label: "Entry ID", value: entryId },
+        ];
     if (selectedType?.needsLotNo && selectedTypeName !== "Drop Test Data Entry") {
       headerItems.push({ label: "Lot No", value: lotNo });
     }
-    const childItems = childRef.current.getPreviewData() || [];
+    const childResult = childRef.current.getPreviewData() || [];
+    const isStructuredResult = childResult && !Array.isArray(childResult);
+    const childItems = isStructuredResult ? childResult.items || [] : childResult;
+    const childGroups = isStructuredResult ? childResult.groups || [] : [];
     setPreviewItems([...headerItems, ...childItems]);
+    setPreviewGroups(childGroups);
     setShowPreview(true);
   };
 
@@ -195,6 +205,8 @@ function BlowRoom() {
         lotNo,
         childRef,
         previewItems,
+        previewGroups,
+        extraFields: isLapCVType ? [{ label: "Number of Sample Entries", value: sampleCount }] : undefined,
         user,
       });
       try {
@@ -224,6 +236,7 @@ function BlowRoom() {
     setShowSuccess(false);
     successHandledRef.current = false;
     setValidationMessage("");
+    setPreviewGroups([]);
     childRef.current?.clear?.();
     dispatch(resetBlowroom());
   };
@@ -397,6 +410,7 @@ function BlowRoom() {
         title="Quality Control - Blow Room Notebook"
         subtitle="Preview"
         items={previewItems}
+        groups={previewGroups}
         typeValue={selectedTypeName}
         onCancel={() => setShowPreview(false)}
         onConfirm={confirmSubmit}
