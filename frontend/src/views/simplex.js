@@ -117,6 +117,7 @@ function Simplex() {
   const [showPreview, setShowPreview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
+  const [previewGroups, setPreviewGroups] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [validationMessage, setValidationMessage] = useState("");
   const { uqcEntries = [], cotsChangeEntries = [], listLoading } = useSelector(
@@ -185,12 +186,16 @@ function Simplex() {
       return;
     }
     setValidationMessage("");
-    const items = childRef.current?.getPreviewData ? childRef.current.getPreviewData() : [];
+    const rawPreview = childRef.current?.getPreviewData ? childRef.current.getPreviewData() : [];
+    const isGroupedPreview = rawPreview && !Array.isArray(rawPreview);
+    const items = isGroupedPreview ? rawPreview.items || [] : rawPreview;
+    const groups = isGroupedPreview ? rawPreview.groups || [] : [];
     setPreviewItems([
       { label: "Type", value: selectedTypeName || "-" },
       { label: "Entry ID", value: entryId || "-" },
       ...items,
     ]);
+    setPreviewGroups(groups);
     setShowPreview(true);
   };
 
@@ -212,6 +217,7 @@ function Simplex() {
           entryId,
           childRef,
           previewItems,
+          previewGroups,
           user,
         });
         if (!SIMPLEX_TYPES_WITH_OWN_TICKETING.has(selectedTypeName)) {
@@ -571,6 +577,7 @@ function Simplex() {
         title="Quality Control - Simplex Notebook"
         subtitle="Preview"
         items={previewItems}
+        groups={previewGroups}
         typeValue={selectedTypeName}
         onCancel={() => setShowPreview(false)}
         onConfirm={confirmSubmit}

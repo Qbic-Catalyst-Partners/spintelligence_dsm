@@ -119,16 +119,41 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
         clear: handleClear,
         validate,
         getPreviewData: () => {
-            const header = [
+            const items = [
                 { label: "Variety", value: formData.variety },
                 { label: "Blend", value: formData.blend },
                 { label: "No. of Tufts", value: numTufts },
             ];
-            const entries = tufts.map((t, idx)=>({
-                label: `Tuft ${idx+1}`,
-                value: `Var:${t.tuftVariety} | ActualWt:${t.actWt} | DisplayWt:${t.displayWt} | AverageWt:${t.actDisplay} | Diff:${t.diff} | Ratio:${t.ratio}`
+
+            const tuftColumns = [
+                { key: "tuftNo", label: "Tuft No." },
+                { key: "tuftVariety", label: "Tuft Variety" },
+                { key: "displayWt", label: "Display Wt." },
+                { key: "actWt", label: "Actual Wt." },
+                { key: "actDisplay", label: "Average Wt." },
+                { key: "diff", label: "Diff (Actual Wt. - Display Wt.)" },
+                { key: "ratio", label: "Ratio (Average Wt. / Total) * 100" },
+            ];
+            const tuftRows = tufts.map((t, idx) => ({
+                tuftNo: idx + 1,
+                tuftVariety: t.tuftVariety,
+                displayWt: t.displayWt,
+                actWt: t.actWt,
+                actDisplay: t.actDisplay,
+                diff: t.diff,
+                ratio: t.ratio,
             }));
-            return [...header, ...entries];
+
+            const groups = [
+                {
+                    key: "tuft-details",
+                    title: `Tuft Details (${tufts.length || 0} rows)`,
+                    columns: tuftColumns,
+                    rows: tuftRows,
+                },
+            ];
+
+            return { items, groups };
         },
     }));
 

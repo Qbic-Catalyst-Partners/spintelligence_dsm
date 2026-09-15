@@ -449,36 +449,66 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     };
   };
 
-  const getPreviewData = () => [
-    ...Object.entries(form)
-      .map(([label, value]) => ({
-        label: label === "date" ? "Entry ID" : label,
-        value: label === "date" ? entryId : value,
-      }))
-      .filter((item) => !isPreviewPlaceholder(item.value)),
-    ...readingRows
-      .filter((row) => !isBlankReadingRow(row))
-      .map((row, index) => {
-        const rowValues = [
-          row.drumNo,
-          row.readingNumber,
-          row.shortName,
-          row.shortCut,
-          formatFaultPercent(row.shortCut, totalFaults),
-          row.length,
-          row.weight,
-          row.breakPerMeter,
-        ].filter((value) => !isPreviewPlaceholder(value));
+  const getPreviewData = () => {
+    const items = [
+      { label: "Type", value: selectedTypeName || form.type || "-" },
+      { label: "Entry ID", value: effectiveEntryId || "-" },
+      { label: "Actual Count", value: form.actualCount || "-" },
+      { label: "Count Name (From)", value: form.countNameFrom || "-" },
+      { label: "Auto Coner No.", value: form.autoConerNo || "-" },
+      { label: "Cone Tip", value: form.coneTip || "-" },
+      { label: "No. of Cuts", value: form.noOfCuts || "-" },
+      { label: "Break / 1 Million Meter", value: breakPerMillionMeter || "-" },
+      { label: "Remarks", value: form.remarks || "-" },
+    ];
 
-        return rowValues.length
-          ? {
-              label: `Reading ${index + 1}`,
-              value: rowValues.join(" | "),
-            }
-          : null;
-      })
-      .filter(Boolean),
-  ];
+    const filledRows = readingRows.filter((row) => !isBlankReadingRow(row));
+
+    const groups = [
+      {
+        key: "readings",
+        title: "Readings",
+        columns: [
+          { key: "drumNo", label: "Drum No." },
+          { key: "noOfCones", label: "No. of Cones" },
+          { key: "faultName", label: "Fault Name" },
+          { key: "noOfFaults", label: "No. of Faults" },
+          { key: "faultPercent", label: "% Fault" },
+          { key: "weight", label: "Weight (Kgs)" },
+          { key: "length", label: "Length (meters)" },
+        ],
+        rows: filledRows.map((row) => ({
+          drumNo: row.drumNo,
+          noOfCones: row.noOfCones,
+          faultName: row.shortName,
+          noOfFaults: row.shortCut,
+          faultPercent: formatFaultPercent(row.shortCut, totalFaults),
+          weight: row.weight,
+          length: row.breakPerMeter,
+        })),
+      },
+      {
+        key: "totals",
+        title: "Totals",
+        columns: [
+          { key: "totalCones", label: "Total Cones" },
+          { key: "totalFaults", label: "Total Faults" },
+          { key: "totalWeight", label: "Total Weight (KGs)" },
+          { key: "totalLength", label: "Total Length (M)" },
+        ],
+        rows: [
+          {
+            totalCones: String(totalCones),
+            totalFaults: String(totalFaults),
+            totalWeight: String(totalWeight),
+            totalLength: String(totalLength),
+          },
+        ],
+      },
+    ];
+
+    return { items, groups };
+  };
 
   const submit = async () => {
     const validationResult = validate();

@@ -168,6 +168,7 @@ function Autoconer() {
   const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
+  const [previewGroups, setPreviewGroups] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [registeredActions, setRegisteredActions] = useState({});
   const [validationMessage, setValidationMessage] = useState("");
@@ -235,12 +236,17 @@ function Autoconer() {
       return;
     }
     setValidationMessage("");
-    const items = childRef.current?.getPreviewData
+    const result = childRef.current?.getPreviewData
       ? childRef.current.getPreviewData()
       : registeredActions.getPreviewData
         ? registeredActions.getPreviewData()
         : [];
-    setPreviewItems(items);
+    // Screens converted to grouped previews return { items, groups }; legacy
+    // screens still return a flat items array — support both here without
+    // touching every screen at once.
+    const isGroupedPreview = result && !Array.isArray(result) && typeof result === "object";
+    setPreviewItems(isGroupedPreview ? result.items || [] : result);
+    setPreviewGroups(isGroupedPreview ? result.groups || [] : []);
     setShowPreview(true);
   };
 
@@ -263,6 +269,7 @@ function Autoconer() {
         childRef,
         registeredActions,
         previewItems,
+        previewGroups,
         user,
       });
       try {
@@ -292,6 +299,7 @@ function Autoconer() {
     setSelectedTypeName(matchedType?.name || nextTypeName);
     setRegisteredActions({});
     setPreviewItems([]);
+    setPreviewGroups([]);
     setShowPreview(false);
     setShowSuccess(false);
   };
@@ -411,6 +419,7 @@ function Autoconer() {
         title="Quality Control - Autoconer Notebook"
         subtitle="Preview"
         items={previewItems}
+        groups={previewGroups}
         typeValue={selectedType}
         onCancel={() => setShowPreview(false)}
         onConfirm={confirmSubmit}

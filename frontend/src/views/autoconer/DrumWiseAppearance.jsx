@@ -173,20 +173,35 @@ function DrumWiseAppearance({
     return Object.keys(nextErrors).length === 0;
   };
 
-  const getPreviewData = () => [
-    { label: "Type", value: selectedType || "-" },
-    { label: "Entry ID", value: entryId || "-" },
-    { label: "Test No", value: testNo || "-" },
-    { label: "Count Name", value: selectedCountLabel || "-" },
-    { label: "Auto Coner No.", value: selectedMachineLabel || "-" },
-    { label: "Drum From", value: drumFrom || "-" },
-    { label: "Drum To", value: drumTo || "-" },
-    { label: "Remarks", value: remarks || "-" },
-    ...rows.map((row) => ({
-      label: `Drum ${row.drumNo}`,
-      value: row.ok ? "OK" : row.notOk ? "NOT OK" : "-",
-    })),
-  ];
+  const getPreviewData = () => {
+    const items = [
+      { label: "Type", value: selectedType || "-" },
+      { label: "Entry ID", value: entryId || "-" },
+      { label: "Test No", value: testNo || "-" },
+      { label: "Count Name", value: selectedCountLabel || "-" },
+      { label: "Auto Coner No.", value: selectedMachineLabel || "-" },
+      { label: "Drum From", value: drumFrom || "-" },
+      { label: "Drum To", value: drumTo || "-" },
+      { label: "Remarks", value: remarks || "-" },
+    ];
+
+    const groups = [
+      {
+        key: "drum-appearance",
+        title: "Drum Appearance",
+        columns: [
+          { key: "drumNo", label: "Drum No." },
+          { key: "appearance", label: "Appearance" },
+        ],
+        rows: rows.map((row) => ({
+          drumNo: row.drumNo,
+          appearance: row.ok ? "Yes" : row.notOk ? "No" : "-",
+        })),
+      },
+    ];
+
+    return { items, groups };
+  };
 
   const submit = async () => {
     if (!validate()) return false;

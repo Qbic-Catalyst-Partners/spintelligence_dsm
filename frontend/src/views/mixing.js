@@ -166,6 +166,7 @@ function Mixing() {
     const [headerErrors, setHeaderErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
+    const [previewGroups, setPreviewGroups] = useState([]);
     const [showSuccess, setShowSuccess] = useState(false);
     const [validationMessage, setValidationMessage] = useState("");
     const [ocrBusy] = useState(false);
@@ -434,8 +435,12 @@ function Mixing() {
             childRef.current?.submit?.();
             return;
         }
-        const childItems = childRef.current.getPreviewData() || [];
+        const childPreviewData = childRef.current.getPreviewData() || [];
+        const isStructured = !Array.isArray(childPreviewData);
+        const childItems = isStructured ? childPreviewData.items || [] : childPreviewData;
+        const childGroups = isStructured ? childPreviewData.groups || [] : [];
         setPreviewItems([...buildHeaderPreview(), ...childItems]);
+        setPreviewGroups(childGroups);
         setShowPreview(true);
     };
 
@@ -667,7 +672,12 @@ function Mixing() {
                 subDepartment: "Mixing",
                 notebookName: "AFIS-6 Cotton",
                 entryId,
-                previewItems: Object.entries(afis6Form).map(([key, value]) => ({ label: key, value })),
+                previewItems: [
+                    { label: "Type", value: "AFIS-6 Cotton Data Entry" },
+                    { label: "Entry ID", value: entryId },
+                    ...afis6TextFieldDefs.map((field) => ({ label: field.label, value: afis6Form[field.key] })),
+                    ...afis6FieldDefs.map((field) => ({ label: field.label, value: afis6Form[field.key] })),
+                ],
                 user,
             });
         } catch (error) {
@@ -906,7 +916,12 @@ function Mixing() {
                 subDepartment: "Mixing",
                 notebookName: "AFIS-6 MMF",
                 entryId,
-                previewItems: Object.entries(afis6MmfForm).map(([key, value]) => ({ label: key, value })),
+                previewItems: [
+                    { label: "Type", value: "AFIS-6 MMF Data Entry" },
+                    { label: "Entry ID", value: entryId },
+                    ...afis6MmfTextFieldDefs.map((field) => ({ label: field.label, value: afis6MmfForm[field.key] })),
+                    ...afis6MmfFieldDefs.map((field) => ({ label: field.label, value: afis6MmfForm[field.key] })),
+                ],
                 user,
             });
         } catch (error) {
@@ -1421,6 +1436,7 @@ function Mixing() {
                 title="Quality Control - Mixing Notebook"
                 subtitle="Preview"
                 items={previewItems}
+                groups={previewGroups}
                 typeValue={selectedTypeName}
                 onCancel={() => setShowPreview(false)}
                 onConfirm={confirmSubmit}

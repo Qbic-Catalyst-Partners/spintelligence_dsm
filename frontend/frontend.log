@@ -21,3 +21,4 @@
  GET /departments/quality-control/wrapping 304 in 923ms (next.js: 832ms, application-code: 91ms)
 [browser] Image with src "http://localhost:3000/spintelligence_light.png" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio.
 ✓ Finished filesystem cache database compaction in 14.6s
+✓ Compiled in 1134ms

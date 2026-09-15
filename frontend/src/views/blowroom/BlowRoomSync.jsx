@@ -262,24 +262,49 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
       return Object.keys(nextErrors).length === 0;
     },
     getPreviewData: () => {
-      const header = [
+      const items = [
         { label: "Line No.", value: form.lineNo },
         { label: "Variety", value: form.variety },
         { label: "Checked By", value: form.checkedBy },
         { label: "Beater", value: form.beater },
+        { label: "Number of Rows (N)", value: rows },
         { label: "Grand Total Time", value: grandTotalTime },
       ];
-      const rowsData = tableData.map((row, idx) => ({
-        label: `Row ${idx + 1}`,
-        value: `Run Time:${row.a}s | Idle Time:${row.b}s | Sub Total:${row.c !== "" ? formatSecondsToHHMMSS(Number(row.c)) : ""} | Sync:${row.sync ? `${row.sync}%` : ""}`,
+
+      const entryRows = tableData.map((row, idx) => ({
+        sno: idx + 1,
+        runTime: row.a !== "" ? `${row.a}s` : "",
+        idleTime: row.b !== "" ? `${row.b}s` : "",
+        subTotal: row.c !== "" ? formatSecondsToHHMMSS(Number(row.c)) : "",
+        sync: row.sync ? `${row.sync}%` : "",
       }));
-      const totalsRow = tableData.length
-        ? [{
-            label: "Totals",
-            value: `Run Time:${totalRunSeconds.toFixed(2)}s | Idle Time:${totalIdleSeconds.toFixed(2)}s | Sub Total:${formatSecondsToHHMMSS(totalSubSeconds)} | Sync:${totalSyncPercentage ? `${totalSyncPercentage}%` : ""}`,
-          }]
-        : [];
-      return [...header, ...rowsData, ...totalsRow];
+
+      if (tableData.length) {
+        entryRows.push({
+          sno: "Total",
+          runTime: `${totalRunSeconds.toFixed(2)}s`,
+          idleTime: `${totalIdleSeconds.toFixed(2)}s`,
+          subTotal: formatSecondsToHHMMSS(totalSubSeconds),
+          sync: totalSyncPercentage ? `${totalSyncPercentage}%` : "",
+        });
+      }
+
+      const groups = [
+        {
+          key: "sync-entries",
+          title: "Detailed Sync Entries",
+          columns: [
+            { key: "sno", label: "S. No." },
+            { key: "runTime", label: "Run Time (Seconds)" },
+            { key: "idleTime", label: "Idle Time (Seconds)" },
+            { key: "subTotal", label: "Sub Total Time" },
+            { key: "sync", label: "Sync Percentage (%)" },
+          ],
+          rows: entryRows,
+        },
+      ];
+
+      return { items, groups };
     },
   }));
 

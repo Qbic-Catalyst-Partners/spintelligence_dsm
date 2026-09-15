@@ -434,6 +434,8 @@ const getSimplexNotebook = async (req, res, next) => {
 
 const saveWrappingSimplexNotebook = async (req, res, next) => {
   try {
+    console.log('[Wrapping Simplex] POST', req.originalUrl);
+    console.log('[Wrapping Simplex] Request body:', JSON.stringify(req.body));
 
     const inputRows = Array.isArray(req.body?.rows)
       ? req.body.rows
@@ -443,11 +445,13 @@ const saveWrappingSimplexNotebook = async (req, res, next) => {
 
     const rows = inputRows.filter((row) => row && typeof row === 'object');
     if (!rows.length) {
+      console.log('[Wrapping Simplex] No valid rows in request body - rejecting.');
       return res.status(400).json({ message: 'rows are required' });
     }
 
     const operatorName = getAuthenticatedOperatorName(req);
     const submissionId = await nextWrappingSimplexSubmissionId();
+    console.log(`[Wrapping Simplex] operator=${operatorName} submissionId=${submissionId} rowCount=${rows.length}`);
 
     await client.query('BEGIN');
 
@@ -456,6 +460,26 @@ const saveWrappingSimplexNotebook = async (req, res, next) => {
       const row = rows[index];
       const dateText = String(row.date_text ?? row.date ?? row.Date ?? '').trim();
       const entryDate = parseNotebookDate(row.entry_date ?? row.date ?? row.Date ?? dateText);
+      const insertValues = [
+        // Every row of a multi-row OCR submission now shares the same reserved id instead
+        // of a per-row "-1"/"-2" suffix (same fix as Blow Room's Drop Test) - entry_id has
+        // no unique constraint on this table, so this is safe as-is.
+        submissionId,
+        row.entry_id ?? row.id_no ?? row.sourceId ?? row.ID ?? row.id_value ?? row.notebook_id ?? null,
+        toNullableNumber(row.serial_no ?? row.s_no ?? row.sno ?? row['S.No'] ?? row.SNo ?? (index + 1)),
+        dateText || null,
+        entryDate,
+        row.mac_name ?? row.machine_name ?? row.macName ?? row['Mac Name'] ?? null,
+        row.shift ?? row.Shift ?? null,
+        row.std_hank ?? row.standard_hank ?? row['Std. Hank'] ?? row.stdHank ?? null,
+        toNullableNumber(row.avg_hank ?? row.average_hank ?? row['Avg. Hank'] ?? row.avgHank),
+        toNullableNumber(row.sd ?? row.SD),
+        row.cv ?? row.CV ?? null,
+        operatorName,
+        row.user_name ?? row.user ?? row.User ?? null,
+        row.remark ?? row.remarks ?? row.Remark ?? null
+      ];
+      console.log(`[Wrapping Simplex] Row ${index + 1}/${rows.length} insert values:`, insertValues);
 
       const result = await client.query(
         `INSERT INTO wrapping.simplex_notebook (
@@ -464,30 +488,14 @@ const saveWrappingSimplexNotebook = async (req, res, next) => {
         )
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         RETURNING *`,
-        [
-          // Every row of a multi-row OCR submission now shares the same reserved id instead
-          // of a per-row "-1"/"-2" suffix (same fix as Blow Room's Drop Test) - entry_id has
-          // no unique constraint on this table, so this is safe as-is.
-          submissionId,
-          row.entry_id ?? row.id_no ?? row.sourceId ?? row.ID ?? row.id_value ?? row.notebook_id ?? null,
-          toNullableNumber(row.serial_no ?? row.s_no ?? row.sno ?? row['S.No'] ?? row.SNo ?? (index + 1)),
-          dateText || null,
-          entryDate,
-          row.mac_name ?? row.machine_name ?? row.macName ?? row['Mac Name'] ?? null,
-          row.shift ?? row.Shift ?? null,
-          row.std_hank ?? row.standard_hank ?? row['Std. Hank'] ?? row.stdHank ?? null,
-          toNullableNumber(row.avg_hank ?? row.average_hank ?? row['Avg. Hank'] ?? row.avgHank),
-          toNullableNumber(row.sd ?? row.SD),
-          row.cv ?? row.CV ?? null,
-          operatorName,
-          row.user_name ?? row.user ?? row.User ?? null,
-          row.remark ?? row.remarks ?? row.Remark ?? null
-        ]
+        insertValues
       );
+      console.log(`[Wrapping Simplex] Row ${index + 1} saved as wrapping.simplex_notebook.id=${result.rows[0].id}`);
       savedRows.push(withScreenEntryId('wrapping_simplex_notebook', result.rows[0]));
     }
 
     await client.query('COMMIT');
+    console.log(`[Wrapping Simplex] COMMIT ok - saved ${savedRows.length} row(s) under entry_id=${submissionId}`);
 
     return res.status(201).json({
       message: 'Wrapping simplex notebook data saved successfully',
@@ -495,6 +503,7 @@ const saveWrappingSimplexNotebook = async (req, res, next) => {
       count: savedRows.length
     });
   } catch (error) {
+    console.error('[Wrapping Simplex] Save failed, rolling back:', error);
     await client.query('ROLLBACK');
     if (isUniqueViolation(error)) {
       return res.status(409).json({ message: 'Duplicate OCR ID. Please use a unique ID.' });
@@ -505,6 +514,7 @@ const saveWrappingSimplexNotebook = async (req, res, next) => {
 
 const getWrappingSimplexNotebook = async (req, res, next) => {
   try {
+    console.log('[Wrapping Simplex] GET', req.originalUrl, 'query:', req.query);
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.max(1, parseInt(req.query.limit, 10) || 50);
@@ -528,6 +538,7 @@ const getWrappingSimplexNotebook = async (req, res, next) => {
     const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
     const limitParam = values.length + 1;
     const offsetParam = values.length + 2;
+    console.log('[Wrapping Simplex] SQL where:', whereClause || '(none)', 'values:', values, 'page:', page, 'limit:', limit);
 
     const result = await client.query(
       `SELECT *
@@ -544,6 +555,7 @@ const getWrappingSimplexNotebook = async (req, res, next) => {
        ${whereClause}`,
       values
     );
+    console.log(`[Wrapping Simplex] Returned ${result.rows.length} row(s), total=${countResult.rows[0].count}`);
 
     return res.status(200).json({
       page,

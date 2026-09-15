@@ -102,6 +102,7 @@ function Comber() {
     const [checkingType, setCheckingType] = useState(typeOptions[0]?.id ?? null);
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
+    const [previewGroups, setPreviewGroups] = useState([]);
     const selectedType = typeOptions.find((item) => item.id === checkingType)?.name || "";
     const { entryId, reserveEntryId, loading: entryIdLoading } = useDatabaseEntryId({
         department: "Comber",
@@ -140,6 +141,7 @@ function Comber() {
                     entryId,
                     childRef,
                     previewItems,
+                    previewGroups,
                     user,
                 });
                 await reserveEntryId();
@@ -163,11 +165,13 @@ function Comber() {
         if (valid === false) return;
 
         const items = childRef.current?.getPreviewData ? childRef.current.getPreviewData() : [];
+        const groups = childRef.current?.getPreviewGroups ? childRef.current.getPreviewGroups() : [];
         const headerItems = [
             { label: "Type", value: selectedType || "Select Type" },
             { label: "Entry ID", value: entryId || "-" },
         ];
         setPreviewItems([...headerItems, ...items]);
+        setPreviewGroups(groups);
         setShowPreview(true);
     }, [entryId, entryIdLoading, selectedType]);
 
@@ -184,6 +188,7 @@ function Comber() {
                     entryId,
                     childRef,
                     previewItems,
+                    previewGroups,
                     user,
                 });
                 // "Ribbon Lap CV1M Data Entry" and "Nati Data Entry" already raise their
@@ -493,6 +498,7 @@ function Comber() {
                 title="Quality Control - Comber Notebook"
                 subtitle="Preview"
                 items={previewItems}
+                groups={previewGroups}
                 typeValue={selectedType || "Select Type"}
                 onCancel={() => setShowPreview(false)}
                 onConfirm={confirmSubmit}

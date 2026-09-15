@@ -362,6 +362,7 @@ function SpinningDepartment() {
     // reservation below can scope itself to that sub-type's own table.
     const [wheelChangeSubType, setWheelChangeSubType] = useState("");
     const [previewItems, setPreviewItems] = useState([]);
+    const [previewGroups, setPreviewGroups] = useState([]);
     const [validationMessage, setValidationMessage] = useState("");
     const [cotsMachineOptions, setCotsMachineOptions] = useState([]);
     const [spinningMachineOptions, setSpinningMachineOptions] = useState([]);
@@ -1122,16 +1123,32 @@ function SpinningDepartment() {
                     entryId,
                     childRef,
                     previewItems,
+                    previewGroups,
                     user,
                 });
                 try {
+                    // Count Change's measured averages moved out of previewItems into
+                    // their own "Averages" group below the readings table (display
+                    // change only) - add them back in here so a Value Threshold rule
+                    // configured on any of them can still fire; see the comment above
+                    // where the "Averages" group is built.
+                    const countChangeAverageValues = isCountChange
+                        ? [
+                            { label: "Avg Reading", value: averageReadingValue || "-" },
+                            { label: "Avg Count", value: averageCountValue || "-" },
+                            { label: "Avg Strength", value: averageStrengthValue || "-" },
+                            { label: "Overall CSP", value: overallAverageCsp || "-" },
+                            { label: "CV% (Count)", value: countModeCvPercent || "-" },
+                            { label: "CV% (Strength)", value: csvStrengthCvPercent || "-" },
+                        ]
+                        : [];
                     await createThresholdViolationTickets({
                         department: "Quality Control",
                         subDepartment: "Spinning",
                         screenName: checkingType,
                         machineName: checkingType,
                         entryId,
-                        values: previewItems,
+                        values: [...previewItems, ...countChangeAverageValues],
                     });
                 } catch (ticketError) {
                     console.error("Threshold ticket generation failed:", ticketError);
@@ -1169,7 +1186,22 @@ function SpinningDepartment() {
                     previewItems,
                     user,
                     extra: {
-                        submitted_fields: payload,
+                        // Wheel Change's real payload keys are backend column names
+                        // (e.g. via WHEEL_CHANGE_FIELD_MAP) that don't reliably match
+                        // the on-screen parameter labels, so the submitted-notebook
+                        // popup would otherwise have to guess a label from the raw
+                        // key. previewGroups' "Parameters (Existing / Proposed)" rows
+                        // already carry the exact on-screen label per row - attach
+                        // them here (submitted_fields only, the real save above has
+                        // already gone out) so SubmittedNotebooksPage.jsx's
+                        // getWheelChangeParametersArraySections can use them directly.
+                        submitted_fields: isWheelChange
+                            ? {
+                                ...payload,
+                                parameters: (previewGroups.find((group) => group.title === "Parameters (Existing / Proposed)")?.rows || [])
+                                    .map((row) => ({ label: row.label, existing: row.existing, proposed: row.proposed })),
+                            }
+                            : payload,
                     },
                 });
                 try {
@@ -1275,7 +1307,10 @@ function SpinningDepartment() {
             }
 
             setValidationMessage("");
-            setPreviewItems(childRef.current?.getPreviewData?.() || []);
+            const rawChildPreview = childRef.current?.getPreviewData?.() || [];
+            const isGroupedChildPreview = rawChildPreview && !Array.isArray(rawChildPreview);
+            setPreviewItems(isGroupedChildPreview ? rawChildPreview.items || [] : rawChildPreview);
+            setPreviewGroups(isGroupedChildPreview ? rawChildPreview.groups || [] : []);
             setShowPreview(true);
             return;
         }
@@ -1303,15 +1338,6 @@ function SpinningDepartment() {
                 { label: "Lycra Draft", value: lycraDraft || "-" },
                 { label: "No. of Readings", value: countReadingCount || "-" },
                 { label: "Generated Rows", value: countChangeRows.length },
-                // The actual measured averages - previously omitted here, so a
-                // Value Threshold rule configured on any of these (the fields
-                // that matter for this notebook) could never fire no matter
-                // how far out of range a reading was, since the ticketing
-                // helper only ever saw the metadata above.
-                { label: "Avg Reading", value: averageReadingValue || "-" },
-                { label: "Avg Count", value: averageCountValue || "-" },
-                { label: "Avg Strength", value: averageStrengthValue || "-" },
-                { label: "Overall CSP", value: overallAverageCsp || "-" },
             ]
             : isRingFrame
                 ? [
@@ -1371,7 +1397,55 @@ function SpinningDepartment() {
             bodyItems.push({ label: "Type-2", value: type2Value || "-" });
         }
 
+        const nextPreviewGroups = isCountChange
+            ? [
+                {
+                    key: "count-change-readings",
+                    title: "Readings",
+                    columns: [
+                        { key: "reading_no", label: "Reading No." },
+                        { key: "reading_value", label: "Reading Value" },
+                        { key: "count", label: "Count" },
+                        { key: "strength", label: "Strength" },
+                        { key: "mean", label: "Mean (Strength)" },
+                        { key: "csp", label: "CSP" },
+                    ],
+                    rows: displayedCountChangeRows.map((row, index) => ({
+                        reading_no: row.reading_no || index + 1,
+                        reading_value: renderCountChangeCell(row.reading_value),
+                        count: renderCountChangeCell(row.count),
+                        strength: renderCountChangeCell(row.strength),
+                        mean: renderCountChangeCell(row.mean),
+                        csp: renderCountChangeCell(row.csp),
+                    })),
+                },
+                {
+                    key: "count-change-averages",
+                    title: "Averages",
+                    columns: [
+                        { key: "avgReading", label: "Avg Reading" },
+                        { key: "avgCount", label: "Avg Count" },
+                        { key: "avgStrength", label: "Avg Strength" },
+                        { key: "cvPercentCount", label: "CV% (Count)" },
+                        { key: "cvPercentStrength", label: "CV% (Strength)" },
+                        { key: "overallCsp", label: "Overall CSP" },
+                    ],
+                    rows: [
+                        {
+                            avgReading: averageReadingValue || "-",
+                            avgCount: averageCountValue || "-",
+                            avgStrength: averageStrengthValue || "-",
+                            cvPercentCount: countModeCvPercent || "-",
+                            cvPercentStrength: csvStrengthCvPercent || "-",
+                            overallCsp: overallAverageCsp || "-",
+                        },
+                    ],
+                },
+            ]
+            : [];
+
         setPreviewItems([...headerItems, ...bodyItems]);
+        setPreviewGroups(nextPreviewGroups);
         setShowPreview(true);
     };
 
@@ -1948,6 +2022,7 @@ function SpinningDepartment() {
                 title="Quality Control - Spinning Notebook"
                 subtitle="Preview"
                 items={previewItems}
+                groups={previewGroups}
                 typeValue={checkingType || "Select Type"}
                 onCancel={() => setShowPreview(false)}
                 onConfirm={confirmSubmit}

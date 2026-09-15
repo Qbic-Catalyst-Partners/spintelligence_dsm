@@ -142,21 +142,41 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
     return Object.keys(nextErrors).length === 0;
   };
 
-  const getPreviewData = () => [
-    { label: "Type", value: selectedType || "-" },
-    { label: "Entry ID", value: entryId || "-" },
-    { label: "Lycra Draft", value: lycraDraft || "-" },
-    { label: "Count Name", value: countName || "-" },
-    { label: "No. of Readings", value: readingsCount || "-" },
-    { label: "Lycra Weight", value: lycraWeight || "-" },
-    { label: "Fibre Weight", value: fabricWeight || "-" },
-    { label: "Total Weight", value: totalWeight || "-" },
-    { label: "Lycra %", value: lycraPercent || "-" },
-    ...generatedRows.map((row, index) => ({
-      label: `Reading ${index + 1}`,
-      value: row.length || "-",
-    })),
-  ];
+  const getPreviewData = () => {
+    const items = [
+      { label: "Type", value: selectedType || "-" },
+      { label: "Entry ID", value: entryId || "-" },
+      { label: "Lycra Draft", value: lycraDraft || "-" },
+      { label: "Count Name", value: countName || "-" },
+      { label: "No. of Readings", value: readingsCount || "-" },
+      { label: "Lycra Weight", value: lycraWeight || "-" },
+      { label: "Fibre Weight", value: fabricWeight || "-" },
+      { label: "Total Weight", value: totalWeight || "-" },
+      { label: "Lycra %", value: lycraPercent || "-" },
+    ];
+
+    const groups = [
+      {
+        key: "readings",
+        title: "Readings",
+        columns: [
+          { key: "readingNo", label: "Reading No." },
+          { key: "length", label: "Readings (Length in mm)" },
+        ],
+        rows: [
+          ...generatedRows.map((row, index) => ({
+            readingNo: index + 1,
+            length: row.length || "-",
+          })),
+          ...(generatedRows.length
+            ? [{ readingNo: "Average", length: averageLength || "-" }]
+            : []),
+        ],
+      },
+    ];
+
+    return { items, groups };
+  };
 
   const submit = async () => {
     if (!validate()) return false;
