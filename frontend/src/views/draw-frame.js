@@ -1457,27 +1457,8 @@ function DrawFrame() {
       items.push({ label: "Type", value: form.type });
       items.push({ label: "Entry ID", value: entryId || "-" });
       items.push({ label: "PDF File", value: aPercentFile?.name || "-" });
-      A_PERCENT_META_FIELDS.forEach((field) => {
-        if (field.key === "entryId") return;
-        items.push({
-          label: field.label,
-          value:
-            field.key === "pdfFile"
-              ? aPercentFile?.name || "-"
-              : aPercentOcrMeta?.[field.key] || "-",
-        });
-      });
-
-      aPercentOcrRows.forEach((row, index) => {
-        const isSummary = A_PERCENT_SUMMARY_ROWS.has(String(row.sampleNo || "").trim());
-        const prefix = isSummary ? `Summary ${row.label || index + 1}` : `Sample ${row.sampleNo || index + 1}`;
-        A_PERCENT_TABLE_COLUMNS.forEach((column) => {
-          items.push({
-            label: `${prefix} - ${column.label}`,
-            value: row[column.key] || "-",
-          });
-        });
-      });
+      // Meta/Sample/Summary are shown as real tables via buildPreviewGroups below,
+      // matching Comber Nolis %/Stretch %'s layout, instead of a flat card per field.
     } else if (isWheelChangeEntry) {
       items.push(...(wheelChangeRef.current?.getPreviewData?.() || []));
     } else if (!isHeaderEntry) {
@@ -1497,7 +1478,48 @@ function DrawFrame() {
   // row shared across all readings (calculateStats always yields exactly one result
   // object regardless of reading count - see handleCalculate).
   const buildPreviewGroups = useMemo(() => {
-    if (isHeaderEntry || isWheelChangeEntry || form.type === "Draw Frame Cots Data Entry" || form.type === "U% Data Entry" || form.type === "A%") {
+    if (form.type === "A%") {
+      const isSummaryRow = (row) => A_PERCENT_SUMMARY_ROWS.has(String(row.sampleNo || "").trim());
+      const sampleRows = aPercentOcrRows.filter((row) => !isSummaryRow(row));
+      const summaryRows = aPercentOcrRows.filter(isSummaryRow);
+      const metaFields = A_PERCENT_META_FIELDS.filter((field) => field.key !== "entryId" && field.key !== "pdfFile");
+      return [
+        {
+          key: "aPercentMeta",
+          title: "Meta",
+          columns: metaFields.map((field) => ({ key: field.key, label: field.label })),
+          rows: [
+            metaFields.reduce((acc, field) => {
+              acc[field.key] = aPercentOcrMeta?.[field.key] || "-";
+              return acc;
+            }, {}),
+          ],
+        },
+        {
+          key: "aPercentSamples",
+          title: "Sample Rows",
+          columns: A_PERCENT_TABLE_COLUMNS,
+          rows: sampleRows.map((row, index) => ({
+            sampleNo: row.sampleNo || String(index + 1),
+            nMinus1: row.nMinus1 || "-",
+            n: row.n || "-",
+            nPlus1: row.nPlus1 || "-",
+          })),
+        },
+        {
+          key: "aPercentSummary",
+          title: "Summary Rows",
+          columns: [{ key: "label", label: "Label" }, ...A_PERCENT_TABLE_COLUMNS.slice(1)],
+          rows: summaryRows.map((row, index) => ({
+            label: row.sampleNo || String(index + 1),
+            nMinus1: row.nMinus1 || "-",
+            n: row.n || "-",
+            nPlus1: row.nPlus1 || "-",
+          })),
+        },
+      ];
+    }
+    if (isHeaderEntry || isWheelChangeEntry || form.type === "Draw Frame Cots Data Entry" || form.type === "U% Data Entry") {
       return [];
     }
     const ensureMetricCount = Math.max(form.readingCount || 0, oneYardReadings.length, halfYardReadings.length, 1);
@@ -1546,7 +1568,7 @@ function DrawFrame() {
         ],
       },
     ];
-  }, [form.type, form.readingCount, isHeaderEntry, isWheelChangeEntry, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics]);
+  }, [form.type, form.readingCount, isHeaderEntry, isWheelChangeEntry, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics, aPercentOcrRows, aPercentOcrMeta]);
 
   const handleSubmit = async () => {
     const isCots = form.type === "Draw Frame Cots Data Entry";

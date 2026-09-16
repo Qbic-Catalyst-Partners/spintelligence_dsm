@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
-import { FiPieChart } from "react-icons/fi";
+import { FiPieChart, FiCalendar } from "react-icons/fi";
 import { MdOutlineConfirmationNumber, MdOutlinePendingActions, MdOutlineReplay } from "react-icons/md";
 import { IoCheckmarkDoneCircleOutline } from "react-icons/io5";
 import { AiOutlineFolderOpen } from "react-icons/ai";
@@ -15,7 +15,6 @@ const DASHBOARD_SELECTION_STORAGE_KEY = "spintelligenceDashboardSelection";
 
 const trendModes = ["1D", "1W", "1M", "1Y"];
 const TICKET_VISUALIZATION_TYPES = new Set(["ticket_status_card", "individual_ticket_count", "add_ticket_count"]);
-const modeMultipliers = { "1D": 0.72, "1W": 0.9, "1M": 1, "1Y": 1.18 };
 const DASHBOARD_FETCH_DEBOUNCE_MS = 250;
 const LINE_CHART_X_PADDING = 6;
 const timelineToPeriod = {
@@ -56,10 +55,14 @@ const visualizationTypeToChartType = (visualizationType) => {
   return "line";
 };
 
-const formatValue = (value, mode) => {
+// Previously multiplied the real backend average by an arbitrary per-mode constant
+// (modeMultipliers) - not a real trend, just a cosmetic fake scale that also silently
+// undid the backend's actual period/custom-date filtering by distorting the true value
+// it returned. Show the real average as-is.
+const formatValue = (value) => {
   const n = Number(value);
   if (!Number.isFinite(n)) return "--";
-  return (n * (modeMultipliers[mode] || 1)).toFixed(2);
+  return n.toFixed(2);
 };
 const formatIntegerValue = (value) => {
   const n = Number(value);
@@ -325,6 +328,20 @@ function HomeDashboard() {
   const [dashboardUsers, setDashboardUsers] = useState([]);
   const [selectedDashboardRole, setSelectedDashboardRole] = useState("");
   const [selectedDashboardUserId, setSelectedDashboardUserId] = useState("");
+  // Overrides every card's own 1D/1W/1M/1Y toggle with one explicit date range for the whole
+  // dashboard when both ends are set - sent to the backend as period=CUSTOM&fromDate=&toDate=.
+  const [customDateFrom, setCustomDateFrom] = useState("");
+  const [customDateTo, setCustomDateTo] = useState("");
+  const isCustomDateActive = Boolean(customDateFrom && customDateTo);
+  const customDateFromRef = useRef(null);
+  const customDateToRef = useRef(null);
+  const openDatePicker = (ref) => {
+    try {
+      ref.current?.showPicker?.();
+    } catch {
+      ref.current?.focus();
+    }
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -627,17 +644,29 @@ function HomeDashboard() {
       }
 
       const ticketDashboardByPeriod = new Map();
+      const customDateParams = isCustomDateActive ? { fromDate: customDateFrom, toDate: customDateTo } : null;
+      const dashboardUserParams = activeDashboardUserId ? { user_id: activeDashboardUserId } : {};
 
       const pendingRequests = visibleWidgets.map((widget) => {
         const isTicket = isTicketWidget(widget);
-        const period = isTicket || widget.visualization_type === "average_value_card" || widget.chart_type === "value"
-          ? cardModes[widget.id] || "1M"
-          : trendModesById[widget.id] || "1M";
+        const period = isCustomDateActive
+          ? "CUSTOM"
+          : isTicket || widget.visualization_type === "average_value_card" || widget.chart_type === "value"
+            ? cardModes[widget.id] || "1M"
+            : trendModesById[widget.id] || "1M";
         const requestInputField = String(
           isTicket ? (widget.ticket_metric_field || widget.input_field) : widget.input_field
         ).trim();
 
-        const key = [widget.department, widget.sub_department, widget.input_screen, requestInputField, period].join("::");
+        const key = [
+          widget.department,
+          widget.sub_department,
+          widget.input_screen,
+          requestInputField,
+          period,
+          customDateParams?.fromDate || "",
+          customDateParams?.toDate || "",
+        ].join("::");
         const cached = widgetDataCacheRef.current.get(key);
         if (cached) return Promise.resolve({ widgetId: widget.id, key, data: cached, cached: true });
 
@@ -646,14 +675,14 @@ function HomeDashboard() {
             return Promise.resolve({ widgetId: widget.id, key, data: null });
           }
 
-          const ticketPeriodKey = `ticket::${period}`;
+          const ticketPeriodKey = `ticket::${period}::${customDateParams?.fromDate || ""}::${customDateParams?.toDate || ""}`;
           if (!ticketDashboardByPeriod.has(ticketPeriodKey)) {
             const controller = new AbortController();
             inFlightControllersRef.current.push(controller);
             ticketDashboardByPeriod.set(
               ticketPeriodKey,
               fetchMyDashboard(
-                { period },
+                { period, ...customDateParams, ...dashboardUserParams },
                 { signal: controller.signal, skipGlobalErrorModal: true }
               )
                 .then((response) => (Array.isArray(response?.data?.data) ? response.data.data : []))
@@ -692,6 +721,8 @@ function HomeDashboard() {
             input_screen: widget.input_screen,
             input_field: requestInputField,
             period,
+            ...customDateParams,
+            ...dashboardUserParams,
           },
           { signal: controller.signal, skipGlobalErrorModal: true }
         )
@@ -709,6 +740,8 @@ function HomeDashboard() {
                 input_screen: widget.input_screen,
                 input_field: fallbackInputField,
                 period,
+                ...customDateParams,
+                ...dashboardUserParams,
               },
               { signal: controller.signal, skipGlobalErrorModal: true }
             );
@@ -747,7 +780,7 @@ function HomeDashboard() {
       clearInFlightRequests();
       isMounted = false;
     };
-  }, [visibleWidgets, cardModes, trendModesById, isViewingOwnDashboard]);
+  }, [visibleWidgets, cardModes, trendModesById, isViewingOwnDashboard, isCustomDateActive, customDateFrom, customDateTo, activeDashboardUserId]);
 
   return (
     <div className={styles.dashboardMain}>
@@ -761,26 +794,108 @@ function HomeDashboard() {
             </p>
           ) : null}
         </div>
-        {isDashboardAdmin ? (
-          <div className={styles.dashboardUserControls}>
-            <label>
-              <span>Role</span>
-              <select value={selectedDashboardRole} onChange={(e) => setSelectedDashboardRole(e.target.value)}>
-                {dashboardRoles.map((role) => (
-                  <option key={role} value={role}>{role}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Name</span>
-              <select value={selectedDashboardUserId} onChange={(e) => setSelectedDashboardUserId(e.target.value)}>
-                {dashboardUsersForSelectedRole.map((record) => (
-                  <option key={record.id} value={record.id}>{record.name}</option>
-                ))}
-              </select>
+        <div className={styles.dashboardUserControls}>
+          <div className={styles.dashboardControlStack}>
+            {isDashboardAdmin ? (
+              <div className={styles.dashboardIdentityControls}>
+                <label>
+                  <span>Role</span>
+                  <select value={selectedDashboardRole} onChange={(e) => setSelectedDashboardRole(e.target.value)}>
+                    {dashboardRoles.map((role) => (
+                      <option key={role} value={role}>{role}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Name</span>
+                  <select value={selectedDashboardUserId} onChange={(e) => setSelectedDashboardUserId(e.target.value)}>
+                    {dashboardUsersForSelectedRole.map((record) => (
+                      <option key={record.id} value={record.id}>{record.name}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ) : null}
+            <label className={styles.dashboardDateControl}>
+              <span>Custom Date</span>
+              <div className={styles.dashboardDateRangeControls}>
+                <div style={{ position: "relative", display: "flex" }}>
+                  <input
+                    ref={customDateFromRef}
+                    type="date"
+                    value={customDateFrom}
+                    max={customDateTo || undefined}
+                    onChange={(e) => setCustomDateFrom(e.target.value)}
+                    onKeyDown={(e) => e.preventDefault()}
+                    style={{
+                      height: 36,
+                      border: "1px solid #dbe1ec",
+                      borderRadius: 8,
+                      background: "#ffffff",
+                      color: "#425066",
+                      padding: "0 30px 0 8px",
+                      fontSize: 13,
+                      fontWeight: 650,
+                      colorScheme: "light",
+                    }}
+                  />
+                  <FiCalendar
+                    onClick={() => openDatePicker(customDateFromRef)}
+                    style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", color: "#64748b", cursor: "pointer", pointerEvents: "auto" }}
+                  />
+                </div>
+                <span style={{ color: "#94a3b8" }}>to</span>
+                <div style={{ position: "relative", display: "flex" }}>
+                  <input
+                    ref={customDateToRef}
+                    type="date"
+                    value={customDateTo}
+                    min={customDateFrom || undefined}
+                    onChange={(e) => setCustomDateTo(e.target.value)}
+                    onKeyDown={(e) => e.preventDefault()}
+                    style={{
+                      height: 36,
+                      border: "1px solid #dbe1ec",
+                      borderRadius: 8,
+                      background: "#ffffff",
+                      color: "#425066",
+                      padding: "0 30px 0 8px",
+                      fontSize: 13,
+                      fontWeight: 650,
+                      colorScheme: "light",
+                    }}
+                  />
+                  <FiCalendar
+                    onClick={() => openDatePicker(customDateToRef)}
+                    style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", color: "#64748b", cursor: "pointer", pointerEvents: "auto" }}
+                  />
+                </div>
+                {isCustomDateActive ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomDateFrom("");
+                      setCustomDateTo("");
+                    }}
+                    title="Clear custom date range"
+                    style={{
+                      height: 36,
+                      width: 36,
+                      border: "1px solid #dbe1ec",
+                      borderRadius: 8,
+                      background: "#ffffff",
+                      color: "#64748b",
+                      cursor: "pointer",
+                      fontWeight: 700,
+                    }}
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </div>
             </label>
           </div>
-        ) : null}
+        </div>
       </section>
 
       {ticketWidgets.length ? (
@@ -806,12 +921,13 @@ function HomeDashboard() {
                       </div>
                       <div className={styles.referenceStatBottom}>
                         <strong>{formatIntegerValue(ticketValue)}</strong>
-                        <div className={styles.referenceMiniToggle}>
+                        <div className={styles.referenceMiniToggle} title={isCustomDateActive ? "Clear the Custom Date range above to use these again" : undefined}>
                           {trendModes.map((mode) => (
                             <button
                               key={mode}
                               type="button"
-                              className={cardModes[card.id] === mode ? styles.referenceMiniToggleActive : ""}
+                              disabled={isCustomDateActive}
+                              className={!isCustomDateActive && cardModes[card.id] === mode ? styles.referenceMiniToggleActive : ""}
                               onClick={() => setCardModes((current) => ({ ...current, [card.id]: mode }))}
                             >
                               {mode}
@@ -841,13 +957,14 @@ function HomeDashboard() {
                 <span className={styles.referenceStatIcon}><FiPieChart /></span>
               </div>
               <div className={styles.referenceStatBottom}>
-                <strong>{formatValue(widgetData?.[card.id]?.average_value, cardModes[card.id])}</strong>
-                <div className={styles.referenceMiniToggle}>
+                <strong>{formatValue(widgetData?.[card.id]?.average_value)}</strong>
+                <div className={styles.referenceMiniToggle} title={isCustomDateActive ? "Clear the Custom Date range above to use these again" : undefined}>
                   {trendModes.map((mode) => (
                     <button
                       key={mode}
                       type="button"
-                      className={cardModes[card.id] === mode ? styles.referenceMiniToggleActive : ""}
+                      disabled={isCustomDateActive}
+                      className={!isCustomDateActive && cardModes[card.id] === mode ? styles.referenceMiniToggleActive : ""}
                       onClick={() => setCardModes((current) => ({ ...current, [card.id]: mode }))}
                     >
                       {mode}
@@ -869,6 +986,7 @@ function HomeDashboard() {
             data={widgetData?.[widget.id]}
             activeMode={trendModesById[widget.id] || "1M"}
             setActiveMode={(nextMode) => setTrendModesById((current) => ({ ...current, [widget.id]: nextMode }))}
+            modeToggleDisabled={isCustomDateActive}
           />
         ))}
       </section>
@@ -880,8 +998,7 @@ function HomeDashboard() {
   );
 }
 
-function PerformanceLineCard({ widget, data, activeMode, setActiveMode }) {
-  const xAxisTicks = useMemo(() => getXAxisTicks(activeMode), [activeMode]);
+function PerformanceLineCard({ widget, data, activeMode, setActiveMode, modeToggleDisabled = false }) {
   const baseTrendPoints = useMemo(() => {
     const source = Array.isArray(data?.trend_points)
       ? data.trend_points
@@ -903,6 +1020,21 @@ function PerformanceLineCard({ widget, data, activeMode, setActiveMode }) {
   }, [data]);
 
   const currentLinePoints = useMemo(() => {
+    // The 1M/1Y branches below pad/re-bucket baseTrendPoints against "today"/"this year" -
+    // correct for the real 1D/1W/1M/1Y toggle, but wrong once a Custom Date range is active:
+    // the backend already scoped baseTrendPoints to that exact range, and re-bucketing them
+    // against the CURRENT month/year (unrelated to whatever range was picked) drops points
+    // that fall outside "today"'s month/year entirely, which is why a custom range far from
+    // the current month rendered as a flat line at 0. Use the server's points as-is instead,
+    // same as every mode other than 1M/1Y already does below.
+    if (modeToggleDisabled) {
+      const points = baseTrendPoints.length ? baseTrendPoints : [{ label: "No Data", value: 0 }];
+      return points.map((point) => ({
+        label: point.label,
+        value: getTrendPointValue(point),
+      }));
+    }
+
     if (activeMode === "1M") {
       const today = new Date();
       const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
@@ -958,7 +1090,24 @@ function PerformanceLineCard({ widget, data, activeMode, setActiveMode }) {
       label: point.label,
       value: getTrendPointValue(point),
     }));
-  }, [activeMode, baseTrendPoints]);
+  }, [activeMode, baseTrendPoints, modeToggleDisabled]);
+
+  // getXAxisTicks(activeMode)'s 1M/1Y branches label the axis with the CURRENT calendar
+  // month/year, same wrong-anchor bug as currentLinePoints above - showing "01-09-2026 to
+  // 30-09-2026" under a chart plotting a custom range from an entirely different month. While
+  // a custom range is active, label the two axis ends from the real first/last plotted point.
+  const xAxisTicks = useMemo(() => {
+    if (modeToggleDisabled) {
+      if (!currentLinePoints.length) return [];
+      const first = currentLinePoints[0];
+      const last = currentLinePoints[currentLinePoints.length - 1];
+      return [
+        { label: first.label, x: LINE_CHART_X_PADDING },
+        { label: last.label, x: 100 - LINE_CHART_X_PADDING },
+      ];
+    }
+    return getXAxisTicks(activeMode);
+  }, [activeMode, modeToggleDisabled, currentLinePoints]);
 
   const lineChartPoints = useMemo(() => {
     const yPadding = 8;
@@ -994,7 +1143,7 @@ function PerformanceLineCard({ widget, data, activeMode, setActiveMode }) {
         </div>
         <div className={styles.referenceLineHeaderRight}>
           <span className={styles.referenceLegend}><i /> Trend</span>
-          <ModeToggle activeMode={activeMode} setActiveMode={setActiveMode} />
+          <ModeToggle activeMode={activeMode} setActiveMode={setActiveMode} disabled={modeToggleDisabled} />
         </div>
       </div>
 
@@ -1029,14 +1178,15 @@ function PerformanceLineCard({ widget, data, activeMode, setActiveMode }) {
   );
 }
 
-function ModeToggle({ activeMode, setActiveMode }) {
+function ModeToggle({ activeMode, setActiveMode, disabled = false }) {
   return (
-    <div className={styles.referenceModeToggle}>
+    <div className={styles.referenceModeToggle} title={disabled ? "Clear the Custom Date range above to use these again" : undefined}>
       {trendModes.map((mode) => (
         <button
           key={mode}
           type="button"
-          className={activeMode === mode ? styles.referenceModeToggleActive : ""}
+          disabled={disabled}
+          className={!disabled && activeMode === mode ? styles.referenceModeToggleActive : ""}
           onClick={() => setActiveMode(mode)}
         >
           {mode}

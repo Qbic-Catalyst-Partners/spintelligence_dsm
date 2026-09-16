@@ -246,7 +246,11 @@ const ENTRY_ID_ROUTE_TABLES = {
   // table. Scanning the real table directly fixes that drift at the source, same as the autoconer
   // mappings above.
   '/simplex/list': 'simplex.smx_breaks_study_header',
-  '/simplex/study': 'simplex.smx_breaks_study_header'
+  '/simplex/study': 'simplex.smx_breaks_study_header',
+  // BR Waste Study uses the shared BWS entry_id prefix and stores the committed id in
+  // blowroom.br_waste_study. Production can have rows that are ahead of the registry, so the
+  // next-id generator must scan the real table before issuing another BWS id.
+  '/blowroom/br-waste-study': 'blowroom.br_waste_study'
 };
 
 const ENTRY_ID_ROUTE_PREFIXES = {

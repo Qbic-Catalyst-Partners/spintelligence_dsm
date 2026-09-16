@@ -3,7 +3,7 @@ const router = express.Router();
 const client = require('../connection');
 const auth = require('../middleware/auth');
 
-const PERIODS = new Set(['1D', '1W', '1M', '1Y']);
+const PERIODS = new Set(['1D', '1W', '1M', '1Y', 'CUSTOM']);
 const VISUAL_TYPES = new Set(['average_value_card', 'bar_chart', 'area_chart', 'line_chart', 'individual_ticket_count', 'add_ticket_count', 'ticket_status_card']);
 const TICKET_CARD_METRICS = new Set(['total', 'open', 'closed', 'reopened', 'pending', 'overdue']);
 const ALL_SUB_DEPARTMENTS = ['Mixing', 'Spinning', 'Carding', 'Comber', 'Blowroom', 'Autoconer', 'Drawframe', 'Simplex'];
@@ -56,6 +56,23 @@ const normalizeBoundaryDate = (value, boundary) => {
     return isoOrNull(`${raw}${suffix}`);
   }
   return isoOrNull(raw);
+};
+// Resolves a period into explicit UTC start/end instants computed here in JS (via
+// getCurrentPeriodBounds below), rather than letting Postgres evaluate `NOW() - INTERVAL`
+// itself against operator_tickets.created_at, which is a `timestamp without time zone`
+// column - comparing that to `NOW()` (timestamptz) forces an implicit, session-timezone-
+// dependent cast, so the exact same query can resolve a different window depending on
+// whichever timezone the connected Postgres session happens to be using. Passing explicit
+// ::timestamptz bounds as query parameters removes that ambiguity entirely and also gives
+// CUSTOM date-range filtering a single code path to plug into.
+const resolvePeriodBounds = (period, customStartRaw, customEndRaw) => {
+  if (period === 'CUSTOM') {
+    const start = normalizeBoundaryDate(customStartRaw, 'start');
+    const end = normalizeBoundaryDate(customEndRaw, 'end');
+    if (!start || !end) return null;
+    return { start, end };
+  }
+  return getCurrentPeriodBounds(period);
 };
 const normalizeWidgetId = (value) => String(value ?? '').trim();
 const isDashboardDebugEnabled = String(process.env.DASHBOARD_DEBUG || '').trim().toLowerCase() === 'true';
@@ -436,26 +453,34 @@ const deleteUserPage = async (userId, pageKey) => {
   return result.rows[0] || null;
 };
 
-const getTrendQuery = ({ table, dateColumn, valueColumn, period }) => {
+// bounds ({start, end}) are explicit UTC ISO instants, bound as $1/$2 - see resolvePeriodBounds
+// above for why this replaced the old `NOW() - INTERVAL '...'` literals (session-timezone
+// dependent when dateColumn isn't a timestamptz column).
+const getTrendQuery = ({ table, dateColumn, valueColumn, period, bounds }) => {
+  const params = [bounds.start, bounds.end];
+  const whereClause = `${dateColumn} >= $1::timestamptz AND ${dateColumn} <= $2::timestamptz`;
+
   if (period === '1D') {
     return {
+      params,
       query: `
         SELECT to_char(date_trunc('hour', ${dateColumn}), 'HH24:00') AS label,
                ROUND(AVG(${valueColumn})::numeric, 4) AS value
         FROM ${table}
-        WHERE ${dateColumn} >= NOW() - INTERVAL '1 day'
+        WHERE ${whereClause}
         GROUP BY 1, date_trunc('hour', ${dateColumn})
         ORDER BY date_trunc('hour', ${dateColumn})
       `
     };
   }
-  if (period === '1W') {
+  if (period === '1W' || period === 'CUSTOM') {
     return {
+      params,
       query: `
         SELECT to_char(date_trunc('day', ${dateColumn}), 'Dy DD Mon') AS label,
                ROUND(AVG(${valueColumn})::numeric, 4) AS value
         FROM ${table}
-        WHERE ${dateColumn} >= NOW() - INTERVAL '7 days'
+        WHERE ${whereClause}
         GROUP BY 1, date_trunc('day', ${dateColumn})
         ORDER BY date_trunc('day', ${dateColumn})
       `
@@ -463,22 +488,24 @@ const getTrendQuery = ({ table, dateColumn, valueColumn, period }) => {
   }
   if (period === '1M') {
     return {
+      params,
       query: `
         SELECT to_char(date_trunc('week', ${dateColumn}), '"WK" WW') AS label,
                ROUND(AVG(${valueColumn})::numeric, 4) AS value
         FROM ${table}
-        WHERE ${dateColumn} >= NOW() - INTERVAL '1 month'
+        WHERE ${whereClause}
         GROUP BY 1, date_trunc('week', ${dateColumn})
         ORDER BY date_trunc('week', ${dateColumn})
       `
     };
   }
   return {
+    params,
     query: `
       SELECT to_char(date_trunc('month', ${dateColumn}), 'Mon YYYY') AS label,
              ROUND(AVG(${valueColumn})::numeric, 4) AS value
       FROM ${table}
-      WHERE ${dateColumn} >= NOW() - INTERVAL '1 year'
+      WHERE ${whereClause}
       GROUP BY 1, date_trunc('month', ${dateColumn})
       ORDER BY date_trunc('month', ${dateColumn})
     `
@@ -830,7 +857,16 @@ const getLegacyTicketMetricKeys = (widget = {}) => {
     .filter((item) => item.metric_key);
 };
 
-const fetchWidgetData = async ({ widget, period = '1W', userId = null, userLevel = '', userEmployeeId = '', userRole = '' }) => {
+const fetchWidgetData = async ({
+  widget,
+  period = '1W',
+  customStart = null,
+  customEnd = null,
+  userId = null,
+  userLevel = '',
+  userEmployeeId = '',
+  userRole = ''
+}) => {
   if (
     widget?.visualization_type === 'individual_ticket_count' ||
     widget?.visualization_type === 'add_ticket_count' ||
@@ -853,18 +889,19 @@ const fetchWidgetData = async ({ widget, period = '1W', userId = null, userLevel
     const ticketScopeWhere = ticketScope.whereSql;
     const queryParams = ticketScope.params;
 
-    const intervalMap = {
-      '1D': "1 day",
-      '1W': "7 days",
-      '1M': "1 month",
-      '1Y': "1 year"
-    };
     // The card's own ticket_count never actually applied `period` at all before this - only
     // the separate trend chart below did - so switching 1D/1W/1M/1Y on a ticket_status_card
     // widget changed the line chart underneath it but left the big number unchanged. Scoped
-    // the same way the trend query already does: tickets CREATED within that rolling window.
-    const periodInterval = intervalMap[period] || '7 days';
-    const periodWhere = `created_at >= NOW() - INTERVAL '${periodInterval}'`;
+    // the same way the trend query already does: tickets CREATED within that window. Bounds
+    // are explicit ::timestamptz parameters (see resolvePeriodBounds) rather than
+    // `NOW() - INTERVAL '...'`, which was session-timezone-dependent against created_at's
+    // `timestamp without time zone` column type - correct in one environment's DB session
+    // timezone, silently wrong (or empty) in another's.
+    const bounds = resolvePeriodBounds(period, customStart, customEnd) || getCurrentPeriodBounds('1W');
+    const startIdx = queryParams.length + 1;
+    const endIdx = queryParams.length + 2;
+    queryParams.push(bounds.start, bounds.end);
+    const periodWhere = `created_at >= $${startIdx}::timestamptz AND created_at <= $${endIdx}::timestamptz`;
     const countQueryByMetric = {
       total: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere}`,
       open: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere} AND lower(trim(COALESCE(status, ''))) = 'open'`,
@@ -973,6 +1010,8 @@ const fetchWidgetData = async ({ widget, period = '1W', userId = null, userLevel
   }
   const col = quoteIdent(matchedColumn);
 
+  const bounds = resolvePeriodBounds(period, customStart, customEnd) || getCurrentPeriodBounds('1W');
+
   const latestResult = await client.query(
     `SELECT ${col}::numeric AS value, ${source.dateColumn} AS at
      FROM ${source.table}
@@ -981,19 +1020,24 @@ const fetchWidgetData = async ({ widget, period = '1W', userId = null, userLevel
      LIMIT 1`
   );
 
+  // Previously ignored `period`/bounds entirely, always averaging the full table history.
   const avgResult = await client.query(
     `SELECT ROUND(AVG(${col})::numeric, 4) AS avg_value
      FROM ${source.table}
-     WHERE ${col} IS NOT NULL`
+     WHERE ${col} IS NOT NULL
+       AND ${source.dateColumn} >= $1::timestamptz
+       AND ${source.dateColumn} <= $2::timestamptz`,
+    [bounds.start, bounds.end]
   );
 
-  const { query } = getTrendQuery({
+  const { query, params: trendParams } = getTrendQuery({
     table: source.table,
     dateColumn: source.dateColumn,
     valueColumn: col,
-    period
+    period,
+    bounds
   });
-  const trendResult = await client.query(query);
+  const trendResult = await client.query(query, trendParams);
 
   return {
     widget_id: widget.id,
@@ -1675,7 +1719,14 @@ const handleBuilderData = async (req, res, next) => {
     if (!department || !sub_department || !input_screen || !rawInputField) {
       return res.status(400).json({ message: 'department, sub_department, input_screen and input_field are required' });
     }
-    if (!PERIODS.has(period)) return res.status(400).json({ message: 'period must be one of 1D, 1W, 1M, 1Y' });
+    if (!PERIODS.has(period)) return res.status(400).json({ message: 'period must be one of 1D, 1W, 1M, 1Y, CUSTOM' });
+
+    const customStartRaw = req.query.fromDate || req.query.from_date || req.query.start_date;
+    const customEndRaw = req.query.toDate || req.query.to_date || req.query.end_date;
+    const bounds = resolvePeriodBounds(period, customStartRaw, customEndRaw);
+    if (!bounds) {
+      return res.status(400).json({ message: 'Valid custom fromDate/start_date and toDate/end_date are required for period=CUSTOM' });
+    }
 
     const source = resolveSource(input_screen, { department, sub_department });
     if (!source) {
@@ -1720,19 +1771,26 @@ const handleBuilderData = async (req, res, next) => {
        LIMIT 1`
     );
 
+    // Previously ignored `period`/bounds entirely, always averaging the full table history -
+    // so switching 1D/1W/1M/1Y on an Average Value card changed the trend line underneath but
+    // never the big number itself. Scoped the same way the trend query is.
     const avgResult = await client.query(
       `SELECT ROUND(AVG(${col})::numeric, 4) AS avg_value
        FROM ${source.table}
-       WHERE ${col} IS NOT NULL`
+       WHERE ${col} IS NOT NULL
+         AND ${source.dateColumn} >= $1::timestamptz
+         AND ${source.dateColumn} <= $2::timestamptz`,
+      [bounds.start, bounds.end]
     );
 
-    const { query } = getTrendQuery({
+    const { query, params: trendParams } = getTrendQuery({
       table: source.table,
       dateColumn: source.dateColumn,
       valueColumn: col,
-      period
+      period,
+      bounds
     });
-    const trendResult = await client.query(query);
+    const trendResult = await client.query(query, trendParams);
 
     res.status(200).json({
       filter: {
@@ -1763,7 +1821,12 @@ const handleMyDashboardPage = async (req, res, next) => {
     const userId = canManageDashboards(req) && requestedUserId ? requestedUserId : requesterUserId;
 
     const period = String(req.query.period || '1W').toUpperCase();
-    if (!PERIODS.has(period)) return res.status(400).json({ message: 'period must be one of 1D, 1W, 1M, 1Y' });
+    if (!PERIODS.has(period)) return res.status(400).json({ message: 'period must be one of 1D, 1W, 1M, 1Y, CUSTOM' });
+    const customStart = req.query.fromDate || req.query.from_date || req.query.start_date || null;
+    const customEnd = req.query.toDate || req.query.to_date || req.query.end_date || null;
+    if (period === 'CUSTOM' && !resolvePeriodBounds(period, customStart, customEnd)) {
+      return res.status(400).json({ message: 'Valid custom fromDate/start_date and toDate/end_date are required for period=CUSTOM' });
+    }
 
     const dashboardUser = await getDashboardUserContext(userId);
     if (!dashboardUser) return res.status(404).json({ message: 'Dashboard user not found' });
@@ -1789,6 +1852,8 @@ const handleMyDashboardPage = async (req, res, next) => {
               widget_name: item.legacy_key
             },
             period,
+            customStart,
+            customEnd,
             userId,
             userLevel: dashboardUser.level,
             userEmployeeId: dashboardUser.employee_id,
@@ -1805,6 +1870,8 @@ const handleMyDashboardPage = async (req, res, next) => {
       const widgetData = await fetchWidgetData({
         widget,
         period,
+        customStart,
+        customEnd,
         userId,
         userLevel: dashboardUser.level,
         userEmployeeId: dashboardUser.employee_id,
@@ -1902,7 +1969,12 @@ const handleGetMyPageData = async (req, res, next) => {
     const userId = canManageDashboards(req) && requestedUserId ? requestedUserId : requesterUserId;
 
     const period = String(req.query.period || '1W').toUpperCase();
-    if (!PERIODS.has(period)) return res.status(400).json({ message: 'period must be one of 1D, 1W, 1M, 1Y' });
+    if (!PERIODS.has(period)) return res.status(400).json({ message: 'period must be one of 1D, 1W, 1M, 1Y, CUSTOM' });
+    const customStart = req.query.fromDate || req.query.from_date || req.query.start_date || null;
+    const customEnd = req.query.toDate || req.query.to_date || req.query.end_date || null;
+    if (period === 'CUSTOM' && !resolvePeriodBounds(period, customStart, customEnd)) {
+      return res.status(400).json({ message: 'Valid custom fromDate/start_date and toDate/end_date are required for period=CUSTOM' });
+    }
 
     const pageKey = String(req.params.pageKey || 'default');
     const dashboardUser = await getDashboardUserContext(userId);
@@ -1928,6 +2000,8 @@ const handleGetMyPageData = async (req, res, next) => {
               widget_name: item.legacy_key
             },
             period,
+            customStart,
+            customEnd,
             userId,
             userLevel: dashboardUser.level,
             userEmployeeId: dashboardUser.employee_id,
@@ -1944,6 +2018,8 @@ const handleGetMyPageData = async (req, res, next) => {
       const widgetData = await fetchWidgetData({
         widget,
         period,
+        customStart,
+        customEnd,
         userId,
         userLevel: dashboardUser.level,
         userEmployeeId: dashboardUser.employee_id,

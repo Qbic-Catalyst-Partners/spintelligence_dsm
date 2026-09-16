@@ -1355,19 +1355,6 @@ function SpinningDepartment() {
                     { label: "Total Cops RF", value: String(totalCopsRf) },
                     { label: "Grand Total", value: String(totalCopsGrandTotal) },
                     { label: "Comments", value: comments || "-" },
-                    ...ringFrameRows.flatMap((row) => ([
-                        { label: `MC ${row.machine_no} - Lycra`, value: String(row.lycra ?? "") || "-" },
-                        { label: `MC ${row.machine_no} - Bobbin Color`, value: String(row.bobbin_color ?? "") || "-" },
-                        { label: `MC ${row.machine_no} - 1`, value: String(row.position_1 ?? "") || "-" },
-                        { label: `MC ${row.machine_no} - 2`, value: String(row.position_2 ?? "") || "-" },
-                        { label: `MC ${row.machine_no} - 3`, value: String(row.position_3 ?? "") || "-" },
-                        { label: `MC ${row.machine_no} - 4`, value: String(row.position_4 ?? "") || "-" },
-                        { label: `MC ${row.machine_no} - 5`, value: String(row.position_5 ?? "") || "-" },
-                        { label: `MC ${row.machine_no} - 6`, value: String(row.position_6 ?? "") || "-" },
-                        { label: `MC ${row.machine_no} - Guide Roll Lapping`, value: String(row.guide_roll_lapping ?? "") || "-" },
-                        { label: `MC ${row.machine_no} - Others`, value: String(row.others ?? "") || "-" },
-                        { label: `MC ${row.machine_no} - Total`, value: String(getRingFrameRowTotal(row)) || "0" },
-                    ]))
                 ]
             : useArrayLhsRhs
             ? [
@@ -1397,7 +1384,42 @@ function SpinningDepartment() {
             bodyItems.push({ label: "Type-2", value: type2Value || "-" });
         }
 
-        const nextPreviewGroups = isCountChange
+        const nextPreviewGroups = isRingFrame
+            ? [
+                {
+                    key: "ring-frame-rows",
+                    title: "Ring Frame Rows",
+                    columns: [
+                        { key: "machine_no", label: "MC No." },
+                        { key: "lycra", label: "Lycra" },
+                        { key: "bobbin_color", label: "Bobbin Color" },
+                        { key: "position_1", label: "1" },
+                        { key: "position_2", label: "2" },
+                        { key: "position_3", label: "3" },
+                        { key: "position_4", label: "4" },
+                        { key: "position_5", label: "5" },
+                        { key: "position_6", label: "6" },
+                        { key: "guide_roll_lapping", label: "Guide Roll Lapping" },
+                        { key: "others", label: "Others" },
+                        { key: "total", label: "Total" },
+                    ],
+                    rows: ringFrameRows.map((row) => ({
+                        machine_no: row.machine_no,
+                        lycra: String(row.lycra ?? "") || "-",
+                        bobbin_color: String(row.bobbin_color ?? "") || "-",
+                        position_1: String(row.position_1 ?? "") || "-",
+                        position_2: String(row.position_2 ?? "") || "-",
+                        position_3: String(row.position_3 ?? "") || "-",
+                        position_4: String(row.position_4 ?? "") || "-",
+                        position_5: String(row.position_5 ?? "") || "-",
+                        position_6: String(row.position_6 ?? "") || "-",
+                        guide_roll_lapping: String(row.guide_roll_lapping ?? "") || "-",
+                        others: String(row.others ?? "") || "-",
+                        total: String(getRingFrameRowTotal(row)) || "0",
+                    })),
+                },
+            ]
+            : isCountChange
             ? [
                 {
                     key: "count-change-readings",
