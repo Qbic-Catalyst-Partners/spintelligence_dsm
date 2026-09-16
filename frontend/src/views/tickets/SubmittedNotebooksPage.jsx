@@ -1689,7 +1689,6 @@ const slugifySmxLabel = (label) =>
 const getSmxBreaksStudySections = (notebook) => {
     const payload = getPayload(notebook);
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
-    if (String(payload.type || "").trim() !== "SMX Breaks Study Report") return null;
 
     const matrix = {};
     const rows = SMX_BREAK_ROWS_ORDER.filter((row) =>
@@ -2939,14 +2938,25 @@ const SubmittedNotebooksPage = () => {
 
                                         <div className={styles.rowListSection}>
                                             <small>Meta</small>
-                                            <div className={styles.fieldGrid}>
-                                                {entryIdMetaCard}
-                                                {section.metaEntries.map(([key, value]) => (
-                                                    <div key={key} className={styles.fieldCard}>
-                                                        <small>{OCR_META_FIELD_LABELS[key] || formatTitle(key)}</small>
-                                                        <strong>{isDateField(key) ? formatDateValue(value) : String(value)}</strong>
-                                                    </div>
-                                                ))}
+                                            <div className={styles.rowListTableWrap}>
+                                                <table className={styles.rowListTable}>
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Entry ID</th>
+                                                            {section.metaEntries.map(([key]) => (
+                                                                <th key={key}>{OCR_META_FIELD_LABELS[key] || formatTitle(key)}</th>
+                                                            ))}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr>
+                                                            <td>{entryIdValue}</td>
+                                                            {section.metaEntries.map(([key, value]) => (
+                                                                <td key={key}>{isDateField(key) ? formatDateValue(value) : String(value)}</td>
+                                                            ))}
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
                                             </div>
                                         </div>
 
@@ -3203,26 +3213,26 @@ const SubmittedNotebooksPage = () => {
                                                     </tr>
                                                 ))}
                                                 <tr>
-                                                    <td><strong>Total Breaks</strong></td>
+                                                    <td><strong>TOTAL BREAKS</strong></td>
                                                     {smxBreaksStudySections.columns.map((column) => (
                                                         <td key={column}>{smxBreaksStudySections.columnTotals[column] ?? "-"}</td>
                                                     ))}
                                                 </tr>
                                                 {smxBreaksStudySections.grandTotal !== undefined ? (
                                                     <tr>
-                                                        <td><strong>Grand Total</strong></td>
+                                                        <td><strong>GRAND TOTAL</strong></td>
                                                         <td>{String(smxBreaksStudySections.grandTotal)}</td>
                                                     </tr>
                                                 ) : null}
                                                 <tr>
-                                                    <td><strong>No. of Breaks 100 Spindles/HR</strong></td>
+                                                    <td><strong>NO. OF BREAKS 100 SPINDLES / HR</strong></td>
                                                     {smxBreaksStudySections.percentageColumns.map((column) => (
                                                         <td key={column}>{smxBreaksStudySections.columnBreaksPer100Sh[column] ?? "-"}</td>
                                                     ))}
                                                 </tr>
                                                 {smxBreaksStudySections.totalBreaksPer100Sh !== undefined ? (
                                                     <tr>
-                                                        <td><strong>Total No. of Breaks/100SH</strong></td>
+                                                        <td><strong>TOTAL NO. OF BREAKS/100SH</strong></td>
                                                         <td>{String(smxBreaksStudySections.totalBreaksPer100Sh)}</td>
                                                     </tr>
                                                 ) : null}

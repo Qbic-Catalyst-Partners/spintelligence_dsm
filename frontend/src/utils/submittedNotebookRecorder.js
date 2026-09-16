@@ -6,7 +6,7 @@ import { fetchNotebookAcknowledgementThresholdsAPI } from "@/apis/notebookAcknow
 // punctuation/casing the entry screen actually shows. Carrying the original label alongside the
 // slug lets the submitted-notebook view show the field exactly as it appears on screen, for any
 // notebook that goes through this generic (non-getPayload) capture path.
-const previewItemsToPayload = (items = []) => {
+export const previewItemsToPayload = (items = []) => {
   const payload = {};
   const fieldLabels = {};
 

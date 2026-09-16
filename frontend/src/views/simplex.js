@@ -189,7 +189,11 @@ function Simplex() {
     const rawPreview = childRef.current?.getPreviewData ? childRef.current.getPreviewData() : [];
     const isGroupedPreview = rawPreview && !Array.isArray(rawPreview);
     const items = isGroupedPreview ? rawPreview.items || [] : rawPreview;
-    const groups = isGroupedPreview ? rawPreview.groups || [] : [];
+    const groups = isGroupedPreview
+      ? rawPreview.groups || []
+      : childRef.current?.getPreviewGroups
+        ? childRef.current.getPreviewGroups()
+        : [];
     setPreviewItems([
       { label: "Type", value: selectedTypeName || "-" },
       { label: "Entry ID", value: entryId || "-" },

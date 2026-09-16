@@ -9,6 +9,7 @@ import useEmployeeOptions from "@/hooks/useEmployeeOptions";
 import { submitSimplexStudyReport } from "@/store/slices/simplex";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
+import { previewItemsToPayload } from "@/utils/submittedNotebookRecorder";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -397,7 +398,13 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     );
   };
 
-  const getPreviewData = () => {
+  // Every field this screen captures, flattened to one item per cell - this is what actually
+  // gets recorded to submitted_fields (via getPayload below), matching the exact "<row> - <column>"
+  // labels SubmittedNotebooksPage.jsx's getSmxBreaksStudySections keys off. Not shown directly in
+  // the pre-submit preview modal any more - getPreviewData below trims this down to the top-level
+  // fields, since the break matrix and its totals/percentages now render as real tables via
+  // getPreviewGroups instead of one card per cell.
+  const getFullPreviewItems = () => {
     const items = [
       ...Object.entries(form)
         .filter(([key]) => key !== "type" && key !== "date")
@@ -464,6 +471,86 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     return items;
   };
 
+  // Trimmed to the top-level form fields only - the break matrix (and its Total Breaks/
+  // percentage summary rows) is shown as a real table via getPreviewGroups instead of one
+  // card per cell here.
+  const getPreviewData = () =>
+    Object.entries(form)
+      .filter(([key]) => key !== "type" && key !== "date")
+      .map(([key, value]) => ({
+        label: formatLabel(key),
+        value:
+          key === "hank"
+            ? calculatedHank || "-"
+            : key === "runningSpdl"
+              ? calculatedRunningSpdl || "-"
+              : value || "-",
+      }))
+      .concat([{ label: "Total Minutes", value: totalTime || "-" }]);
+
+  const getPayload = () => previewItemsToPayload(getFullPreviewItems());
+
+  // Real table view of the break matrix for the pre-submit preview modal, matching the entry
+  // screen's own grid (Length rows x break-type columns, with the Total Breaks/percentage
+  // summary rows folded into the same table) - built alongside, not instead of, getPreviewData's
+  // flat items above, which are what actually gets recorded to submitted_fields.
+  const getPreviewGroups = () => {
+    const filledRows = matrixRows.filter((row) => row.length);
+    if (!filledRows.length) return [];
+
+    const columns = [{ key: "length", label: "Length" }, ...breakColumns.map((column) => ({ key: column, label: column }))];
+    const blankRow = (label) => breakColumns.reduce((acc, column) => {
+      acc[column] = "-";
+      return acc;
+    }, { length: label });
+
+    const dataRows = filledRows.map((row) => ({
+      length: row.length,
+      ...breakColumns.reduce((acc, column) => {
+        acc[column] = row.values[column] || "-";
+        return acc;
+      }, {}),
+    }));
+
+    // Same four summary rows shown on the entry screen itself below the matrix -
+    // same labels, same values (columnTotals/grandTotal/noOfBreaksPer100Spindles/
+    // grandTotalBreakPercent), just folded into this table instead of separate blocks.
+    dataRows.push({
+      length: "TOTAL BREAKS",
+      ...breakColumns.reduce((acc, column) => {
+        acc[column] = formatNumber(columnTotals[column]);
+        return acc;
+      }, {}),
+    });
+
+    dataRows.push({
+      ...blankRow("GRAND TOTAL"),
+      [breakColumns[0]]: formatNumber(grandTotal),
+    });
+
+    dataRows.push({
+      ...blankRow("NO. OF BREAKS 100 SPINDLES / HR"),
+      ...percentageBreakColumns.reduce((acc, column) => {
+        acc[column] = `${formatPercentage(noOfBreaksPer100Spindles[column])}%`;
+        return acc;
+      }, {}),
+    });
+
+    dataRows.push({
+      ...blankRow("TOTAL NO. OF BREAKS/100SH"),
+      [breakColumns[0]]: grandTotalBreakPercent ? `${grandTotalBreakPercent}%` : "-",
+    });
+
+    return [
+      {
+        key: "breakMatrix",
+        title: "Break Matrix",
+        columns,
+        rows: dataRows,
+      },
+    ];
+  };
+
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type },
     { label: "Simplex No.", field: "simplexNo", type: "select", options: simplexNoOptions, placeholder: "Select" },
@@ -502,155 +589,158 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     <section className="overflow-x-auto px-1">
       <div className="min-w-[1120px]">
         {(() => {
-          const { columnTotals: totalCounts, grandTotal: totalCount, percentages } = getTotalBreakPercentages(breakMatrix);
+          const { columnTotals: totalCounts, grandTotal: totalCount } = getTotalBreakPercentages(breakMatrix);
           return (
-            <>
-        <div className="flex items-end gap-3">
-          <div className="grid flex-1 grid-cols-[100px_repeat(9,minmax(0,1fr))] gap-x-3 gap-y-4 text-[10px] font-semibold uppercase tracking-[0.01em] text-slate-600">
-            <div className="flex items-end pb-2">Length</div>
-            {breakColumns.map((columnLabel) => (
-              <div key={columnLabel} className="flex items-end pb-2 leading-4">
-                {columnLabel}
-              </div>
-            ))}
-          </div>
-          <div className="h-0 w-[64px] shrink-0" aria-hidden="true" />
-        </div>
-
-        <div className="mt-1 flex flex-col gap-3">
-          {matrixRows.map((row, rowIndex) => {
-            const lengthOptions = breakRows.filter(
-              (label) => label === row.length || !usedLengths.has(label)
-            );
-            const isLastRow = rowIndex === matrixRows.length - 1;
-            const canAddRow = matrixRows.length < breakRows.length;
-            return (
-              <div key={row.id} className="flex items-center gap-3">
-                <div className="grid flex-1 grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
-                  <select
-                    className={`${tableFieldClass}${errorClass(errors.matrix?.[row.id]?.length)}`}
-                    style={getFieldStyle(errors.matrix?.[row.id]?.length, "table")}
-                    value={row.length}
-                    onChange={(event) => handleRowLengthChange(row.id, event.target.value)}
-                  >
-                    <option value="">Select</option>
-                    {lengthOptions.map((label) => (
-                      <option key={label} value={label}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-
+            <table className="w-full border-separate border-spacing-y-2">
+              <thead>
+                <tr className="text-[10px] font-semibold uppercase tracking-[0.01em] text-slate-600">
+                  <th className="w-[100px] pb-2 text-left align-bottom">Length</th>
                   {breakColumns.map((columnLabel) => (
-                    <input
-                      key={`${row.id}-${columnLabel}`}
-                      type="text"
-                      inputMode="text"
-                      placeholder="1,2,3"
-                      className={`${tableFieldClass}${errorClass(errors.matrix?.[row.id]?.[columnLabel])}`}
-                      style={getFieldStyle(errors.matrix?.[row.id]?.[columnLabel], "table")}
-                      value={row.values[columnLabel] ?? ""}
-                      onChange={(event) =>
-                        handleRowValueChange(row.id, columnLabel, event.target.value)
-                      }
-                    />
+                    <th key={columnLabel} className="pb-2 text-left align-bottom leading-4">
+                      {columnLabel}
+                    </th>
                   ))}
-                </div>
+                  <th className="w-[64px]" aria-hidden="true" />
+                </tr>
+              </thead>
+              <tbody>
+                {matrixRows.map((row, rowIndex) => {
+                  const lengthOptions = breakRows.filter(
+                    (label) => label === row.length || !usedLengths.has(label)
+                  );
+                  const isLastRow = rowIndex === matrixRows.length - 1;
+                  const canAddRow = matrixRows.length < breakRows.length;
+                  return (
+                    <tr key={row.id}>
+                      <td className="pr-3">
+                        <select
+                          className={`${tableFieldClass}${errorClass(errors.matrix?.[row.id]?.length)}`}
+                          style={getFieldStyle(errors.matrix?.[row.id]?.length, "table")}
+                          value={row.length}
+                          onChange={(event) => handleRowLengthChange(row.id, event.target.value)}
+                        >
+                          <option value="">Select</option>
+                          {lengthOptions.map((label) => (
+                            <option key={label} value={label}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      {breakColumns.map((columnLabel) => (
+                        <td key={`${row.id}-${columnLabel}`} className="pr-3">
+                          <input
+                            type="text"
+                            inputMode="text"
+                            placeholder="1,2,3"
+                            className={`${tableFieldClass}${errorClass(errors.matrix?.[row.id]?.[columnLabel])}`}
+                            style={getFieldStyle(errors.matrix?.[row.id]?.[columnLabel], "table")}
+                            value={row.values[columnLabel] ?? ""}
+                            onChange={(event) =>
+                              handleRowValueChange(row.id, columnLabel, event.target.value)
+                            }
+                          />
+                        </td>
+                      ))}
+                      <td>
+                        <div className="flex shrink-0 items-center gap-2">
+                          {isLastRow ? (
+                            <button
+                              type="button"
+                              onClick={addMatrixRow}
+                              disabled={!canAddRow}
+                              aria-label="Add row"
+                              title="Add row"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#4f63b6] text-white disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <FiPlus />
+                            </button>
+                          ) : (
+                            <span className="inline-block h-7 w-7" aria-hidden="true" />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeMatrixRow(row.id)}
+                            disabled={matrixRows.length <= 1}
+                            aria-label="Delete row"
+                            title="Delete row"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] border border-[#ffcecf] bg-[#fff4f4] text-[#f04f56] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <FiTrash2 />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
 
-                <div className="flex shrink-0 items-center gap-2">
-                  {isLastRow ? (
-                    <button
-                      type="button"
-                      onClick={addMatrixRow}
-                      disabled={!canAddRow}
-                      aria-label="Add row"
-                      title="Add row"
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#4f63b6] text-white disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <FiPlus />
-                    </button>
-                  ) : (
-                    <span className="inline-block h-7 w-7" aria-hidden="true" />
+                <tr className="border-t border-slate-200">
+                  <td className="pr-3 pt-4 text-[12px] font-semibold uppercase text-slate-700">Total Breaks</td>
+                  {breakColumns.map((columnLabel) => (
+                    <td key={`total-${columnLabel}`} className="pr-3 pt-4">
+                      <input
+                        type="text"
+                        readOnly
+                        className={`${tableFieldClass} text-slate-500`}
+                        value={formatNumber(totalCounts[columnLabel])}
+                      />
+                    </td>
+                  ))}
+                  <td className="pt-4" />
+                </tr>
+
+                <tr>
+                  <td className="pr-3 text-[12px] font-semibold uppercase text-slate-700">Grand Total</td>
+                  <td className="pr-3">
+                    <input
+                      type="text"
+                      readOnly
+                      className={`${tableFieldClass} text-slate-500`}
+                      value={formatNumber(totalCount)}
+                    />
+                  </td>
+                  <td colSpan={breakColumns.length - 1} />
+                  <td />
+                </tr>
+
+                <tr className="border-t border-slate-200">
+                  <td className="pr-3 pt-4 text-[12px] font-semibold uppercase text-slate-700">
+                    No. of breaks 100 spindles / hr
+                  </td>
+                  {breakColumns.map((columnLabel) =>
+                    percentageBreakColumns.includes(columnLabel) ? (
+                      <td key={`percent-${columnLabel}`} className="pr-3 pt-4">
+                        <input
+                          type="text"
+                          readOnly
+                          className={`${tableFieldClass} text-slate-500`}
+                          value={`${formatPercentage(noOfBreaksPer100Spindles[columnLabel])}%`}
+                        />
+                      </td>
+                    ) : (
+                      <td key={`percent-${columnLabel}`} className="pt-4" />
+                    )
                   )}
-                  <button
-                    type="button"
-                    onClick={() => removeMatrixRow(row.id)}
-                    disabled={matrixRows.length <= 1}
-                    aria-label="Delete row"
-                    title="Delete row"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] border border-[#ffcecf] bg-[#fff4f4] text-[#f04f56] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <FiTrash2 />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                  <td className="pt-4" />
+                </tr>
 
-        <div className="mt-4 border-t border-slate-200 pt-4">
-          <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700">Total Breaks</div>
-            {breakColumns.map((columnLabel) => (
-              <input
-                key={`total-${columnLabel}`}
-                type="text"
-                readOnly
-                className={`${tableFieldClass} text-slate-500`}
-                value={formatNumber(totalCounts[columnLabel])}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-3">
-          <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700">Grand Total</div>
-            <input
-              type="text"
-              readOnly
-              className={`${tableFieldClass} col-start-2 text-slate-500`}
-              value={formatNumber(totalCount)}
-            />
-            <div />
-            <div />
-            <div />
-            <div />
-            <div />
-            <div />
-            <div />
-            <div />
-            <div />
-          </div>
-        </div>
-
-        <div className="mt-4 border-t border-slate-200 pt-4">
-          <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700"> No. of breaks 100 spindles / hr</div>
-            {percentageBreakColumns.map((columnLabel) => (
-              <input
-                key={`percent-${columnLabel}`}
-                type="text"
-                readOnly
-                className={`${tableFieldClass} text-slate-500`}
-                value={`${formatPercentage(noOfBreaksPer100Spindles[columnLabel])}%`}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-4 border-t border-slate-200 pt-4">
-          <div className="grid grid-cols-[100px_minmax(0,160px)] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700">TOTAL No. OF BREAKS/100SH</div>
-            <input
-              type="text"
-              readOnly
-              className={`${tableFieldClass} text-slate-500`}
-              value={grandTotalBreakPercent ? `${grandTotalBreakPercent}%` : ""}
-            />
-          </div>
-        </div>
-            </>
+                <tr className="border-t border-slate-200">
+                  <td className="pr-3 pt-4 text-[12px] font-semibold uppercase text-slate-700">
+                    TOTAL No. OF BREAKS/100SH
+                  </td>
+                  <td className="pr-3 pt-4">
+                    <input
+                      type="text"
+                      readOnly
+                      className={`${tableFieldClass} text-slate-500`}
+                      value={grandTotalBreakPercent ? `${grandTotalBreakPercent}%` : ""}
+                    />
+                  </td>
+                  <td colSpan={breakColumns.length - 1} className="pt-4" />
+                  <td className="pt-4" />
+                </tr>
+              </tbody>
+            </table>
           );
         })()}
       </div>
@@ -785,6 +875,8 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     clear,
     validate,
     getPreviewData,
+    getPreviewGroups,
+    getPayload,
     submit: submitForm,
   }));
 

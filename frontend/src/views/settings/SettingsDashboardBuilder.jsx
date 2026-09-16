@@ -136,8 +136,13 @@ function SettingsDashboardBuilder() {
     [selectedDepartmentSlug, selectedSubDepartmentSlug]
   );
   const availableFields = useMemo(
-    () => filterMetricFieldNames(getThresholdFieldsForScreen(selectedScreenName)),
-    [selectedScreenName]
+    // Without the sub-department context, a screen name that exists per-department in the
+    // catalog only under its "<SubDepartment>::<ScreenName>" key (e.g. "Carding::Process
+    // Parameter") fell through to whichever bare "<ScreenName>" entry happened to be defined
+    // (or an empty list) - showing another department's fields, or none at all. Matches how
+    // ThresholdValues.js/ReportsPage.jsx already resolve this same catalog.
+    () => filterMetricFieldNames(getThresholdFieldsForScreen(selectedScreenName, selectedSubDepartment?.name)),
+    [selectedScreenName, selectedSubDepartment]
   );
 
   useEffect(() => {

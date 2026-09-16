@@ -294,6 +294,29 @@
     flex-wrap: wrap;
 }
 
+.dashboardControlStack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+}
+
+.dashboardIdentityControls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.dashboardDateRangeControls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.dashboardDateControl {
+    align-self: flex-end;
+}
+
 .dashboardUserControls label {
     display: flex;
     flex-direction: column;
@@ -3241,6 +3264,22 @@
 
     .dashboardUserControls {
         width: 100%;
+    }
+
+    .dashboardControlStack {
+        width: 100%;
+    }
+
+    .dashboardIdentityControls {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboardDateRangeControls {
+        flex-wrap: wrap;
+    }
+
+    .dashboardDateControl {
+        align-self: stretch;
     }
 
     .dashboardUserControls label {
