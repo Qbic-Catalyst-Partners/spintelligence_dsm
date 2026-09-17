@@ -5,7 +5,7 @@ const auth = require('../middleware/auth');
 
 const PERIODS = new Set(['1D', '1W', '1M', '1Y', 'CUSTOM']);
 const VISUAL_TYPES = new Set(['average_value_card', 'bar_chart', 'area_chart', 'line_chart', 'individual_ticket_count', 'add_ticket_count', 'ticket_status_card']);
-const TICKET_CARD_METRICS = new Set(['total', 'open', 'closed', 'reopened', 'pending', 'overdue']);
+const TICKET_CARD_METRICS = new Set(['total', 'open', 'closed', 'reopened', 'pending', 'overdue', 'submit']);
 const ALL_SUB_DEPARTMENTS = ['Mixing', 'Spinning', 'Carding', 'Comber', 'Blowroom', 'Autoconer', 'Drawframe', 'Simplex'];
 const SUB_DEPARTMENT_SCREEN_KEYS = {
   mixing: ['cottonhvidataentry', 'fibredataentry', 'afisdataentry', 'moisturedataentry', 'opennessdataentry', 'mixingqcdataentry'],
@@ -87,6 +87,50 @@ const isAdmin001DashboardManager = (req) => {
 };
 const canManageDashboards = (req) => isAdminUser(req) || isAdmin001DashboardManager(req);
 
+const HIERARCHY_LEVELS = ['L1', 'L2', 'L3', 'L4', 'L5'];
+
+// Shared rule behind every "view someone else's dashboard" check below: a non-admin L1-L5
+// hierarchy user may view another user only if that user's level is strictly below their own
+// (never a peer at the same level, never above) - mirrors the frontend's Level/Name filter
+// restriction. True admins (canManageDashboards) are checked separately by each caller and
+// always bypass this.
+const isDashboardSubordinateTarget = async (req, targetUserId) => {
+  const requesterLevelIndex = HIERARCHY_LEVELS.indexOf(String(req.user?.level || '').trim().toUpperCase());
+  if (requesterLevelIndex <= 0) return false;
+
+  const targetUser = await getDashboardUserContext(targetUserId);
+  const targetLevelIndex = HIERARCHY_LEVELS.indexOf(String(targetUser?.level || '').trim().toUpperCase());
+  return targetLevelIndex !== -1 && targetLevelIndex < requesterLevelIndex;
+};
+
+// Resolves which user's ticket DATA to show. Falls back to the requester's own data whenever
+// the target isn't allowed, rather than rejecting the request outright.
+const resolveDashboardTargetUserId = async (req, requesterUserId, requestedUserId) => {
+  if (!requestedUserId || requestedUserId === requesterUserId) return requesterUserId;
+  if (canManageDashboards(req)) return requestedUserId;
+  return (await isDashboardSubordinateTarget(req, requestedUserId)) ? requestedUserId : requesterUserId;
+};
+
+// Resolves a "Level" selection with no specific Name picked to every user at that level, so
+// the dashboard can aggregate across all of them instead of requiring one person to be chosen.
+// Same rule as the Level dropdown itself: L5 is never selectable (nobody files tickets "as
+// L5"), and a non-admin hierarchy user can only aggregate a level strictly below their own.
+// Returns null when the level is missing/unrecognized/not allowed, so callers fall back to the
+// requester's own single-user view.
+const resolveDashboardLevelTarget = async (req, rawLevel) => {
+  const level = String(rawLevel || '').trim().toUpperCase();
+  if (!level || level === 'L5' || !HIERARCHY_LEVELS.includes(level)) return null;
+
+  if (!canManageDashboards(req)) {
+    const requesterLevelIndex = HIERARCHY_LEVELS.indexOf(String(req.user?.level || '').trim().toUpperCase());
+    const targetLevelIndex = HIERARCHY_LEVELS.indexOf(level);
+    if (requesterLevelIndex <= 0 || targetLevelIndex >= requesterLevelIndex) return null;
+  }
+
+  const result = await client.query('SELECT id FROM users.user_details WHERE UPPER(level) = $1', [level]);
+  return { level, ids: result.rows.map((row) => row.id) };
+};
+
 const summarizeWidgetForLog = (widget = {}) => ({
   id: widget.id || null,
   visualization_type: widget.visualization_type || null,
@@ -118,7 +162,7 @@ const logDashboardDebug = (label, payload) => {
   }
 };
 
-const ensureDashboardAccess = (req, res, userId) => {
+const ensureDashboardAccess = async (req, res, userId) => {
   const requesterId = parseUserId(req.user?.id);
   if (!requesterId) {
     res.status(401).json({ message: 'Authentication required' });
@@ -127,11 +171,18 @@ const ensureDashboardAccess = (req, res, userId) => {
   if (canManageDashboards(req)) {
     return true;
   }
-  if (!isAdminUser(req) && requesterId !== userId) {
-    res.status(403).json({ message: 'You can only access your own dashboard configuration' });
-    return false;
+  if (requesterId === userId) {
+    return true;
   }
-  return true;
+  // Write endpoints (save/reorder/toggle/delete widgets) already 403 on canManageDashboards
+  // before ever reaching here, so this only ever grants read access via handleGetWidgets - an
+  // L1-L5 hierarchy user viewing a subordinate's dashboard needs their actual widget config,
+  // same as they already get that subordinate's ticket data.
+  if (await isDashboardSubordinateTarget(req, userId)) {
+    return true;
+  }
+  res.status(403).json({ message: 'You can only access your own dashboard configuration' });
+  return false;
 };
 
 const ensureUserDashboardPagesTable = async () => {
@@ -299,7 +350,7 @@ const validateWidget = async (widget) => {
     return { error: 'Invalid visualization_type' };
   }
   if (visualization_type === 'ticket_status_card' && !TICKET_CARD_METRICS.has(metricKey)) {
-    return { error: 'ticket_status_card requires metric_key: total/open/closed/reopened/pending/overdue' };
+    return { error: 'ticket_status_card requires metric_key: total/open/closed/reopened/pending/overdue/submit' };
   }
 
   return {
@@ -367,6 +418,45 @@ const getUserPage = async (userId, pageKey = 'default') => {
     };
   }
   return result.rows[0];
+};
+
+// A user who has never had their dashboard builder config touched (true for almost every
+// non-admin account, since only admins could edit widgets until L1-L5 users got read access
+// to their own/subordinates' dashboards) still has real ticket data worth showing - fall back
+// to this standard 7-card set instead of an empty "no widgets configured" screen.
+const DEFAULT_TICKET_WIDGETS = [
+  { metric_key: 'total', widget_name: 'Total Tickets' },
+  { metric_key: 'open', widget_name: 'Open Tickets' },
+  { metric_key: 'reopened', widget_name: 'Reopened Tickets' },
+  { metric_key: 'closed', widget_name: 'Closed Tickets' },
+  { metric_key: 'pending', widget_name: 'In Progress Tickets' },
+  { metric_key: 'overdue', widget_name: 'Overdue Tickets' },
+  { metric_key: 'submit', widget_name: 'Submit Tickets' }
+].map((item, index) => ({
+  id: `default-ticket-${item.metric_key}`,
+  department: 'Ticketing',
+  sub_department: '',
+  input_screen: 'Ticket Dashboard',
+  input_field: item.metric_key,
+  visualization_type: 'ticket_status_card',
+  metric_key: item.metric_key,
+  widget_name: item.widget_name,
+  enabled: true,
+  order: index + 1
+}));
+
+// Resolves a user's effective widget list: their own saved builder config, else their default
+// per-page config (older storage path), else the standard ticket card set above.
+const resolveWidgetsWithFallback = async (userId) => {
+  const config = await getConfig(userId);
+  if (config.widgets && config.widgets.length) return config;
+
+  const defaultPage = await getUserPage(userId, 'default');
+  if (Array.isArray(defaultPage.widgets) && defaultPage.widgets.length) {
+    return { widgets: defaultPage.widgets, updated_at: defaultPage.updated_at };
+  }
+
+  return { widgets: DEFAULT_TICKET_WIDGETS, updated_at: null };
 };
 
 const listUserPages = async (userId) => {
@@ -797,7 +887,11 @@ const handleStatisticsAnalyticsFilters = async (req, res, next) => {
   }
 };
 
-const getTicketScope = ({ userId, userEmployeeId = '', userLevel = '', userRole = '' }) => {
+// userIds (plural) aggregates across every user in that list (e.g. every user at a selected
+// Level) instead of a single person - same OR'd ownership/approver check, just with `= ANY(...)`
+// / `&&` (array overlap) instead of `= $1` since both the column and the approver arrays now
+// need to be compared against a whole list of ids rather than one.
+const getTicketScope = ({ userId, userIds, userEmployeeId = '', userLevel = '', userRole = '' }) => {
   const isAdmin001 = String(userEmployeeId || '').trim().toUpperCase() === 'ADMIN001';
   const role = String(userRole || '').trim().toLowerCase();
   const isAdminRole = role === 'admin' || role === 'super admin' || role === 'superadmin';
@@ -814,10 +908,15 @@ const getTicketScope = ({ userId, userEmployeeId = '', userLevel = '', userRole 
     };
   }
 
+  const ids = Array.isArray(userIds) && userIds.length ? userIds : (userId ? [userId] : []);
+  if (!ids.length) {
+    return { canViewAllTickets: false, whereSql: '1=0', params: [] };
+  }
+
   return {
     canViewAllTickets: false,
-    whereSql: `(user_id = $1 OR $1 = ANY(COALESCE(approval_l1_user_ids, ARRAY[]::int[])) OR $1 = ANY(COALESCE(approval_l2_user_ids, ARRAY[]::int[])) OR $1 = ANY(COALESCE(approval_l3_user_ids, ARRAY[]::int[])) OR $1 = ANY(COALESCE(approval_l4_user_ids, ARRAY[]::int[])) OR $1 = ANY(COALESCE(approval_l5_user_ids, ARRAY[]::int[])))`,
-    params: [userId]
+    whereSql: `(user_id = ANY($1) OR $1 && COALESCE(approval_l1_user_ids, ARRAY[]::int[]) OR $1 && COALESCE(approval_l2_user_ids, ARRAY[]::int[]) OR $1 && COALESCE(approval_l3_user_ids, ARRAY[]::int[]) OR $1 && COALESCE(approval_l4_user_ids, ARRAY[]::int[]) OR $1 && COALESCE(approval_l5_user_ids, ARRAY[]::int[]))`,
+    params: [ids]
   };
 };
 
@@ -827,7 +926,8 @@ const LEGACY_TICKET_METRIC_MAP = {
   reopened_tickets: 'reopened',
   closed_tickets: 'closed',
   pending_tickets: 'pending',
-  overdue_tickets: 'overdue'
+  overdue_tickets: 'overdue',
+  submit_tickets: 'submit'
 };
 
 const isLegacyTicketValuesWidget = (widget = {}) => {
@@ -863,6 +963,7 @@ const fetchWidgetData = async ({
   customStart = null,
   customEnd = null,
   userId = null,
+  userIds = null,
   userLevel = '',
   userEmployeeId = '',
   userRole = ''
@@ -872,7 +973,7 @@ const fetchWidgetData = async ({
     widget?.visualization_type === 'add_ticket_count' ||
     widget?.visualization_type === 'ticket_status_card'
   ) {
-    if (!userId) {
+    if (!userId && !(Array.isArray(userIds) && userIds.length)) {
       return {
         widget_id: widget.id,
         filter: { period },
@@ -885,7 +986,7 @@ const fetchWidgetData = async ({
     const metricKey = String(
       widget?.metric_key || widget?.ticket_metric || widget?.input_field || ''
     ).toLowerCase().trim();
-    const ticketScope = getTicketScope({ userId, userEmployeeId, userLevel, userRole });
+    const ticketScope = getTicketScope({ userId, userIds, userEmployeeId, userLevel, userRole });
     const ticketScopeWhere = ticketScope.whereSql;
     const queryParams = ticketScope.params;
 
@@ -902,12 +1003,26 @@ const fetchWidgetData = async ({
     const endIdx = queryParams.length + 2;
     queryParams.push(bounds.start, bounds.end);
     const periodWhere = `created_at >= $${startIdx}::timestamptz AND created_at <= $${endIdx}::timestamptz`;
+    // Shared SLA-breach check ("has this still-open ticket's age passed the resolution_hours
+    // configured for its current level"), reused below both to define Overdue and to EXCLUDE
+    // overdue tickets from Open/In Progress - without the exclusion, an overdue ticket (which is
+    // still status='open' or 'in progress' - Overdue is computed, not a stored status) was
+    // counted in both its status card AND the Overdue card, so Open+Closed+Reopened+In
+    // Progress+Submit+Overdue summed to more than Total. Overdue is meant to read as its own
+    // exclusive bucket on this dashboard, not "how many of my Open tickets are late".
+    const slaBreachedExists = `EXISTS (
+      SELECT 1 FROM ticketing_system.ticket_resolution_sla sla
+      WHERE sla.level = UPPER(COALESCE(tat_current_level, 'L1'))
+        AND sla.is_active = true
+        AND EXTRACT(EPOCH FROM (NOW() - created_at)) / 3600 > sla.resolution_hours
+    )`;
     const countQueryByMetric = {
       total: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere}`,
-      open: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere} AND lower(trim(COALESCE(status, ''))) = 'open'`,
+      open: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere} AND lower(trim(COALESCE(status, ''))) = 'open' AND created_at IS NOT NULL AND NOT ${slaBreachedExists}`,
       closed: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere} AND lower(trim(COALESCE(status, ''))) = 'closed'`,
       reopened: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere} AND lower(trim(COALESCE(status, ''))) = 'reopened'`,
-      pending: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere} AND lower(trim(COALESCE(status, ''))) = 'in progress'`,
+      pending: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere} AND lower(trim(COALESCE(status, ''))) = 'in progress' AND created_at IS NOT NULL AND NOT ${slaBreachedExists}`,
+      submit: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere} AND lower(trim(COALESCE(status, ''))) = 'submit'`,
       // "Overdue" is not a real stored status - it's computed the same way the frontend does
       // it (isTicketOverdueBySla in ticketStatus.js): a still-unresolved ticket whose age has
       // passed the resolution_hours configured for its current level in
@@ -919,12 +1034,7 @@ const fetchWidgetData = async ({
           AND ${periodWhere}
           AND lower(trim(COALESCE(status, ''))) NOT IN ('closed', 'approved', 'submit', 'acknowledged', 'resolved', 'reopened')
           AND created_at IS NOT NULL
-          AND EXISTS (
-            SELECT 1 FROM ticketing_system.ticket_resolution_sla sla
-            WHERE sla.level = UPPER(COALESCE(tat_current_level, 'L1'))
-              AND sla.is_active = true
-              AND EXTRACT(EPOCH FROM (NOW() - created_at)) / 3600 > sla.resolution_hours
-          )`
+          AND ${slaBreachedExists}`
     };
     const countSql =
       widget?.visualization_type === 'ticket_status_card'
@@ -932,11 +1042,33 @@ const fetchWidgetData = async ({
         : countQueryByMetric.total;
     const countRes = await client.query(countSql, queryParams);
 
+    // Same Overdue definition/exclusivity as the Overdue card above (NOT a real stored status -
+    // reclassifies any still-unresolved, SLA-breached ticket as "Overdue" here) so the Status
+    // Distribution chart's Open/In Progress slices don't silently double-count the same tickets
+    // shown in its own Overdue slice.
     const statusRes = await client.query(
-      `SELECT initcap(lower(trim(COALESCE(status, '')))) AS status, COUNT(*)::int AS count
+      `SELECT
+         CASE
+           WHEN lower(trim(COALESCE(status, ''))) NOT IN ('closed', 'approved', 'submit', 'acknowledged', 'resolved', 'reopened')
+             AND created_at IS NOT NULL
+             AND ${slaBreachedExists}
+           THEN 'Overdue'
+           ELSE initcap(lower(trim(COALESCE(status, ''))))
+         END AS status,
+         COUNT(*)::int AS count
        FROM ticketing_system.operator_tickets
        WHERE ${ticketScopeWhere} AND ${periodWhere}
-       GROUP BY lower(trim(COALESCE(status, '')))` ,
+       GROUP BY 1`,
+      queryParams
+    );
+
+    // Same shape as status_breakdown above, grouped by severity (High/Medium/Low) instead of
+    // status - powers the Priority Distribution pie chart.
+    const severityRes = await client.query(
+      `SELECT initcap(lower(trim(COALESCE(severity, 'Unspecified')))) AS severity, COUNT(*)::int AS count
+       FROM ticketing_system.operator_tickets
+       WHERE ${ticketScopeWhere} AND ${periodWhere}
+       GROUP BY lower(trim(COALESCE(severity, 'Unspecified')))`,
       queryParams
     );
 
@@ -953,6 +1085,8 @@ const fetchWidgetData = async ({
 
     const statusBreakdown = {};
     for (const row of statusRes.rows) statusBreakdown[row.status] = row.count;
+    const severityBreakdown = {};
+    for (const row of severityRes.rows) severityBreakdown[row.severity] = row.count;
 
     return {
       widget_id: widget.id,
@@ -965,6 +1099,7 @@ const fetchWidgetData = async ({
       latest_value: Number(countRes.rows[0]?.ticket_count ?? 0),
       latest_at: null,
       status_breakdown: statusBreakdown,
+      severity_breakdown: severityBreakdown,
       trend: trendRes.rows.map((r) => ({ label: r.label, value: r.value }))
     };
   }
@@ -1514,22 +1649,8 @@ const handleGetWidgets = async (req, res, next) => {
   try {
     const userId = parseUserId(req.params.userId);
     if (!userId) return res.status(400).json({ message: 'Valid userId is required' });
-    if (!ensureDashboardAccess(req, res, userId)) return;
-    const config = await getConfig(userId);
-
-    // Compatibility fallback:
-    // If builder config is empty, but a default page exists in per-page storage,
-    // return those widgets so user-switch in builder does not appear "vanished".
-    if ((!config.widgets || !config.widgets.length)) {
-      const defaultPage = await getUserPage(userId, 'default');
-      if (Array.isArray(defaultPage.widgets) && defaultPage.widgets.length) {
-        return res.status(200).json({
-          user_id: userId,
-          widgets: defaultPage.widgets,
-          updated_at: defaultPage.updated_at
-        });
-      }
-    }
+    if (!(await ensureDashboardAccess(req, res, userId))) return;
+    const config = await resolveWidgetsWithFallback(userId);
 
     res.status(200).json({ user_id: userId, ...config });
   } catch (error) {
@@ -1541,7 +1662,7 @@ const handleGetMyWidgets = async (req, res, next) => {
   try {
     const userId = parseUserId(req.user?.id);
     if (!userId) return res.status(401).json({ message: 'Authentication required' });
-    const config = await getConfig(userId);
+    const config = await resolveWidgetsWithFallback(userId);
     logDashboardDebug('my-widgets', {
       requester_user_id: userId,
       widget_count: Array.isArray(config.widgets) ? config.widgets.length : 0,
@@ -1561,7 +1682,7 @@ const handleSaveWidgets = async (req, res, next) => {
     }
     const userId = parseUserId(req.params.userId);
     if (!userId) return res.status(400).json({ message: 'Valid userId is required' });
-    if (!ensureDashboardAccess(req, res, userId)) return;
+    if (!(await ensureDashboardAccess(req, res, userId))) return;
     if (!Array.isArray(req.body?.widgets)) return res.status(400).json({ message: 'widgets must be an array' });
 
     const widgets = [];
@@ -1644,7 +1765,7 @@ const handleReorderWidgets = async (req, res, next) => {
     const userId = parseUserId(req.params.userId);
     const orderedIds = Array.isArray(req.body?.widget_ids) ? req.body.widget_ids : [];
     if (!userId) return res.status(400).json({ message: 'Valid userId is required' });
-    if (!ensureDashboardAccess(req, res, userId)) return;
+    if (!(await ensureDashboardAccess(req, res, userId))) return;
     if (!orderedIds.length) return res.status(400).json({ message: 'widget_ids must be a non-empty array' });
 
     const config = await getConfig(userId);
@@ -1672,7 +1793,7 @@ const handleToggleWidget = async (req, res, next) => {
     const userId = parseUserId(req.params.userId);
     const widgetId = normalizeWidgetId(req.params.widgetId);
     if (!userId || !widgetId) return res.status(400).json({ message: 'Valid userId and widgetId are required' });
-    if (!ensureDashboardAccess(req, res, userId)) return;
+    if (!(await ensureDashboardAccess(req, res, userId))) return;
 
     const config = await getConfig(userId);
     const widgets = config.widgets.map((w) => (normalizeWidgetId(w.id) === widgetId ? { ...w, enabled: !w.enabled } : w));
@@ -1691,7 +1812,7 @@ const handleDeleteWidget = async (req, res, next) => {
     const userId = parseUserId(req.params.userId);
     const widgetId = normalizeWidgetId(req.params.widgetId);
     if (!userId || !widgetId) return res.status(400).json({ message: 'Valid userId and widgetId are required' });
-    if (!ensureDashboardAccess(req, res, userId)) return;
+    if (!(await ensureDashboardAccess(req, res, userId))) return;
 
     const config = await getConfig(userId);
     const before = config.widgets.length;
@@ -1817,8 +1938,21 @@ const handleMyDashboardPage = async (req, res, next) => {
   try {
     const requesterUserId = parseUserId(req.user?.id);
     if (!requesterUserId) return res.status(401).json({ message: 'Authentication required' });
-    const requestedUserId = parseUserId(req.query.user_id ?? req.query.view_user_id);
-    const userId = canManageDashboards(req) && requestedUserId ? requestedUserId : requesterUserId;
+
+    // A Level with no specific Name picked aggregates across every user at that level - takes
+    // priority over a stray user_id (the frontend never sends both at once).
+    const levelTarget = req.query.level
+      ? await resolveDashboardLevelTarget(req, req.query.level)
+      : null;
+
+    let userId = requesterUserId;
+    let userIds = null;
+    if (levelTarget) {
+      userIds = levelTarget.ids;
+    } else {
+      const requestedUserId = parseUserId(req.query.user_id ?? req.query.view_user_id);
+      userId = await resolveDashboardTargetUserId(req, requesterUserId, requestedUserId);
+    }
 
     const period = String(req.query.period || '1W').toUpperCase();
     if (!PERIODS.has(period)) return res.status(400).json({ message: 'period must be one of 1D, 1W, 1M, 1Y, CUSTOM' });
@@ -1828,10 +1962,16 @@ const handleMyDashboardPage = async (req, res, next) => {
       return res.status(400).json({ message: 'Valid custom fromDate/start_date and toDate/end_date are required for period=CUSTOM' });
     }
 
-    const dashboardUser = await getDashboardUserContext(userId);
+    // A level-aggregate view has no single person's config to load - always the standard
+    // ticket card set, scoped by the ids array rather than one person's identity.
+    const dashboardUser = levelTarget
+      ? { level: levelTarget.level, employee_id: '', role: '' }
+      : await getDashboardUserContext(userId);
     if (!dashboardUser) return res.status(404).json({ message: 'Dashboard user not found' });
 
-    const config = await getEffectiveDashboardConfig(userId);
+    const config = levelTarget
+      ? { widgets: DEFAULT_TICKET_WIDGETS, updated_at: null, page_key: 'level-aggregate', page_title: `${levelTarget.level} Level` }
+      : await getEffectiveDashboardConfig(userId);
     const widgets = (config.widgets || [])
       .filter((w) => w?.enabled !== false)
       .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
@@ -1854,7 +1994,8 @@ const handleMyDashboardPage = async (req, res, next) => {
             period,
             customStart,
             customEnd,
-            userId,
+            userId: levelTarget ? null : userId,
+            userIds,
             userLevel: dashboardUser.level,
             userEmployeeId: dashboardUser.employee_id,
             userRole: dashboardUser.role
@@ -1872,7 +2013,8 @@ const handleMyDashboardPage = async (req, res, next) => {
         period,
         customStart,
         customEnd,
-        userId,
+        userId: levelTarget ? null : userId,
+        userIds,
         userLevel: dashboardUser.level,
         userEmployeeId: dashboardUser.employee_id,
         userRole: dashboardUser.role
@@ -1883,6 +2025,7 @@ const handleMyDashboardPage = async (req, res, next) => {
     logDashboardDebug('my-dashboard', {
       requester_user_id: requesterUserId,
       dashboard_user_id: userId,
+      level: levelTarget?.level || null,
       page_key: config.page_key,
       page_title: config.page_title,
       updated_at: config.updated_at,
@@ -1893,7 +2036,8 @@ const handleMyDashboardPage = async (req, res, next) => {
     });
 
     res.status(200).json({
-      user_id: userId,
+      user_id: levelTarget ? null : userId,
+      level: levelTarget?.level || null,
       requested_by_user_id: requesterUserId,
       updated_at: config.updated_at,
       page_key: config.page_key,
@@ -1966,7 +2110,7 @@ const handleGetMyPageData = async (req, res, next) => {
     const requesterUserId = parseUserId(req.user?.id);
     if (!requesterUserId) return res.status(401).json({ message: 'Authentication required' });
     const requestedUserId = parseUserId(req.query.user_id ?? req.query.view_user_id);
-    const userId = canManageDashboards(req) && requestedUserId ? requestedUserId : requesterUserId;
+    const userId = await resolveDashboardTargetUserId(req, requesterUserId, requestedUserId);
 
     const period = String(req.query.period || '1W').toUpperCase();
     if (!PERIODS.has(period)) return res.status(400).json({ message: 'period must be one of 1D, 1W, 1M, 1Y, CUSTOM' });

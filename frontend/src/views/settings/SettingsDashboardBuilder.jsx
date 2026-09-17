@@ -1,24 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
-import { FiGrid, FiPlus, FiServer, FiTrash2 } from "react-icons/fi";
+import { FiGrid, FiPlus, FiTrash2 } from "react-icons/fi";
 
 import { fetchBuilderOptions, fetchMyWidgets, fetchUserWidgets, saveMyWidgets, saveUserWidgets } from "@/apis/dashboardBuilderApi";
 import { isDashboardManagerUser } from "@/utils/accessControl";
 import { getDashboardOwnerUserId } from "@/utils/dashboardOwner";
 import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
-import { departmentDirectory } from "@/views/departments/data";
 
 const DASHBOARD_BUILDER_SELECTION_STORAGE_KEY = "spintelligenceDashboardBuilderSelection";
-import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
-import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
-import { filterMetricFieldNames } from "@/utils/dashboardWidgets";
 import styles from "@/styles/departmentDirectory.module.css";
 
-const BUILDER_SECTIONS = { average: "average", performance: "performance", ticketing: "ticketing" };
-const builderVisualizationOptions = [
-  { key: "value", label: "Average Value Card", section: BUILDER_SECTIONS.average },
-  { key: "line", label: "Performance Trends", section: BUILDER_SECTIONS.performance },
-];
+const BUILDER_SECTIONS = { ticketing: "ticketing" };
 
 const parseWidgetEnabled = (value) => {
   if (typeof value === "boolean") return value;
@@ -29,10 +21,6 @@ const parseWidgetEnabled = (value) => {
   return true;
 };
 
-const normalizeInputFieldKey = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
-const visualizationTypeToChartType = (visualizationType) =>
-  String(visualizationType || "").toLowerCase().includes("average") ? "value" : "line";
-const chartTypeToVisualizationType = (chartType) => (chartType === "value" ? "average_value_card" : "line_chart");
 // "pending" stays the internal metric key (existing saved widgets already reference it), but
 // the ticket's own real status is always "In Progress" everywhere else in the app - "Pending"
 // was never an actual ticket status, just a mislabeled alias for the same correctly-counted
@@ -44,6 +32,7 @@ const TICKET_OPTION_LABELS = {
   closed: "Closed Tickets",
   pending: "In Progress Tickets",
   overdue: "Overdue Tickets",
+  submit: "Submit Tickets",
 };
 const normalizeTicketMetricKey = (value) =>
   String(value || "")
@@ -59,6 +48,7 @@ const getTicketMetricKey = (value) => {
   if (["closed", "closedtickets"].includes(key)) return "closed";
   if (["pending", "pendingtickets", "inprogress", "inprogresstickets"].includes(key)) return "pending";
   if (["overdue", "overduetickets"].includes(key)) return "overdue";
+  if (["submit", "submittickets", "submitted", "submittedtickets"].includes(key)) return "submit";
   return "total";
 };
 const normalizeRoleKey = (value) =>
@@ -106,12 +96,6 @@ function SettingsDashboardBuilder() {
     window.localStorage.setItem(DASHBOARD_BUILDER_SELECTION_STORAGE_KEY, JSON.stringify(payload));
   }, [selectedRole, selectedBuilderUserId]);
 
-  const [selectedDepartmentSlug, setSelectedDepartmentSlug] = useState("");
-  const [selectedSubDepartmentSlug, setSelectedSubDepartmentSlug] = useState("");
-  const [selectedScreenName, setSelectedScreenName] = useState("");
-  const [selectedFieldName, setSelectedFieldName] = useState("");
-  const [selectedChartType, setSelectedChartType] = useState("value");
-  const [isAddWidgetModalOpen, setIsAddWidgetModalOpen] = useState(false);
   const [isAddTicketModalOpen, setIsAddTicketModalOpen] = useState(false);
   const [ticketOptions, setTicketOptions] = useState({
     total: true,
@@ -120,54 +104,8 @@ function SettingsDashboardBuilder() {
     closed: true,
     pending: true,
     overdue: true,
+    submit: true,
   });
-
-  const selectedDepartment = useMemo(
-    () => departmentDirectory.find((item) => item.slug === selectedDepartmentSlug),
-    [selectedDepartmentSlug]
-  );
-  const subDepartments = selectedDepartment?.subDepartments || [];
-  const selectedSubDepartment = useMemo(
-    () => subDepartments.find((item) => item.slug === selectedSubDepartmentSlug),
-    [subDepartments, selectedSubDepartmentSlug]
-  );
-  const inputScreens = useMemo(
-    () => getThresholdScreensForSubDepartment(selectedDepartmentSlug, selectedSubDepartmentSlug),
-    [selectedDepartmentSlug, selectedSubDepartmentSlug]
-  );
-  const availableFields = useMemo(
-    // Without the sub-department context, a screen name that exists per-department in the
-    // catalog only under its "<SubDepartment>::<ScreenName>" key (e.g. "Carding::Process
-    // Parameter") fell through to whichever bare "<ScreenName>" entry happened to be defined
-    // (or an empty list) - showing another department's fields, or none at all. Matches how
-    // ThresholdValues.js/ReportsPage.jsx already resolve this same catalog.
-    () => filterMetricFieldNames(getThresholdFieldsForScreen(selectedScreenName, selectedSubDepartment?.name)),
-    [selectedScreenName, selectedSubDepartment]
-  );
-
-  useEffect(() => {
-    if (!departmentDirectory.length) return;
-    if (!selectedDepartmentSlug || !departmentDirectory.some((d) => d.slug === selectedDepartmentSlug)) {
-      setSelectedDepartmentSlug(departmentDirectory[0].slug);
-    }
-  }, [selectedDepartmentSlug]);
-
-  useEffect(() => {
-    const nextSubDepartmentSlug = subDepartments[0]?.slug || "";
-    if (!selectedSubDepartmentSlug || !subDepartments.some((s) => s.slug === selectedSubDepartmentSlug)) {
-      setSelectedSubDepartmentSlug(nextSubDepartmentSlug);
-    }
-  }, [subDepartments, selectedSubDepartmentSlug]);
-
-  useEffect(() => {
-    const nextScreenName = inputScreens[0] || "";
-    if (!selectedScreenName || !inputScreens.includes(selectedScreenName)) setSelectedScreenName(nextScreenName);
-  }, [inputScreens, selectedScreenName]);
-
-  useEffect(() => {
-    const nextFieldName = availableFields[0] || "";
-    if (!selectedFieldName || !availableFields.includes(selectedFieldName)) setSelectedFieldName(nextFieldName);
-  }, [availableFields, selectedFieldName]);
 
   useEffect(() => {
     let isMounted = true;
@@ -235,39 +173,35 @@ function SettingsDashboardBuilder() {
   const activeUserId = selectedBuilderUserIdNumber || dashboardOwnerUserId;
   const isEditingOwnDashboard = !activeUserId || activeUserId === dashboardOwnerUserId;
 
+  // Average Values / Performance Trends widgets have been removed - only ticket widgets are
+  // ever loaded into the builder, regardless of what's still saved in a user's config.
   const normalizeWidgets = (nextWidgets) =>
-    (Array.isArray(nextWidgets) ? nextWidgets : []).map((widget, index) => {
-      const visualizationType = String(widget?.visualization_type || "").trim().toLowerCase();
-      const isTicketVisualization = ["ticket_status_card", "individual_ticket_count", "add_ticket_count"].includes(visualizationType);
-      const ticketMetricKey = getTicketMetricKey(widget?.metric_key || widget?.ticket_metric || widget?.input_field || widget?.field_name);
-      const chartType = isTicketVisualization
-        ? "value"
-        : widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type);
-      const ticketFieldLabel =
-        TICKET_OPTION_LABELS[ticketMetricKey] ||
-        widget?.field_name ||
-        widget?.input_field ||
-        "Total Tickets";
+    (Array.isArray(nextWidgets) ? nextWidgets : [])
+      .filter((widget) => {
+        const visualizationType = String(widget?.visualization_type || "").trim().toLowerCase();
+        return ["ticket_status_card", "individual_ticket_count", "add_ticket_count"].includes(visualizationType);
+      })
+      .map((widget, index) => {
+        const ticketMetricKey = getTicketMetricKey(widget?.metric_key || widget?.ticket_metric || widget?.input_field || widget?.field_name);
+        const ticketFieldLabel =
+          TICKET_OPTION_LABELS[ticketMetricKey] ||
+          widget?.field_name ||
+          widget?.input_field ||
+          "Total Tickets";
 
-      return {
-        id: widget?.id || `widget-${index + 1}`,
-        enabled: parseWidgetEnabled(widget?.enabled),
-        order: Number.isInteger(widget?.order) ? widget.order : index + 1,
-        department: isTicketVisualization ? "Ticketing" : (widget?.department || ""),
-        sub_department: isTicketVisualization ? "" : (widget?.sub_department || ""),
-        screen_name: isTicketVisualization ? "Ticket Dashboard" : (widget?.screen_name || widget?.input_screen || ""),
-        field_name: isTicketVisualization ? ticketFieldLabel : (widget?.field_name || widget?.input_field || ""),
-        chart_type: chartType,
-        visualization_type: visualizationType || undefined,
-        ticket_metric_key: isTicketVisualization ? ticketMetricKey : undefined,
-        builder_section:
-          isTicketVisualization || widget?.department === "Ticketing"
-            ? BUILDER_SECTIONS.ticketing
-            : chartType === "value"
-              ? BUILDER_SECTIONS.average
-              : BUILDER_SECTIONS.performance,
-      };
-    });
+        return {
+          id: widget?.id || `widget-${index + 1}`,
+          enabled: parseWidgetEnabled(widget?.enabled),
+          order: Number.isInteger(widget?.order) ? widget.order : index + 1,
+          department: "Ticketing",
+          sub_department: "",
+          screen_name: "Ticket Dashboard",
+          field_name: ticketFieldLabel,
+          chart_type: "value",
+          ticket_metric_key: ticketMetricKey,
+          builder_section: BUILDER_SECTIONS.ticketing,
+        };
+      });
 
   useEffect(() => {
     let isMounted = true;
@@ -310,20 +244,7 @@ function SettingsDashboardBuilder() {
     };
   }, [activeUserId, canCustomizeDashboards, dashboardOwnerUserId, isEditingOwnDashboard, ownBuilderUser, selectedRole]);
 
-  const builderRows = widgets.map((widget, index) => ({
-    widget,
-    index,
-    section:
-      widget.builder_section ||
-      (widget.department === "Ticketing"
-        ? BUILDER_SECTIONS.ticketing
-        : widget.chart_type === "value"
-          ? BUILDER_SECTIONS.average
-          : BUILDER_SECTIONS.performance),
-  }));
-  const averageRows = builderRows.filter(({ section }) => section === BUILDER_SECTIONS.average);
-  const ticketingRows = builderRows.filter(({ section }) => section === BUILDER_SECTIONS.ticketing);
-  const performanceRows = builderRows.filter(({ section }) => section === BUILDER_SECTIONS.performance);
+  const ticketingRows = widgets.map((widget, index) => ({ widget, index }));
 
   const handleToggle = (widgetIndex) => {
     setWidgets((current) => {
@@ -379,71 +300,27 @@ function SettingsDashboardBuilder() {
     setSaveMessage("Data submitted successfully.");
   };
 
-  const handleAddWidget = () => {
-    const selectedVisualization = builderVisualizationOptions.find((o) => o.key === selectedChartType) || builderVisualizationOptions[0];
-    setWidgets((current) => {
-      const next = [
-        ...current,
-        {
-        id: `widget-${Date.now()}`,
-        enabled: true,
-        order: current.length + 1,
-        department: selectedDepartment?.name || "",
-        sub_department: selectedSubDepartment?.name || "",
-        screen_name: selectedScreenName || "",
-        field_name: selectedFieldName || "",
-        chart_type: selectedVisualization.key,
-        builder_section: selectedVisualization.section,
-        },
-      ];
-      handleSave(next);
-      return next;
-    });
-    setIsAddWidgetModalOpen(false);
-  };
-
   const handleSave = async (widgetsToSave = widgets) => {
     if (!activeUserId) return;
     try {
       setSaving(true);
-      const payloadWidgets = widgetsToSave.map((widget, index) =>
-        (() => {
-          const isTicketWidget =
-            widget.builder_section === BUILDER_SECTIONS.ticketing ||
-            ["ticket_status_card", "individual_ticket_count", "add_ticket_count"].includes(
-              String(widget.visualization_type || "").trim().toLowerCase()
-            );
-
-          if (isTicketWidget) {
-            const metricKey = getTicketMetricKey(
-              widget.ticket_metric_key || widget.field_name || widget.input_field || "total"
-            );
-            return {
-              id: widget.id,
-              department: "Ticketing",
-              sub_department: "",
-              input_screen: "Ticket Dashboard",
-              input_field: metricKey,
-              visualization_type: "ticket_status_card",
-              metric_key: metricKey,
-              widget_name: TICKET_OPTION_LABELS[metricKey] || "Total Tickets",
-              enabled: widget.enabled !== false,
-              order: index + 1,
-            };
-          }
-
-          return {
-            id: widget.id,
-            department: widget.department || "",
-            sub_department: widget.sub_department || "",
-            input_screen: widget.screen_name || "",
-            input_field: normalizeInputFieldKey(widget.field_name || ""),
-            visualization_type: chartTypeToVisualizationType(widget.chart_type),
-            enabled: widget.enabled !== false,
-            order: index + 1,
-          };
-        })()
-      );
+      const payloadWidgets = widgetsToSave.map((widget, index) => {
+        const metricKey = getTicketMetricKey(
+          widget.ticket_metric_key || widget.field_name || widget.input_field || "total"
+        );
+        return {
+          id: widget.id,
+          department: "Ticketing",
+          sub_department: "",
+          input_screen: "Ticket Dashboard",
+          input_field: metricKey,
+          visualization_type: "ticket_status_card",
+          metric_key: metricKey,
+          widget_name: TICKET_OPTION_LABELS[metricKey] || "Total Tickets",
+          enabled: widget.enabled !== false,
+          order: index + 1,
+        };
+      });
       if (isEditingOwnDashboard) {
         await saveMyWidgets(payloadWidgets);
       } else {
@@ -488,7 +365,6 @@ function SettingsDashboardBuilder() {
       <section className={styles.builderHeader}>
         <h1 className={styles.kicker}>Dashboard Builder</h1>
         <div className={styles.rowActions}>
-          <button type="button" className={styles.addWidgetButton} onClick={() => setIsAddWidgetModalOpen(true)}><FiPlus /><span>Add Widget</span></button>
           <button type="button" className={styles.addWidgetButton} onClick={() => setIsAddTicketModalOpen(true)}><FiPlus /><span>Add Ticket</span></button>
         </div>
       </section>
@@ -502,32 +378,11 @@ function SettingsDashboardBuilder() {
       </section>
 
       <section className={styles.builderList}>
-        <BuilderGroup title="Average Values Card" section={BUILDER_SECTIONS.average} rows={averageRows} handleToggle={handleToggle} handleDelete={handleDelete} />
-        <BuilderGroup title="Ticketing Values" section={BUILDER_SECTIONS.ticketing} rows={ticketingRows} handleToggle={handleToggle} handleDelete={handleDelete} />
-        <BuilderGroup title="Performance Trends" section={BUILDER_SECTIONS.performance} rows={performanceRows} handleToggle={handleToggle} handleDelete={handleDelete} />
+        <BuilderGroup title="Ticketing Values" rows={ticketingRows} handleToggle={handleToggle} handleDelete={handleDelete} />
       </section>
 
       {loading ? <p>Loading...</p> : null}
       {saveMessage ? <p className={styles.builderStatusMessage}>{saveMessage}</p> : null}
-
-      {isAddWidgetModalOpen ? (
-        <div className={styles.builderModalOverlay}>
-          <div className={styles.builderAddModal} role="dialog" aria-modal="true" aria-labelledby="add-widget-title">
-            <header className={styles.builderAddModalHeader}><h2 id="add-widget-title">Add Widget</h2></header>
-            <div className={styles.builderAddModalGrid}>
-              <label><span>Department</span><select value={selectedDepartmentSlug} onChange={(e) => setSelectedDepartmentSlug(e.target.value)}>{departmentDirectory.map((d) => <option key={d.slug} value={d.slug}>{d.name}</option>)}</select></label>
-              <label><span>Sub Department</span><select value={selectedSubDepartmentSlug} onChange={(e) => setSelectedSubDepartmentSlug(e.target.value)}>{subDepartments.map((d) => <option key={d.slug} value={d.slug}>{d.name}</option>)}</select></label>
-              <label><span>Notebook Type</span><select value={selectedScreenName} onChange={(e) => setSelectedScreenName(e.target.value)}>{inputScreens.map((s) => <option key={s} value={s}>{s}</option>)}</select></label>
-              <label><span>Field</span><select value={selectedFieldName} onChange={(e) => setSelectedFieldName(e.target.value)}>{availableFields.map((f) => <option key={f} value={f}>{f}</option>)}</select></label>
-              <label><span>Visualization Type</span><select value={selectedChartType} onChange={(e) => setSelectedChartType(e.target.value)}>{builderVisualizationOptions.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}</select></label>
-            </div>
-            <footer className={styles.builderAddModalFooter}>
-              <button type="button" className={styles.builderModalCancel} onClick={() => setIsAddWidgetModalOpen(false)}>Cancel</button>
-              <button type="button" className={styles.builderModalSubmit} onClick={handleAddWidget}>Add to Builder</button>
-            </footer>
-          </div>
-        </div>
-      ) : null}
 
       {isAddTicketModalOpen ? (
         <div className={styles.builderModalOverlay}>
@@ -561,6 +416,10 @@ function SettingsDashboardBuilder() {
                 <span className={styles.ticketCardOptionName}>Overdue Tickets</span>
                 <button type="button" className={`${styles.builderToggle} ${ticketOptions.overdue ? styles.builderToggleOn : ""}`} onClick={() => handleToggleTicketOption("overdue")}><span className={styles.builderToggleThumb} /></button>
               </div>
+              <div className={styles.ticketCardOptionRow}>
+                <span className={styles.ticketCardOptionName}>Submit Tickets</span>
+                <button type="button" className={`${styles.builderToggle} ${ticketOptions.submit ? styles.builderToggleOn : ""}`} onClick={() => handleToggleTicketOption("submit")}><span className={styles.builderToggleThumb} /></button>
+              </div>
             </div>
             <footer className={styles.builderAddModalFooter}>
               <button type="button" className={styles.builderModalCancel} onClick={() => setIsAddTicketModalOpen(false)}>Cancel</button>
@@ -573,15 +432,14 @@ function SettingsDashboardBuilder() {
   );
 }
 
-function BuilderGroup({ title, section, rows, handleToggle, handleDelete }) {
-  const WidgetIcon = section === BUILDER_SECTIONS.performance ? FiServer : FiGrid;
+function BuilderGroup({ title, rows, handleToggle, handleDelete }) {
   return (
     <div className={styles.builderGroup}>
       <h2>{title}</h2>
       {rows.map(({ widget, index }) => (
         <article key={`${widget.id}-${index}`} className={styles.builderRow}>
           <div className={styles.builderRowLeft}>
-            <WidgetIcon className={`${styles.builderWidgetIcon} ${section === BUILDER_SECTIONS.performance ? styles.builderPerformanceWidgetIcon : ""}`} />
+            <FiGrid className={styles.builderWidgetIcon} />
             <span className={styles.builderWidgetPath}>{[widget.department || "-", widget.sub_department || "-", widget.screen_name || "-", widget.field_name || "-"].join(" | ")}</span>
           </div>
           <div className={styles.builderRowRight}>

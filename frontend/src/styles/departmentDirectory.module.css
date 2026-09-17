@@ -315,6 +315,7 @@
 
 .dashboardDateControl {
     align-self: flex-end;
+    margin-top: 4px;
 }
 
 .dashboardUserControls label {
@@ -360,13 +361,20 @@
 }
 
 .referenceStatCard {
-    min-height: 136px;
+    min-height: 126px;
     border: 1px solid #cfd5de;
     border-radius: 14px;
     background: #ffffff;
     box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
-    padding: 16px 18px 12px;
+    padding: 14px 18px 10px;
     box-sizing: border-box;
+}
+
+.referenceStatDescription {
+    margin: 2px 0 0;
+    font-size: 13px;
+    line-height: 1.3;
+    color: #64748b;
 }
 
 .referenceStatHeader {
@@ -378,10 +386,10 @@
 
 .referenceStatHeader h2 {
     margin: 0;
-    color: #5f6f85;
+    color: #47536a;
     font-size: 16px;
     line-height: 1.25;
-    font-weight: 700;
+    font-weight: 400;
     letter-spacing: normal;
     text-transform: none;
 }
@@ -403,7 +411,7 @@
     height: 44px;
     border-radius: 12px;
     background: #e9efff;
-    color: #2f5fbf !important;
+    color: #2f5fbf;
     font-size: 20px !important;
     margin-top: 0 !important;
 }
@@ -421,6 +429,8 @@
     font-size: 30px;
     line-height: 1.05;
     font-weight: 500;
+    position: relative;
+    top: -12px;
 }
 
 .referenceMiniToggle,
@@ -701,15 +711,13 @@
     background-color: transparent !important;
 }
 
-:global(:root[data-theme="dark"] .app-shell-content) .dashboardMain :is(
-    h1,
-    h2,
-    p,
-    b,
-    strong,
-    label,
-    small
-),
+:global(:root[data-theme="dark"] .app-shell-content) .dashboardMain h1,
+:global(:root[data-theme="dark"] .app-shell-content) .dashboardMain h2,
+:global(:root[data-theme="dark"] .app-shell-content) .dashboardMain p,
+:global(:root[data-theme="dark"] .app-shell-content) .dashboardMain b,
+:global(:root[data-theme="dark"] .app-shell-content) .dashboardMain strong,
+:global(:root[data-theme="dark"] .app-shell-content) .dashboardMain label,
+:global(:root[data-theme="dark"] .app-shell-content) .dashboardMain small,
 :global(:root[data-theme="dark"] .app-shell-content) .dashboardMain span:not(.referenceStatIcon),
 :global(:root[data-theme="dark"] .app-shell-content) .referenceDashboardHeader,
 :global(:root[data-theme="dark"] .app-shell-content) .dashboardWelcomeBlock,
@@ -3091,6 +3099,10 @@
     color: #ffffff;
     padding: 12px 18px;
     font-weight: 600;
+}
+
+.ticketFilterLevelName {
+    margin-top: 0px;
 }
 
 @media (max-width: 768px) {
