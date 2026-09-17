@@ -58,7 +58,7 @@ export const isSubmittedNotebookManagerUser = (user) =>
 export const isSubmittedNotebookViewerUser = (user) =>
   isSubmittedNotebookManagerUser(user) || hasHierarchyLevel(user);
 
-const getUserLevelKey = (user) =>
+export const getUserLevelKey = (user) =>
   String(user?.level ?? user?.user_details?.level ?? "").trim().toUpperCase();
 
 // Any user with a recognized L1-L5 hierarchy level has some ticketing view
@@ -66,7 +66,26 @@ const getUserLevelKey = (user) =>
 // the "Ticketing System" nav entry shows at all, since that used to only
 // check isFullAccessUser/isSupervisorNavUser (a leftover from before the
 // hierarchy levels existed) and hid the link for plain L1-L5 accounts.
-export const hasHierarchyLevel = (user) => ["L1", "L2", "L3", "L4", "L5"].includes(getUserLevelKey(user));
+const HIERARCHY_LEVELS = ["L1", "L2", "L3", "L4", "L5"];
+export const hasHierarchyLevel = (user) => HIERARCHY_LEVELS.includes(getUserLevelKey(user));
+
+// Home Dashboard's Level/Name filter. L5 is the top of the hierarchy and never has tickets
+// of its own to view by level, so it's never offered as a Level option - not even to a true
+// admin (isDashboardManagerUser), who otherwise stays unrestricted up to L4. An L1-L5
+// hierarchy account without the admin role is further scoped to only the levels strictly
+// below their own (never their own level - so an L4 can't browse other L4 peers' tickets -
+// and never a level above them). L1 has no level below it, so it resolves to an empty list
+// and the filter has nothing to offer.
+export const canViewDashboardLevelFilter = (user) =>
+  isDashboardManagerUser(user) || hasHierarchyLevel(user);
+
+const MAX_SELECTABLE_LEVELS = HIERARCHY_LEVELS.filter((level) => level !== "L5");
+
+export const getDashboardVisibleLevels = (user) => {
+  if (isDashboardManagerUser(user)) return MAX_SELECTABLE_LEVELS;
+  const ownIndex = HIERARCHY_LEVELS.indexOf(getUserLevelKey(user));
+  return ownIndex > 0 ? MAX_SELECTABLE_LEVELS.slice(0, ownIndex) : [];
+};
 
 // Levels: L1 entry operator, L2 supervisor (no role in approvals - moved to
 // L4), L3 sub manager (no role in approvals), L4 Quality/Department Head

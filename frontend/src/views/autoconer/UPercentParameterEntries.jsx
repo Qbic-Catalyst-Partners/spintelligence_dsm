@@ -24,8 +24,8 @@ const COUNT_NAME_OPTIONS = [
 const TOP_FIELDS = [
   { key: "actCount", label: "Act Count", numeric: true },
   { key: "strength", label: "Strength", numeric: true },
-  { key: "cv1", label: "CV1", numeric: true },
-  { key: "cv2", label: "CV2", numeric: true },
+  { key: "cv1", label: "Count CV", numeric: true },
+  { key: "cv2", label: "Strength CV", numeric: true },
   { key: "csp", label: "CSP", numeric: true },
 ];
 
@@ -551,10 +551,6 @@ function UPercentParameterEntries({
 
               <div className={styles.pendingSecondaryRow}>
                 <div className={styles.pendingMetaItem}>
-                  <span>Cone Color</span>
-                  <strong>{entry.values.coneColor || "-"}</strong>
-                </div>
-                <div className={styles.pendingMetaItem}>
                   <span>Act Count</span>
                   <strong>{entry.values.actCount || "-"}</strong>
                 </div>
@@ -563,11 +559,11 @@ function UPercentParameterEntries({
                   <strong>{entry.values.strength || "-"}</strong>
                 </div>
                 <div className={styles.pendingMetaItem}>
-                  <span>CV1</span>
+                  <span>Count CV</span>
                   <strong>{entry.values.cv1 || "-"}</strong>
                 </div>
                 <div className={styles.pendingMetaItem}>
-                  <span>CV2</span>
+                  <span>Strength CV</span>
                   <strong>{entry.values.cv2 || "-"}</strong>
                 </div>
                 <div className={styles.pendingMetaItem}>

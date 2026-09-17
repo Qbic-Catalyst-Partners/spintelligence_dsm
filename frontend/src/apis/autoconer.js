@@ -397,13 +397,24 @@ export const fetchAutoconerPendingQualityParameterEntries = async () =>
 
 // "parameter-entries/pending-csp"/"pending-quality" are backend approval-queue views (only
 // entries awaiting review), not the full submitted history — Custom Report needs every entry
-// ever saved, so it reads the plain "parameter-entries" resource instead and splits it by the
-// `inspection_type` field each form stamps on save ("CSP Parameter Entries" / "U% Parameter
-// Entries", see CspParameterEntries.jsx/UPercentParameterEntries.jsx).
-const filterAutoconerParameterEntriesByType = async (inspectionType) => {
+// ever saved, so it reads the plain "parameter-entries" resource instead.
+//
+// CSP and U% Parameter Entries share one row per entry_id (the backend PUT merges whichever
+// side is filled in next into the same row - see PUT /parameter-entries/:id in
+// backend/routes/autoconer.js). `inspection_type` only reflects which screen FIRST created the
+// row and is never updated afterward, so filtering by it made a combined entry (CSP filled on
+// one screen, U% filled in later on the other) disappear from whichever report didn't create
+// it, even though it now has real data for both. Filtering by whether the row actually has
+// that type's own fields filled in - not by the stale label - means a combined entry shows up
+// correctly in both reports, each with real values for its own fields and null (dash) for the
+// fields the other screen owns.
+const hasCspData = (row) => row?.act_count != null || row?.strength != null;
+const hasQualityData = (row) => row?.cone_color != null || row?.u != null;
+
+const filterAutoconerParameterEntriesByPresence = async (predicate) => {
   const response = await fetchAutoconerParameterEntries();
   const rows = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
-  const filtered = rows.filter((row) => String(row?.inspection_type || "").trim() === inspectionType);
+  const filtered = rows.filter(predicate);
   return {
     ...(response && typeof response === "object" && !Array.isArray(response) ? response : {}),
     data: filtered,
@@ -411,10 +422,10 @@ const filterAutoconerParameterEntriesByType = async (inspectionType) => {
 };
 
 export const fetchAutoconerCspParameterEntriesForReport = async () =>
-  filterAutoconerParameterEntriesByType("CSP Parameter Entries");
+  filterAutoconerParameterEntriesByPresence(hasCspData);
 
 export const fetchAutoconerQualityParameterEntriesForReport = async () =>
-  filterAutoconerParameterEntriesByType("U% Parameter Entries");
+  filterAutoconerParameterEntriesByPresence(hasQualityData);
 
 const buildParameterEntryPayload = (payload) => ({
   entry_id: payload?.entry_id,

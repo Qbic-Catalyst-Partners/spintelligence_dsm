@@ -139,6 +139,33 @@ const upsertBlowroomWasteType = async (wasteType) => {
   if (normalizedWasteType.length < 5) return null;
 
   const wasteTypeKey = normalizedWasteType.toLowerCase();
+
+  // waste_type and waste_type_key each have their OWN unique index (br_waste_type_master_
+  // waste_type_uq / _waste_type_key_uq) - some existing rows have a waste_type_key that was
+  // never lowercased (predates that normalization), so for those rows today's computed key no
+  // longer matches what's stored. A plain `ON CONFLICT (waste_type_key)` only resolves a
+  // conflict on THAT one index - re-submitting one of those waste types found no conflict on
+  // waste_type_key, so it tried to INSERT a new row, which then hit the separate waste_type
+  // unique constraint as a real, uncaught error - misreported by the outer catch-all as
+  // "Duplicate waste study ID" even though the study's own entry_id was never the problem.
+  // Look the row up by either column first instead of relying on a single ON CONFLICT target
+  // to cover both constraints - this also self-heals a mismatched key going forward.
+  const existing = await client.query(
+    `SELECT id FROM blowroom.br_waste_type_master WHERE waste_type_key = $1 OR waste_type = $2 LIMIT 1`,
+    [wasteTypeKey, normalizedWasteType]
+  );
+
+  if (existing.rowCount) {
+    const result = await client.query(
+      `UPDATE blowroom.br_waste_type_master
+       SET waste_type = $1, waste_type_key = $2
+       WHERE id = $3
+       RETURNING id, waste_type, waste_type_key, created_at`,
+      [normalizedWasteType, wasteTypeKey, existing.rows[0].id]
+    );
+    return result.rows[0] || null;
+  }
+
   const result = await client.query(
     `INSERT INTO blowroom.br_waste_type_master (waste_type, waste_type_key, sort_order)
      VALUES (
@@ -146,8 +173,6 @@ const upsertBlowroomWasteType = async (wasteType) => {
        $2,
        COALESCE((SELECT MAX(sort_order) FROM blowroom.br_waste_type_master), 0) + 1
      )
-     ON CONFLICT (waste_type_key)
-     DO UPDATE SET waste_type = EXCLUDED.waste_type
      RETURNING id, waste_type, waste_type_key, created_at`,
     [normalizedWasteType, wasteTypeKey]
   );
