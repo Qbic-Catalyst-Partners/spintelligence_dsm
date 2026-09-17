@@ -545,7 +545,6 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   });
 
   const getPreviewData = () => [
-    { label: "Type", value: selectedTypeName || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
     { label: "Process Parameter ID", value: form.paramId || savedProcessParameterId || "-" },

@@ -84,7 +84,11 @@ const getTicketCardLabel = (value) => {
   if (key === "open" || key === "opentickets") return "Open";
   if (key === "reopened" || key === "reopenedtickets") return "Reopened";
   if (key === "closed" || key === "closedtickets") return "Closed";
-  if (key === "pending" || key === "pendingtickets") return "Pending";
+  // "pending" is the widget's internal metric key (kept for backward compat with already-saved
+  // widgets), but the ticket's own real status is always called "In Progress" everywhere else
+  // in the app (SUPERVISOR_VISIBLE_STATUS_OPTIONS, ticket filters, etc.) - "Pending" was never
+  // an actual ticket status, so the card showed a confusing label for a correctly-counted value.
+  if (key === "pending" || key === "pendingtickets" || key === "inprogress" || key === "inprogresstickets") return "In Progress";
   if (key === "overdue" || key === "overduetickets") return "Overdue";
   return "Ticket Dashboard";
 };
@@ -93,7 +97,7 @@ const getTicketCardIcon = (label) => {
   if (label === "Open") return AiOutlineFolderOpen;
   if (label === "Reopened") return MdOutlineReplay;
   if (label === "Closed") return IoCheckmarkDoneCircleOutline;
-  if (label === "Pending") return MdOutlinePendingActions;
+  if (label === "In Progress") return MdOutlinePendingActions;
   return FiPieChart;
 };
 const ticketMetricCandidates = {
@@ -101,7 +105,11 @@ const ticketMetricCandidates = {
   open: ["open_tickets", "opentickets", "open", "open_count", "ticket_count"],
   reopened: ["reopened_tickets", "reopenedtickets", "reopened", "reopened_count", "ticket_count"],
   closed: ["closed_tickets", "closedtickets", "closed", "closed_count", "ticket_count"],
-  pending: ["pending_tickets", "pendingtickets", "pending", "pending_count", "ticket_count"],
+  pending: [
+    "pending_tickets", "pendingtickets", "pending", "pending_count",
+    "in_progress_tickets", "inprogresstickets", "in_progress", "inprogress", "in_progress_count",
+    "ticket_count",
+  ],
   overdue: ["overdue_tickets", "overduetickets", "overdue", "overdue_count", "ticket_count"],
 };
 
@@ -117,7 +125,7 @@ const resolveTicketMetricGroup = (value, fallback = "total") => {
   if (["open", "opentickets"].includes(key)) return "open";
   if (["reopened", "reopenedtickets"].includes(key)) return "reopened";
   if (["closed", "closedtickets"].includes(key)) return "closed";
-  if (["pending", "pendingtickets"].includes(key)) return "pending";
+  if (["pending", "pendingtickets", "inprogress", "inprogresstickets"].includes(key)) return "pending";
   if (["overdue", "overduetickets"].includes(key)) return "overdue";
   return fallback;
 };

@@ -150,7 +150,6 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   };
 
   const getPreviewData = () => [
-    { label: "Entry ID", value: entryId || "-" },
     { label: "Shift", value: form.shift },
     { label: "Variety", value: form.variety },
     { label: "MC No.", value: form.mc_no },

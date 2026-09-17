@@ -85,7 +85,7 @@ const HARDCODED_DEPARTMENTS = [
   },
   {
     name: "Comber",
-    screens: ["Ribbon Lap CV1M Data Entry", "Nati Data Entry", "U% Data Entry", "Comber Nolis %"],
+    screens: ["Ribbon Lap CV1M Data Entry", "Nati Data Entry", "U% Data Entry", "Comber Nolis %", "Comber NRE%", "Comber Efficiency"],
   },
   {
     name: "Draw Frame",
@@ -148,6 +148,7 @@ const HARDCODED_DEPARTMENTS = [
       "PP - Finisher Drawing",
       "PP - Autoconer Q2",
       "PP - Autoconer Q3",
+      "PP - Autoconer Q4",
     ],
   },
 ];

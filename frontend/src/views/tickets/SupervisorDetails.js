@@ -31,6 +31,7 @@ import {
   setStoredTicketStatus,
 } from "../../utils/ticketStatus";
 import { formatDateTime } from "../../utils/formatDateTime";
+import { emitGlobalSuccessModal } from "../../utils/globalSuccessModal";
 
 const buildTimelineIcon = (title) => {
   const normalized = String(title || "").toLowerCase();
@@ -363,6 +364,14 @@ export default function SupervisorDetails() {
       });
       setShowFixModal(false);
       setFixComment("");
+      // Escalates one level up from wherever the ticket actually sits right
+      // now - L1 to L2 as usual, or L2 to L3 for a Submission Threshold
+      // ticket that started at L2 (no L1 stage). Mirrors operatordetail.js's
+      // own "Submitted for L2/L4 approval" success popup.
+      const levelOrder = ["L1", "L2", "L3", "L4", "L5"];
+      const fixedFromLevel = String(ticket?.tat_current_level || "L1").trim().toUpperCase();
+      const nextApprovalLevel = levelOrder[levelOrder.indexOf(fixedFromLevel) + 1] || fixedFromLevel;
+      emitGlobalSuccessModal({ message: `Sent for ${nextApprovalLevel} approval` });
       dispatch(fetchTicketDetails(ticket.ticket_id));
     } catch (err) {
       alert(err?.message || "Failed to submit fix.");
@@ -552,6 +561,16 @@ export default function SupervisorDetails() {
     dashboardTicket?.tat_current_level || ticket?.tat_current_level || ticket?.tatCurrentLevel || "L1"
   ).trim().toUpperCase();
   const isL1OwnedTicket = !isAcknowledgeTicket && currentTicketLevel === "L1";
+  // Submission Threshold tickets are assigned straight to L2 (no L1 stage -
+  // see checkSubmissionFrequencyMissed in operatorTickets.routes.js), so the
+  // L2 assignee is the one who actually fixes/submits the missing entry,
+  // same role L1 plays for every other ticket type. Without this, an L2
+  // owner of one of these tickets fell into the generic Accept/Reject
+  // branch below, which only makes sense once a ticket has escalated past
+  // the level that's meant to do the fixing.
+  const isL2OwnedSubmissionTicket = isSubmissionTicket && !isAcknowledgeTicket && currentTicketLevel === "L2";
+  const isFixSubmitOwnedTicket = isL1OwnedTicket || isL2OwnedSubmissionTicket;
+  const fixSubmitLabel = "Fix and Submit";
   // Wheel Change Approval and PP Approval are both genuine approve/reject
   // decisions (approving applies the change / activates the PP id, rejecting
   // sends it back to L1) - unlike Acknowledgement they keep the normal
@@ -739,13 +758,13 @@ export default function SupervisorDetails() {
                     >
                       Fix &amp; Submit
                     </button>
-                  ) : isL1OwnedTicket ? (
+                  ) : isFixSubmitOwnedTicket ? (
                     <button
                       className={styles.accept}
                       onClick={() => setShowFixModal(true)}
                       disabled={fixSubmitting}
                     >
-                      Fix &amp; Submit
+                      {fixSubmitLabel}
                     </button>
                   ) : isL4SelfResolveOwnedTicket ? (
                     <button
@@ -1067,10 +1086,12 @@ export default function SupervisorDetails() {
         {showFixModal && (
           <div className={styles.modalOverlay}>
             <div className={styles.modalBox}>
-              <h3 className={styles.modalTitle}>Fix &amp; Submit</h3>
+              <h3 className={styles.modalTitle}>{fixSubmitLabel}</h3>
 
               <p className={styles.modalDesc}>
-                Resolve Ticket <b>{displayTicketId}</b> at L1 and submit it for review.
+                {isSubmissionTicket
+                  ? <>Resolve Ticket <b>{displayTicketId}</b> with your comments / justification and submit it for review.</>
+                  : <>Resolve Ticket <b>{displayTicketId}</b> at L1 and submit it for review.</>}
               </p>
 
               <label className={styles.modalLabel}>
@@ -1089,10 +1110,10 @@ export default function SupervisorDetails() {
               </div>
 
               <div className={styles.modalActions}>
-                <button onClick={() => setShowFixModal(false)} disabled={fixSubmitting}>
+                <button className={styles.fixModalCancelBtn} onClick={() => setShowFixModal(false)} disabled={fixSubmitting}>
                   Cancel
                 </button>
-                <button onClick={handleFixResubmit} disabled={fixSubmitting}>
+                <button className={styles.fixModalSubmitBtn} onClick={handleFixResubmit} disabled={fixSubmitting}>
                   Submit
                 </button>
               </div>
@@ -1295,13 +1316,13 @@ export default function SupervisorDetails() {
               >
                 Fix &amp; Submit
               </button>
-            ) : isL1OwnedTicket ? (
+            ) : isFixSubmitOwnedTicket ? (
               <button
                 className={styles.accept}
                 onClick={() => setShowFixModal(true)}
                 disabled={fixSubmitting}
               >
-                Fix &amp; Submit
+                {fixSubmitLabel}
               </button>
             ) : isL4SelfResolveOwnedTicket ? (
               <button
@@ -1423,7 +1444,7 @@ export default function SupervisorDetails() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className={styles.modalHeader}>
-                <div className={styles.modalTitle}>Fix &amp; Submit</div>
+                <div className={styles.modalTitle}>{fixSubmitLabel}</div>
 
                 <span
                   className={styles.closeBtn}
@@ -1434,7 +1455,9 @@ export default function SupervisorDetails() {
               </div>
 
               <p className={styles.modalDesc}>
-                Resolve Ticket <b>{displayTicketId}</b> at L1 and submit it for review.
+                {isSubmissionTicket
+                  ? <>Resolve Ticket <b>{displayTicketId}</b> with your comments / justification and submit it for review.</>
+                  : <>Resolve Ticket <b>{displayTicketId}</b> at L1 and submit it for review.</>}
               </p>
 
               <label className={styles.modalLabel}>
@@ -1454,7 +1477,7 @@ export default function SupervisorDetails() {
 
               <div className={styles.modalActions}>
                 <button
-                  className={styles.rejectBtn}
+                  className={styles.fixModalCancelBtn}
                   onClick={() => setShowFixModal(false)}
                   disabled={fixSubmitting}
                 >
@@ -1462,7 +1485,7 @@ export default function SupervisorDetails() {
                 </button>
 
                 <button
-                  className={styles.cancelbtn}
+                  className={styles.fixModalSubmitBtn}
                   onClick={handleFixResubmit}
                   disabled={fixSubmitting}
                 >

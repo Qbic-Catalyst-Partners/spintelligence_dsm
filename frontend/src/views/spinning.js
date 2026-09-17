@@ -50,7 +50,7 @@ const createCountChangeRows = (readingCount) => {
 const SHIFT_OPTIONS = ["Select Shift" , "Shift 1", "Shift 2", "Shift 3"];
 const RING_FRAME_CHECKERS = [];
 const SPINNING_CHECKING_OPTIONS = [
-    { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameterDataEntry },
+    { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry", "Spinning - PP"], component: ProcessParameterDataEntry },
     { id: 1, name: "COTS Checking", aliases: ["COTS Checking", "COTS - CHECKING"] },
     { id: 2, name: "Count Change", aliases: ["Count Change", "COUNT CHANGE"] },
     { id: 3, name: "Ring Frame Log Book", aliases: ["Ring Frame Log Book", "RING FRAME LOG BOOK"] },
@@ -1152,10 +1152,19 @@ function SpinningDepartment() {
                 ).trim();
                 setConfirmedEntryId(realEntryId);
                 await saveCustomFields(realEntryId || entryId);
+                // Acknowledgement Threshold's screen catalog tracks Wheel Change as 3
+                // separate notebooks ("Wheel Change Type 1".."Type 3"), not the single
+                // generic "Wheel Change" type name in the Checking Type dropdown — use
+                // the sub-type reported up from WheelChange.jsx (wheelChangeSubType,
+                // e.g. "Type 1") so a threshold configured for the exact sub-type
+                // actually fires.
+                const wheelChangeNotebookName = isWheelChange
+                    ? `${checkingType} ${wheelChangeSubType}`.trim()
+                    : checkingType;
                 await recordSubmittedNotebook({
                     department: "Quality Control",
                     subDepartment: "Spinning",
-                    notebookName: checkingType,
+                    notebookName: wheelChangeNotebookName,
                     entryId: realEntryId || entryId,
                     previewItems,
                     user,
@@ -1167,8 +1176,8 @@ function SpinningDepartment() {
                     await createThresholdViolationTickets({
                         department: "Quality Control",
                         subDepartment: "Spinning",
-                        screenName: checkingType,
-                        machineName: checkingType,
+                        screenName: wheelChangeNotebookName,
+                        machineName: wheelChangeNotebookName,
                         entryId: realEntryId || entryId,
                         values: previewItems,
                     });

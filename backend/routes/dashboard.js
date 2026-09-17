@@ -852,13 +852,42 @@ const fetchWidgetData = async ({ widget, period = '1W', userId = null, userLevel
     const ticketScope = getTicketScope({ userId, userEmployeeId, userLevel, userRole });
     const ticketScopeWhere = ticketScope.whereSql;
     const queryParams = ticketScope.params;
+
+    const intervalMap = {
+      '1D': "1 day",
+      '1W': "7 days",
+      '1M': "1 month",
+      '1Y': "1 year"
+    };
+    // The card's own ticket_count never actually applied `period` at all before this - only
+    // the separate trend chart below did - so switching 1D/1W/1M/1Y on a ticket_status_card
+    // widget changed the line chart underneath it but left the big number unchanged. Scoped
+    // the same way the trend query already does: tickets CREATED within that rolling window.
+    const periodInterval = intervalMap[period] || '7 days';
+    const periodWhere = `created_at >= NOW() - INTERVAL '${periodInterval}'`;
     const countQueryByMetric = {
-      total: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere}`,
-      open: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND lower(trim(COALESCE(status, ''))) = 'open'`,
-      closed: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND lower(trim(COALESCE(status, ''))) = 'closed'`,
-      reopened: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND lower(trim(COALESCE(status, ''))) = 'reopened'`,
-      pending: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND lower(trim(COALESCE(status, ''))) = 'in progress'`,
-      overdue: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND lower(trim(COALESCE(status, ''))) = 'no due'`
+      total: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere}`,
+      open: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere} AND lower(trim(COALESCE(status, ''))) = 'open'`,
+      closed: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere} AND lower(trim(COALESCE(status, ''))) = 'closed'`,
+      reopened: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere} AND lower(trim(COALESCE(status, ''))) = 'reopened'`,
+      pending: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND ${periodWhere} AND lower(trim(COALESCE(status, ''))) = 'in progress'`,
+      // "Overdue" is not a real stored status - it's computed the same way the frontend does
+      // it (isTicketOverdueBySla in ticketStatus.js): a still-unresolved ticket whose age has
+      // passed the resolution_hours configured for its current level in
+      // ticket_resolution_sla. This used to filter status = 'no due', a status value that has
+      // nothing to do with overdue-ness, so the Overdue card never actually counted overdue
+      // tickets at all.
+      overdue: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets
+        WHERE ${ticketScopeWhere}
+          AND ${periodWhere}
+          AND lower(trim(COALESCE(status, ''))) NOT IN ('closed', 'approved', 'submit', 'acknowledged', 'resolved', 'reopened')
+          AND created_at IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM ticketing_system.ticket_resolution_sla sla
+            WHERE sla.level = UPPER(COALESCE(tat_current_level, 'L1'))
+              AND sla.is_active = true
+              AND EXTRACT(EPOCH FROM (NOW() - created_at)) / 3600 > sla.resolution_hours
+          )`
     };
     const countSql =
       widget?.visualization_type === 'ticket_status_card'
@@ -869,23 +898,17 @@ const fetchWidgetData = async ({ widget, period = '1W', userId = null, userLevel
     const statusRes = await client.query(
       `SELECT initcap(lower(trim(COALESCE(status, '')))) AS status, COUNT(*)::int AS count
        FROM ticketing_system.operator_tickets
-       WHERE ${ticketScopeWhere}
+       WHERE ${ticketScopeWhere} AND ${periodWhere}
        GROUP BY lower(trim(COALESCE(status, '')))` ,
       queryParams
     );
 
-    const intervalMap = {
-      '1D': "1 day",
-      '1W': "7 days",
-      '1M': "1 month",
-      '1Y': "1 year"
-    };
     const trendRes = await client.query(
       `SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS label,
               COUNT(*)::int AS value
        FROM ticketing_system.operator_tickets
        WHERE ${ticketScopeWhere}
-         AND created_at >= NOW() - INTERVAL '${intervalMap[period] || '7 days'}'
+         AND ${periodWhere}
        GROUP BY date_trunc('day', created_at)
        ORDER BY date_trunc('day', created_at)`,
       queryParams

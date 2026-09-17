@@ -269,7 +269,7 @@
 /* ================= FOOTER ================= */
 
 .card-footer {
-  margin: 20px -28px -20px;
+  margin-top: 20px;
 }
 
 /* ================= MESSAGE ================= */
@@ -415,7 +415,7 @@
 
   /* FOOTER */
   .card-footer {
-    margin: 16px -14px -14px;
+    margin-top: 16px;
   }
 }
 
@@ -482,6 +482,6 @@
   }
 
   .card-footer {
-    margin: 12px -12px -12px;
+    margin-top: 12px;
   }
 }

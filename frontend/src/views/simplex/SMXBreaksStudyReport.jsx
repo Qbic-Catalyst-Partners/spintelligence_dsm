@@ -399,8 +399,6 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
   const getPreviewData = () => {
     const items = [
-      { label: "Type", value: selectedTypeName || form.type },
-      { label: "Entry ID", value: entryId || "#SIM-001" },
       ...Object.entries(form)
         .filter(([key]) => key !== "type" && key !== "date")
         .map(([key, value]) => ({
@@ -452,6 +450,15 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
         label: `TOTAL BREAK (%) - ${columnLabel}`,
         value: `${formatPercentage(totalBreakPercentages[columnLabel])}%`,
       });
+    });
+
+    // The TOTAL No. OF BREAKS/100SH summary box (grandTotalBreakPercent) was never included
+    // here before - only sent to the separate /simplex/study relational-table submission via
+    // other_field_values.overall_breakage_percent, so the submitted-notebook record (what the
+    // Submitted Notebooks preview actually reads) never had it at all.
+    items.push({
+      label: "Total No. of Breaks/100SH",
+      value: grandTotalBreakPercent ? `${grandTotalBreakPercent}%` : "-",
     });
 
     return items;

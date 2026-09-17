@@ -58,11 +58,6 @@
 
 /* Card */
 
-/* This component only ever renders nested inside individualCardPerformance.jsx's own
-   .card-shell (cardThickPlaceEntry.module.css) — that's the real visible card, with the
-   28px horizontal padding Footer's own bleed margin is built to reach. This inner shell
-   must stay a plain pass-through wrapper (no padding/overflow of its own), otherwise its
-   overflow: hidden clips Footer's bleed before it reaches the real card edge. */
 .cardShell {
   display: flex;
   flex-direction: column;

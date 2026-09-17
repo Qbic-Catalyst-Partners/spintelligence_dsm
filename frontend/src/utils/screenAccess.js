@@ -45,6 +45,7 @@ const PP_SCREEN_OWNING_DEPARTMENT = {
   "pp finisher drawing": "draw frame",
   "pp autoconer q2": "autoconer",
   "pp autoconer q3": "autoconer",
+  "pp autoconer q4": "autoconer",
 };
 
 const getMatchCandidateScreens = (accessByDepartment, departmentName) => {

@@ -94,16 +94,6 @@ const withoutDropId = (record) => {
 };
 const isUniqueViolation = (err) => err && err.code === '23505';
 
-const getDropTestParentId = (body) => {
-  const directId = String(body.drop_id || body.drop_test_id || '').trim();
-  if (directId) return directId;
-
-  const entryId = String(body.entry_id || '').trim();
-  if (!entryId) return null;
-
-  return entryId.replace(/-\d{1,2}$/, '');
-};
-
 const toNumberOrNull = (value) => {
   if (value === null || value === undefined || value === '') return null;
   const numeric = Number(String(value).replace(/,/g, '').replace(/%/g, '').trim());
@@ -676,12 +666,12 @@ router.post('/drop-test', async (req, res, next) => {
       ratio_percent
     } = req.body;
     if (!entry_id) {
-      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+      return res.status(400).json({ message: 'entry_id is required' });
     }
-    const dropId = getDropTestParentId(req.body);
-    if (!dropId) {
-      return res.status(400).json({ message: 'drop_id is required for drop test entries' });
-    }
+    // drop_id is retired - every tuft row now shares the submission's own entry_id (see
+    // dropTestDataEntry.jsx), so a separate parent-id column has nothing left to add. Left
+    // NULL rather than populated with entry_id's value - the column is nullable now
+    // (connection.js dropped its NOT NULL constraint) specifically so this can do that.
 
     const displayWeightValue = toNumberOrNull(display_weight);
     const actualWeightValue = toNumberOrNull(actual_weight);
@@ -703,7 +693,7 @@ router.post('/drop-test', async (req, res, next) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *`,
       [
-        dropId,
+        null,
         entry_id,
         date,
         variety,
@@ -777,9 +767,9 @@ router.get('/drop-test', async (req, res, next) => {
     );
 
     res.status(200).json({
-      // Keep drop_id here (unlike the create response) — Custom Report groups each tuft's row
-      // back into one row per submission via this shared parent id.
-      data: result.rows.map((row) => withScreenEntryId('drop_test', row)),
+      // drop_id is retired (always NULL now) - Custom Report groups tuft rows back into one
+      // submission by entry_id directly instead, since every tuft already shares that id.
+      data: result.rows.map((row) => withoutDropId(withScreenEntryId('drop_test', row))),
       total: parseInt(totalResult.rows[0].count),
       page: pageNum,
       limit: limitNum

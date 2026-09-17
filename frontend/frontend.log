@@ -1,0 +1,23 @@
+
+> spintelligence-frontend-beta1@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.0 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.8:3000
+- Environments: .env
+✓ Ready in 1382ms
+
+○ Compiling /blowroom ...
+ GET /blowroom 304 in 8.7s (next.js: 8.4s, application-code: 338ms)
+[browser] Image with src "http://localhost:3000/spintelligence_light.png" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio.
+ GET /departments/quality-control/wrapping 200 in 461ms (next.js: 302ms, application-code: 159ms)
+[browser] Image with src "http://localhost:3000/spintelligence_light.png" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio.
+✓ Compiled in 12.9s
+✓ Compiled in 2.1s
+✓ Compiled in 1224ms
+✓ Compiled in 6.6s
+✓ Compiled in 1263ms
+ GET /departments/quality-control/wrapping 304 in 923ms (next.js: 832ms, application-code: 91ms)
+[browser] Image with src "http://localhost:3000/spintelligence_light.png" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio.
+✓ Finished filesystem cache database compaction in 14.6s

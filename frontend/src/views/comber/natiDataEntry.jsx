@@ -232,9 +232,8 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
 
     const getPreviewData = () => {
         const base = [
-            { label: "Type", value: selectedType || "Nati Data Entry" },
-            { label: "Entry ID", value: entryId || "-" },
             { label: "Variety", value: variety },
+            { label: "Number of Neps Entries", value: entryCount },
         ];
 
         const entryItems = entries

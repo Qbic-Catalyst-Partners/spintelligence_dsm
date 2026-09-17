@@ -21,7 +21,14 @@ export const fetchSubmissionFrequencyConfigsAPI = async () => {
     );
     return normalizeSubmissionFrequencyList(response?.data);
   } catch (error) {
-    if (error.request) {
+    // error.request is set whenever axios actually sent the request,
+    // regardless of whether a response came back - error.response is what's
+    // exclusively set when the server DID respond (e.g. a 401 on an expired
+    // token). Checking error.request alone claimed "Network Error: unable to
+    // reach" even when the server responded just fine but rejected the
+    // request for an unrelated reason (auth expiry, validation, etc),
+    // misdiagnosing every non-network failure as a connectivity problem.
+    if (error.request && !error.response) {
       throw new Error(
         `Network Error: unable to reach ${resolvedBaseUrl}/operator-tickets/submission-frequency.`
       );

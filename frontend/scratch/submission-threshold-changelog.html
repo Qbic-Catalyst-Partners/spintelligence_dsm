@@ -1,0 +1,664 @@
+<title>Submission Threshold Rework</title>
+<style>
+  :root {
+    --bg: #f6f7fa;
+    --surface: #ffffff;
+    --surface-2: #eef1f7;
+    --surface-3: #e4e8f1;
+    --border: #dde2ec;
+    --text: #1a2130;
+    --text-muted: #5b6577;
+    --text-faint: #8994a6;
+    --accent: #4f63b6;
+    --accent-strong: #33428c;
+    --accent-tint: #eef0fa;
+    --good: #157347;
+    --good-tint: #e7f5ee;
+    --warn: #a15c00;
+    --warn-tint: #fbf1de;
+    --bad: #b23a3a;
+    --bad-tint: #fbeaea;
+    --info: #2f6f9e;
+    --info-tint: #e8f2f8;
+    --shadow: 0 1px 2px rgba(23, 30, 48, 0.04), 0 8px 24px rgba(23, 30, 48, 0.05);
+    --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+    --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10131a;
+      --surface: #171b25;
+      --surface-2: #1e232f;
+      --surface-3: #262c3a;
+      --border: #2b3140;
+      --text: #e7eaf1;
+      --text-muted: #9aa4b8;
+      --text-faint: #6c7689;
+      --accent: #8291de;
+      --accent-strong: #aab5ec;
+      --accent-tint: #1e2340;
+      --good: #4bc190;
+      --good-tint: #12261e;
+      --warn: #e3ac4c;
+      --warn-tint: #2c220f;
+      --bad: #e88484;
+      --bad-tint: #2c1717;
+      --info: #6cb2df;
+      --info-tint: #142430;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 28px rgba(0, 0, 0, 0.35);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #10131a;
+    --surface: #171b25;
+    --surface-2: #1e232f;
+    --surface-3: #262c3a;
+    --border: #2b3140;
+    --text: #e7eaf1;
+    --text-muted: #9aa4b8;
+    --text-faint: #6c7689;
+    --accent: #8291de;
+    --accent-strong: #aab5ec;
+    --accent-tint: #1e2340;
+    --good: #4bc190;
+    --good-tint: #12261e;
+    --warn: #e3ac4c;
+    --warn-tint: #2c220f;
+    --bad: #e88484;
+    --bad-tint: #2c1717;
+    --info: #6cb2df;
+    --info-tint: #142430;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 28px rgba(0, 0, 0, 0.35);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 15.5px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; color: var(--text); }
+
+  a { color: var(--accent-strong); }
+
+  code, .mono { font-family: var(--font-mono); }
+
+  .shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 28px 96px;
+  }
+
+  /* ---------- Header ---------- */
+  .masthead {
+    padding: 56px 0 36px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--accent-strong);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px var(--good-tint); }
+  .masthead h1 {
+    font-size: clamp(32px, 4.2vw, 46px);
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .masthead p {
+    max-width: 62ch;
+    color: var(--text-muted);
+    font-size: 16.5px;
+    margin: 0;
+  }
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 6px;
+  }
+  .meta-chip {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+
+  /* ---------- Layout: nav + main ---------- */
+  .layout {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 48px;
+    margin-top: 40px;
+  }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    .toc { display: none; }
+  }
+
+  .toc {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 13.5px;
+  }
+  .toc a {
+    color: var(--text-muted);
+    text-decoration: none;
+    padding: 6px 10px;
+    border-left: 2px solid transparent;
+    border-radius: 0 6px 6px 0;
+  }
+  .toc a:hover { color: var(--text); background: var(--surface-2); }
+  .toc .toc-num { font-family: var(--font-mono); color: var(--text-faint); margin-right: 8px; }
+
+  main { min-width: 0; }
+
+  section { margin-bottom: 56px; scroll-margin-top: 24px; }
+  section > h2 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0 0 6px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  section > h2 .sec-num {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--text-faint);
+    font-weight: 400;
+  }
+  section > .lede {
+    color: var(--text-muted);
+    max-width: 68ch;
+    margin: 0 0 22px;
+  }
+
+  /* ---------- Status pills ---------- */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.02em;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .pill-good { background: var(--good-tint); color: var(--good); }
+  .pill-warn { background: var(--warn-tint); color: var(--warn); }
+  .pill-bad { background: var(--bad-tint); color: var(--bad); }
+  .pill-info { background: var(--info-tint); color: var(--info); }
+
+  /* ---------- Flow diagram ---------- */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .flow-step {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 18px;
+    padding: 20px 24px;
+    position: relative;
+  }
+  .flow-step + .flow-step { border-top: 1px solid var(--border); }
+  .flow-step .num {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent);
+    background: var(--accent-tint);
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 600;
+  }
+  .flow-step h3 { font-size: 15.5px; margin: 2px 0 4px; font-family: var(--font-body); font-weight: 600; }
+  .flow-step p { margin: 0; color: var(--text-muted); font-size: 14px; max-width: 62ch; }
+  .flow-step .tag-row { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* ---------- File change cards ---------- */
+  .file-grid { display: grid; gap: 14px; }
+  .file-card {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 18px 20px;
+    box-shadow: var(--shadow);
+  }
+  .file-card .path {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent-strong);
+    background: var(--accent-tint);
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+  }
+  .file-card ul { margin: 0; padding-left: 18px; color: var(--text); font-size: 14px; }
+  .file-card li { margin-bottom: 5px; }
+  .file-card li:last-child { margin-bottom: 0; }
+  .file-card li .mono { font-size: 12.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+  /* ---------- Table ---------- */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+  table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: 13.5px; min-width: 640px; }
+  thead th {
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    background: var(--surface-2);
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--text); }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody td.muted { color: var(--text-muted); }
+
+  /* ---------- Code block ---------- */
+  .code-block {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    color: var(--text);
+    line-height: 1.7;
+  }
+  .code-block .k { color: var(--accent-strong); }
+  .code-block .c { color: var(--text-faint); font-style: italic; }
+
+  /* ---------- Callout ---------- */
+  .callout {
+    border-radius: 12px;
+    padding: 16px 18px;
+    font-size: 14px;
+    border: 1px solid var(--border);
+    display: flex;
+    gap: 12px;
+  }
+  .callout.bad { background: var(--bad-tint); border-color: color-mix(in srgb, var(--bad) 30%, var(--border)); }
+  .callout.good { background: var(--good-tint); border-color: color-mix(in srgb, var(--good) 30%, var(--border)); }
+  .callout .icon { font-family: var(--font-mono); font-weight: 700; }
+  .callout.bad .icon { color: var(--bad); }
+  .callout.good .icon { color: var(--good); }
+  .callout p { margin: 0; color: var(--text); }
+  .callout p + p { margin-top: 8px; }
+
+  /* ---------- Ticket sample card ---------- */
+  .ticket-sample {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--surface-2);
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 6px 18px;
+    color: var(--text);
+  }
+  .ticket-sample dt { color: var(--text-faint); }
+  .ticket-sample dd { margin: 0; }
+
+  /* ---------- Follow-up list ---------- */
+  .followup { display: grid; gap: 12px; }
+  .followup-item {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .followup-item:last-child { border-bottom: none; }
+  .followup-item h4 { margin: 0 0 4px; font-size: 14.5px; font-family: var(--font-body); font-weight: 600; }
+  .followup-item p { margin: 0; color: var(--text-muted); font-size: 13.5px; }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-faint);
+    font-size: 12.5px;
+    font-family: var(--font-mono);
+  }
+</style>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<div class="shell">
+
+  <header class="masthead">
+    <div class="eyebrow"><span class="dot"></span>Engineering changelog · Spintelligence DSM</div>
+    <h1>Submission Threshold Rework</h1>
+    <p>Every change made to the Submission Threshold ticketing flow in this session — who it now assigns to, how occurrences are judged, the escalation path, and the data-recording bugs found and fixed along the way.</p>
+    <div class="meta-row">
+      <span class="meta-chip">backend/routes/operatorTickets.routes.js</span>
+      <span class="meta-chip">backend/routes/supervisorTickets.routes.js</span>
+      <span class="meta-chip">backend/routes/submittedNotebooks.routes.js</span>
+      <span class="meta-chip">frontend/src/views/thresholds/SubmissionThreshold.js</span>
+      <span class="meta-chip">+ 5 department screens</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="toc">
+      <a href="#flow"><span class="toc-num">01</span>The flow now</a>
+      <a href="#backend"><span class="toc-num">02</span>Backend changes</a>
+      <a href="#frontend"><span class="toc-num">03</span>Frontend changes</a>
+      <a href="#naming-bugs"><span class="toc-num">04</span>Recording bugs fixed</a>
+      <a href="#collision"><span class="toc-num">05</span>Data repair</a>
+      <a href="#database"><span class="toc-num">06</span>Database status</a>
+      <a href="#verification"><span class="toc-num">07</span>Verification</a>
+      <a href="#followups"><span class="toc-num">08</span>Open items</a>
+    </nav>
+
+    <main>
+
+      <section id="flow">
+        <h2><span class="sec-num">01</span>The flow, end to end</h2>
+        <p class="lede">Submission Threshold used to assign a missed-occurrence ticket to L1 and wait for a manual click before it ever reached L2. It now goes straight to L2, and escalates itself correctly from there.</p>
+
+        <div class="flow">
+          <div class="flow-step">
+            <div class="num">1</div>
+            <div>
+              <h3>Admin assigns L2 user(s) to a screen</h3>
+              <p>Submission Threshold's "Assigned to" field now lists L2 users only. Each rule row carries its own Department → Sub-Department → Notebook Type, so one save can cover several unrelated notebooks at once.</p>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="num">2</div>
+            <div>
+              <h3>Occurrence is judged against the screen, not a person</h3>
+              <p>Once a full calendar day has completed, the worker counts every submission to that notebook — by anyone: an L1, an L2, an admin. If the count meets the configured frequency, nothing happens.</p>
+              <div class="tag-row"><span class="pill pill-info">midnight-to-midnight windows</span><span class="pill pill-info">15-min check interval</span></div>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="num">3</div>
+            <div>
+              <h3>Short → one ticket, straight to L2</h3>
+              <p>If the count falls short, a single <code class="mono">SUBMISSION_FREQUENCY</code> ticket is raised with <code class="mono">tat_current_level = 'L2'</code>. L1 has no visibility into it at all — not via the approval array, not via "Owned Tickets."</p>
+              <div class="tag-row"><span class="pill pill-good">no L1 stage</span></div>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="num">4</div>
+            <div>
+              <h3>L2 fixes it → escalates to their own L3</h3>
+              <p>Whichever assigned L2 clicks Fix &amp; Submit, the ticket resolves the next approver from <em>that person's</em> real reporting chain — not a fixed manager picked at ticket-creation time.</p>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="num">5</div>
+            <div>
+              <h3>L3 approves or rejects</h3>
+              <p>Approve closes the ticket. Reject reopens it to <strong>L2</strong> — not L1, which is what the generic reject handler used to assume for every ticket type.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="backend">
+        <h2><span class="sec-num">02</span>Backend changes</h2>
+        <p class="lede">Four files, each carrying a distinct piece of the new routing logic.</p>
+        <div class="file-grid">
+
+          <div class="file-card">
+            <span class="path">routes/operatorTickets.routes.js</span>
+            <ul>
+              <li><code class="mono">checkSubmissionFrequencyMissed()</code> rewritten: creates the ticket at L2 (<code class="mono">approval_l2_user_ids</code>), leaves <code class="mono">approval_l1_user_ids</code> and <code class="mono">user_id</code> empty so no L1 can see it.</li>
+              <li>Occurrence count changed from "did a tracked user submit" to "did anyone submit" — total submissions to the screen, unscoped by submitter.</li>
+              <li>Live sync: if the config's assigned L2 list changes while a ticket is still open, the ticket's approver array updates on the next check — old tickets don't freeze at whoever was assigned when they were raised.</li>
+              <li><code class="mono">PUT /submit/:id</code> ("Fix &amp; Submit") no longer hardcodes the next level as L2 — it escalates to whatever sits above the ticket's <em>current</em> level, and resolves that approver from whoever is actually clicking submit, not a fixed ticket owner.</li>
+              <li>Added the authorization check this endpoint never had: only the ticket's owner, its current-level approvers, an active delegate, or an admin can submit it.</li>
+              <li>Unique index swapped: one ticket per config (<code class="mono">operator_tickets_subfreq_missed_open_config_uq</code>), replacing the old per-user index.</li>
+            </ul>
+          </div>
+
+          <div class="file-card">
+            <span class="path">routes/supervisorTickets.routes.js</span>
+            <ul>
+              <li>Reject handler no longer hardcodes <code class="mono">tat_current_level = 'L1'</code>. A ticket with no L1 stage reopens to L2 instead; every other ticket type is unaffected.</li>
+            </ul>
+          </div>
+
+          <div class="file-card">
+            <span class="path">routes/submittedNotebooks.routes.js</span>
+            <ul>
+              <li><code class="mono">notebook_submission_id</code> now includes department + sub-department, not just notebook name + entry id — the fix for the cross-screen collision described in <a href="#collision">§05</a>.</li>
+            </ul>
+          </div>
+
+          <div class="file-card">
+            <span class="path">connection.js</span>
+            <ul>
+              <li>Self-healing column check for <code class="mono">tracked_l1_user_ids</code> on <code class="mono">screen_submission_frequency</code>, guarded on the table existing. Runs on every server start — nothing to apply by hand.</li>
+            </ul>
+          </div>
+
+        </div>
+      </section>
+
+      <section id="frontend">
+        <h2><span class="sec-num">03</span>Frontend changes</h2>
+        <div class="file-grid">
+          <div class="file-card">
+            <span class="path">views/thresholds/SubmissionThreshold.js</span>
+            <ul>
+              <li>"Assigned to" now lists L2 users, multi-select — the dropdown that already existed in the file (built, never wired up) is now in use.</li>
+              <li>Sub-Department and Notebook Type moved from one shared top-of-form selector to <em>per rule row</em> — clicking + adds a row that can target a different notebook entirely, each with its own frequency, days, criticality, and L2 assignees.</li>
+              <li>"Existing Thresholds" column header and validation copy updated from L1 to L2 throughout.</li>
+              <li>Preview-before-save dialog now lists each row's own Sub-Department › Notebook and frequency, instead of one shared summary line.</li>
+            </ul>
+          </div>
+          <div class="file-card">
+            <span class="path">apis/submissionFrequencyApi.js</span>
+            <ul>
+              <li>Fixed a misdiagnosis bug: <code class="mono">error.request</code> is set on <em>any</em> completed request, response or not — the check only claims "Network Error: unable to reach…" now when <code class="mono">error.response</code> is genuinely absent, instead of mislabeling an expired-token 401 as a connectivity failure.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="naming-bugs">
+        <h2><span class="sec-num">04</span>Recording bugs found across departments</h2>
+        <p class="lede">Occurrence counting only works if what gets recorded matches, character for character, what Submission Threshold expects. An audit across every department's data-entry screens turned up four places where it didn't.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Department</th><th>Screen</th><th>What was wrong</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Blow Room</td>
+                <td class="mono">BR Waste Study Entry Type 1/2/3</td>
+                <td class="muted">All three study types recorded under one generic name — thresholds set for a specific type never saw its submissions.</td>
+                <td><span class="pill pill-good">fixed</span></td>
+              </tr>
+              <tr>
+                <td>Carding</td>
+                <td class="mono">WheelChange</td>
+                <td class="muted">Never called the recording function at all — invisible to every threshold, regardless of naming.</td>
+                <td><span class="pill pill-good">fixed</span></td>
+              </tr>
+              <tr>
+                <td>Draw Frame</td>
+                <td class="mono">Wheel Change (7 sub-types)</td>
+                <td class="muted">All 7 recorded as generic "Wheel Change" instead of their specific Breaker/Finisher type names.</td>
+                <td><span class="pill pill-good">fixed</span></td>
+              </tr>
+              <tr>
+                <td>Spinning</td>
+                <td class="mono">Wheel Change Type 1/2/3</td>
+                <td class="muted">Same pattern — all three collapsed into one generic name.</td>
+                <td><span class="pill pill-good">fixed</span></td>
+              </tr>
+              <tr>
+                <td>Wrapping</td>
+                <td class="mono">Carding / Drawing / Simplex</td>
+                <td class="muted">None of the three ever reached <code class="mono">submitted_notebooks</code> — recording wasn't wired in at all.</td>
+                <td><span class="pill pill-good">fixed</span></td>
+              </tr>
+              <tr>
+                <td>Mixing, Comber, Simplex, Autoconer</td>
+                <td class="muted">all screens</td>
+                <td class="muted">Audited — every notebook name already matches exactly.</td>
+                <td><span class="pill pill-info">already correct</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="height:16px"></div>
+
+        <div class="callout bad">
+          <span class="icon">!</span>
+          <div>
+            <p><strong>One fix had to be reverted and redone.</strong> The first pass at the Draw Frame fix also deleted unrelated machine-dropdown fallback logic for Cots Data Entry and added a page reload on save-close — neither requested. That file was reverted to its original state and only the wheel-change naming fix was reapplied, as a clean 25-line addition.</div>
+        </div>
+      </section>
+
+      <section id="collision">
+        <h2><span class="sec-num">05</span>Data repair: the Nati Data Entry collision</h2>
+        <p class="lede">Carding and Comber both have a screen called "Nati Data Entry," both minting entry IDs with the same <code class="mono">NAT-</code> prefix from independent counters. Before the fix above, <code class="mono">notebook_submission_id</code> was built from notebook name + entry ID only — no department. When Comber's counter reached <code class="mono">NAT-0007</code>, the same number Carding had already used weeks earlier, the newer save silently overwrote the older row's payload instead of creating its own.</p>
+
+        <div class="callout good">
+          <span class="icon">✓</span>
+          <div>
+            <p><strong>Repaired directly in the database</strong>, in one transaction: two new, correctly-scoped rows created for the real Comber submissions (right department, right timestamp, real payload), and the two original Carding rows restored to their correct metadata with a transparent data-loss marker in place of the payload that couldn't be recovered.</p>
+            <p>Going forward this can't recur — <code class="mono">notebook_submission_id</code> now includes department and sub-department.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="database">
+        <h2><span class="sec-num">06</span>Database status</h2>
+        <p class="lede">Verified directly against the live database, not assumed.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Object</th><th>Expected</th><th>Verified state</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono">screen_submission_frequency.tracked_l1_user_ids</td>
+                <td class="muted">int[], default '{}'</td>
+                <td><span class="pill pill-good">present</span></td>
+              </tr>
+              <tr>
+                <td class="mono">screen_submission_frequency.approval_l1</td>
+                <td class="muted">text</td>
+                <td><span class="pill pill-good">present</span></td>
+              </tr>
+              <tr>
+                <td class="mono">operator_tickets.approval_l2_user_ids, l2_tat_due_at, tat_current_level …</td>
+                <td class="muted">reused, no new columns</td>
+                <td><span class="pill pill-good">present</span></td>
+              </tr>
+              <tr>
+                <td class="mono">operator_tickets_subfreq_missed_open_uq</td>
+                <td class="muted">old per-user index</td>
+                <td><span class="pill pill-bad">dropped</span></td>
+              </tr>
+              <tr>
+                <td class="mono">operator_tickets_subfreq_missed_open_config_uq</td>
+                <td class="muted">new per-config index</td>
+                <td><span class="pill pill-good">created</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="height:14px"></div>
+        <p class="lede" style="margin:0;">No manual migration was needed anywhere in this rework — the column check runs on every server start, and the index swap runs inside the check-worker that already fires every 15 minutes.</p>
+      </section>
+
+      <section id="verification">
+        <h2><span class="sec-num">07</span>Verification performed</h2>
+        <p class="lede">A temporary config and ticket were created against the live database using the real production code path, inspected, then fully cleaned up.</p>
+        <div class="ticket-sample">
+          <dt>ticket_id</dt><dd>#TK-0433</dd>
+          <dt>user_id</dt><dd>null</dd>
+          <dt>tat_current_level</dt><dd>L2</dd>
+          <dt>approval_l1_user_ids</dt><dd>null</dd>
+          <dt>approval_l2_user_ids</dt><dd>[46]</dd>
+          <dt>status</dt><dd>Open</dd>
+        </div>
+        <div style="height:14px"></div>
+        <p class="lede" style="margin:0 0 8px;">The L2 → L3 chain was checked against two real users, not assumed:</p>
+        <div class="code-block"><span class="c">Aravinth S</span> (L2) → <span class="k">UMA J</span> (L3) → Sneha SJ (L4) → PRAVEEN KUMAR (L5)
+<span class="c">Gajapathy L2</span> (L2) → <span class="k">Subash DSM</span> (L3) → Sridhar DSM (L4) → Mugundhan DSM (L5)</div>
+      </section>
+
+      <section id="followups">
+        <h2><span class="sec-num">08</span>Open items — nothing broken, just undecided</h2>
+        <div class="followup">
+          <div class="followup-item">
+            <div><span class="pill pill-warn">left as-is</span></div>
+            <div>
+              <h4>Old Submission Thresholds</h4>
+              <p>The four configs that predate this rework (Fibre, U%, Nati-Comber, AFIS-Mixing) were deleted rather than migrated — by your own choice, not touched by any of this.</p>
+            </div>
+          </div>
+          <div class="followup-item">
+            <div><span class="pill pill-warn">not built</span></div>
+            <div>
+              <h4>PP Threshold access restriction</h4>
+              <p>Discussed but not implemented: restricting the PP data-entry screen so an L1 can only create/update entries for the department they're assigned in PP Threshold. The data for it already exists (<code class="mono">pp_notebook_threshold.approval_l1_user_ids</code>) — what's missing is the enforcement check on the entry screen and its API routes.</p>
+            </div>
+          </div>
+          <div class="followup-item">
+            <div><span class="pill pill-warn">not done</span></div>
+            <div>
+              <h4>Column renaming</h4>
+              <p><code class="mono">tracked_l1_user_ids</code> and <code class="mono">approval_l1</code> on <code class="mono">screen_submission_frequency</code> still carry their old L1-era names though they hold L2 data now. Discussed, scoped, awaiting a go-ahead.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <footer>Spintelligence DSM · Submission Threshold engineering changelog</footer>
+</div>

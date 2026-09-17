@@ -3,7 +3,7 @@ import { Readable } from "node:stream";
 // Mirrors apiConfig.js's hardcoded backend host. This fetch runs server-side in the
 // Next.js Node process, not the browser, so there's no mixed-content concern about
 // using plain HTTP here even when the page itself is served over HTTPS.
-const OCR_BACKEND_FALLBACK_URL = "http://187.127.135.236:4000";
+const OCR_BACKEND_FALLBACK_URL = "http://200.141.4.6:4000";
 
 const getBackendBaseUrl = () =>
   String(

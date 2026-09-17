@@ -21,7 +21,7 @@ import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 
 const blowroomTypes = [
   { id: 1, name: "Blow Room Sync", aliases: ["Blow Room Sync"], component: BlowRoomSync, needsLotNo: false },
-  { id: 2, name: "Process Parameter", aliases: ["Process Parameter"], component: ProcessParameter, needsLotNo: false },
+  { id: 2, name: "Process Parameter", aliases: ["Process Parameter", "Blow Room - PP"], component: ProcessParameter, needsLotNo: false },
   { id: 3, name: "BR Waste Study Entry", aliases: ["BR Waste Study Entry", "Blow Room Waste Study Entry"], component: BrWasteStudyEntry, needsLotNo: false },
   { id: 4, name: "Drop Test Data Entry", aliases: ["Drop Test Data Entry", "Drop Test"], component: DropTestDataEntry, needsLotNo: true },
   { id: 5, name: "B/R CV1M Data Entry Within Lap", aliases: ["B/R CV1M Data Entry Within Lap", "Within Lap CV1M Data Entry"], component: WithinLapCVDataEntry, needsLotNo: false },
@@ -92,6 +92,11 @@ function BlowRoom() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [headerErrors, setHeaderErrors] = useState({});
   const [validationMessage, setValidationMessage] = useState("");
+  // Acknowledgement Threshold's screen catalog splits "BR Waste Study Entry" into
+  // per-study-type entries ("...Type 1"/"Type 2"/"Type 3"), not the single generic
+  // type name in the dropdown here — mirrors carding.js's Individual Card Waste
+  // Study handling, fed by BrWasteStudyEntry's own onStudyTypeChange callback.
+  const [brWasteStudyType, setBrWasteStudyType] = useState("Type 1");
 
   const blowroomState = useSelector((state) => state.blowroom);
 
@@ -172,15 +177,20 @@ function BlowRoom() {
     setShowPreview(true);
   };
 
+  const isBrWasteStudyType = selectedTypeName === "BR Waste Study Entry";
+
   const confirmSubmit = async () => {
     setShowPreview(false);
     suppressAutoSuccessRef.current = true;
     try {
       await childRef.current?.submit?.();
+      const notebookNameForSubmission = isBrWasteStudyType
+        ? `${selectedTypeName} ${brWasteStudyType}`
+        : selectedTypeName;
       await recordSubmittedNotebook({
         department: "Quality Control",
         subDepartment: "Blow Room",
-        notebookName: selectedTypeName,
+        notebookName: notebookNameForSubmission,
         entryId,
         lotNo,
         childRef,
@@ -191,8 +201,8 @@ function BlowRoom() {
         await createThresholdViolationTickets({
           department: "Quality Control",
           subDepartment: "Blow Room",
-          screenName: selectedTypeName,
-          machineName: selectedTypeName,
+          screenName: notebookNameForSubmission,
+          machineName: notebookNameForSubmission,
           entryId,
           values: previewItems,
         });
@@ -321,7 +331,7 @@ function BlowRoom() {
                   onSampleCountChange={setSampleCount}
                   savedVersionsTargetId="blowroom-process-parameter-history"
                   postFooterPortalTargetId="blowroom-post-footer-slot"
-                  showEntryId={false}
+                  onStudyTypeChange={isBrWasteStudyType ? setBrWasteStudyType : undefined}
                 />
               ) : (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
@@ -340,7 +350,7 @@ function BlowRoom() {
           ) : null}
 
           {isProcessParameterType ? (
-            <div className="mt-6 border-t border-slate-100 px-5 pt-4">
+            <div className="mt-6 border-t border-slate-100 pt-4">
               <Footer
                 onBack={() => router.push("/departments/quality-control")}
                 onClear={() => {

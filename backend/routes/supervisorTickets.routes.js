@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const client = require('../connection');
 const auth = require('../middleware/auth');
-const { createNotification } = require('../utils/notifications');
+const { createNotification, createNotificationsForUsers } = require('../utils/notifications');
 const { ensureDelegationsTable } = require('./delegations.routes');
 
 const parsePositiveInt = (value) => {
@@ -401,19 +401,31 @@ router.get('/tickets', async (req, res, next) => {
     const applyStageFilter = !canViewAll && !isAdmin001 && isReviewLevel(stageFilter);
     if (applyStageFilter) {
       values.push(stageFilter);
-      where.push(stageFilter !== 'L1'
-        // A reportee's ticket is visible once it's at or below the viewer's
-        // own level (still within their reporting chain's current work -
-        // Mapped visibility), not only when it's sitting exactly at their
-        // level. This also caps it the other way: a ticket that's escalated
-        // ABOVE the viewer's level (e.g. an L2's L1 reportee's Acknowledgement
-        // ticket now sitting with L4) drops out of view - it's no longer that
-        // viewer's business once it's past them. The reportee-ownership
-        // clause further down still gates who's allowed to see it at all;
-        // this only bounds which of a visible ticket's escalation states
-        // actually show.
-        ? `${levelRankSql('COALESCE(ot.tat_current_level, \'L1\')')} <= ${levelRankSql(`$${values.length}`)}`
-        : `COALESCE(ot.tat_current_level, 'L1') = $${values.length}`);
+      // A reportee's ticket is visible once it's at or below the viewer's
+      // own level (still within their reporting chain's current work -
+      // Mapped visibility), not only when it's sitting exactly at their
+      // level. This also caps it the other way: a ticket that's escalated
+      // ABOVE the viewer's level (e.g. an L2's L1 reportee's Acknowledgement
+      // ticket now sitting with L4) drops out of view - it's no longer that
+      // viewer's business once it's past them. The reportee-ownership
+      // clause further down still gates who's allowed to see it at all;
+      // this only bounds which of a visible ticket's escalation states
+      // actually show.
+      //
+      // Closed is the one exception to that upper-bound rank cap: once a
+      // ticket is Closed, every level that was ever legitimately part of its
+      // chain (still gated by the approval-array/reportee visibility clause
+      // below - this doesn't grant anyone new access) should keep seeing it
+      // in their own history, not have it silently vanish from, say, L2's
+      // dashboard the moment L3 approves it. Applies to Value Threshold and
+      // Submission Threshold tickets alike - both walk the same
+      // tat_current_level escalation this stage filter is built on.
+      where.push(`(
+        ot.status = 'Closed'
+        OR ${stageFilter !== 'L1'
+          ? `${levelRankSql('COALESCE(ot.tat_current_level, \'L1\')')} <= ${levelRankSql(`$${values.length}`)}`
+          : `COALESCE(ot.tat_current_level, 'L1') = $${values.length}`}
+      )`);
       // A second, broader exclusion used to run here for the L1 stage only,
       // stripping out ANY ticket with category='MISSED_FREQUENCY' regardless
       // of ticket_type - not just Acknowledgement ones. That was fine back
@@ -1697,18 +1709,27 @@ router.patch('/tickets/reject', async (req, res, next) => {
       });
     }
 
-    // Rejecting sends the ticket back to whoever fixes it (L1) - previously
-    // this only set status='Reopened' and left tat_current_level at whatever
-    // review tier rejected it, so the ticket kept showing that reviewer's
-    // Approve/Reject action instead of going back to Fix & Resubmit.
+    // Rejecting sends the ticket back to whoever actually fixes it. For
+    // almost every ticket type that's L1 - but a ticket that never had an L1
+    // stage at all (Submission Threshold's Fix & Submit now starts at L2 -
+    // see checkSubmissionFrequencyMissed in operatorTickets.routes.js, which
+    // deliberately leaves approval_l1_user_ids empty for these) has nobody
+    // at L1 to send it back to; reopening to 'L1' there would strand the
+    // ticket at a level with zero assignees, invisible to everyone. Detect
+    // that shape (SUBMISSION_FREQUENCY + no L1 array ever populated) and
+    // reopen to L2 instead - every other ticket type's behavior (reopen to
+    // L1) is unchanged, including legacy Submission Threshold tickets raised
+    // before this change, which still carry a real approval_l1_user_ids.
+    const hasL1Assignment = Array.isArray(ticket.approval_l1_user_ids) && ticket.approval_l1_user_ids.length > 0;
+    const rejectBaseLevel = (!hasL1Assignment && ticket.ticket_type === 'SUBMISSION_FREQUENCY') ? 'L2' : 'L1';
     const rejectedFromLevel = String(ticket.tat_current_level || 'L2').trim().toUpperCase();
     const updated = await client.query(
       `UPDATE ticketing_system.operator_tickets
        SET status = 'Reopened',
-           tat_current_level = 'L1'
+           tat_current_level = $2
        WHERE ticket_id = $1
        RETURNING *`,
-      [ticketId]
+      [ticketId, rejectBaseLevel]
     );
 
     await client.query(
@@ -1738,6 +1759,24 @@ router.patch('/tickets/reject', async (req, res, next) => {
         linkUrl: `/operator-tickets/${ticketId}`,
         payload: { ticket_id: ticketId, status: 'Reopened' }
       });
+    } else {
+      // No single owner (e.g. Submission Threshold's L2-assigned tickets) -
+      // notify everyone currently assigned at the level it's reopening to.
+      const rejectBaseApproverIds = Array.isArray(updated.rows[0][`approval_${rejectBaseLevel.toLowerCase()}_user_ids`])
+        ? updated.rows[0][`approval_${rejectBaseLevel.toLowerCase()}_user_ids`]
+        : [];
+      if (rejectBaseApproverIds.length) {
+        await createNotificationsForUsers(rejectBaseApproverIds, {
+          ticketId,
+          type: 'TICKET_REOPENED',
+          category: 'Tickets',
+          priority: 'High',
+          title: `${ticket.machine_name || 'Ticket'} ${ticketId} rejected — reopened`,
+          body: `${req.user?.full_name || 'A supervisor'} rejected ticket ${ticketId} for ${ticket.machine_name || 'the machine'}. Please review and resubmit.`,
+          linkUrl: `/operator-tickets/${ticketId}`,
+          payload: { ticket_id: ticketId, status: 'Reopened' }
+        });
+      }
     }
 
     res.locals.activityDescription = `Rejected ticket ${ticketId} for ${ticket.machine_name || 'unknown machine'} — reopened for submitter`;

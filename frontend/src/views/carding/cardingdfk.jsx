@@ -190,7 +190,7 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
           subDepartment: "Carding",
           notebookName: selectedType || DFK_TYPE,
           entryId: nextEntryId,
-          previewItems,
+          previewItems: submittedNotebookItems,
           user,
         });
       } catch (recordError) {
@@ -269,6 +269,22 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
       label: field.field_label,
       value: customFieldValues[field.id],
     })),
+  ];
+
+  // Submitted Notebooks records only what's in previewItems (its detail view has no
+  // fallback source endpoint for Card DFK), so the per-machine table rows have to be
+  // flattened in here too - but only for that record, not for the on-screen preview
+  // modal below, which already shows those rows via previewGroups' table.
+  const submittedNotebookItems = [
+    ...previewItems,
+    { label: "Date", value: date },
+    ...filledRows.flatMap((row) => [
+      { label: `${row.machine} Machine Name`, value: row.machine },
+      ...TABLE_COLUMNS.map((column) => ({
+        label: `${row.machine} ${column.label}`,
+        value: row[column.key] || "0.00",
+      })),
+    ]),
   ];
 
   const previewGroups = [

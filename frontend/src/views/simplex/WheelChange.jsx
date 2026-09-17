@@ -710,8 +710,6 @@ const WheelChange = forwardRef(function WheelChange(
           },
         ]
       : []),
-    { label: "Type", value: selectedTypeName || "-" },
-    { label: "Entry ID", value: entryId || "-" },
     { label: "SMX No.", value: form.smxNo || "-" },
     { label: "SMX No. (Proposed)", value: form.smxNoProposed || "-" },
     ...PARAMETER_ROWS.map((row) => ({
