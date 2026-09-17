@@ -1,14 +1,64 @@
 import { createSubmittedNotebookApi } from "@/apis/submittedNotebooksApi";
 import { fetchNotebookAcknowledgementThresholdsAPI } from "@/apis/notebookAcknowledgementThresholdApi";
 
-const previewItemsToPayload = (items = []) =>
-  items.reduce((acc, item) => {
-    if (!item || typeof item !== "object") return acc;
-    const key = String(item.key || item.name || item.label || "").trim();
-    if (!key) return acc;
-    acc[key.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")] = item.value;
-    return acc;
-  }, {});
+// Slugifying "Lap Weight (KGs)" down to a key like lap_weight_kgs is one-way - reconstructing a
+// display label from that key later can only guess ("Lap Weight Kgs"), losing the exact
+// punctuation/casing the entry screen actually shows. Carrying the original label alongside the
+// slug lets the submitted-notebook view show the field exactly as it appears on screen, for any
+// notebook that goes through this generic (non-getPayload) capture path.
+export const previewItemsToPayload = (items = []) => {
+  const payload = {};
+  const fieldLabels = {};
+
+  items.forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    const rawKey = String(item.key || item.name || item.label || "").trim();
+    if (!rawKey) return;
+    const slug = rawKey.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    payload[slug] = item.value;
+    if (item.label) fieldLabels[slug] = String(item.label);
+  });
+
+  if (Object.keys(fieldLabels).length) payload.__field_labels = fieldLabels;
+  return payload;
+};
+
+const slugify = (value) =>
+  String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+
+// Screens that were converted to show their preview as PreviewModal `groups` (real per-section
+// tables) instead of one flat `items` list still need every field captured in submitted_notebooks
+// for screens with no dedicated getPayload() - otherwise only the trimmed top-level `items` (Type/
+// Entry ID/date/etc.) would be recorded and every field that moved into a group would be silently
+// dropped from the submitted-notebook record. Flattens each group's rows into
+// "<group>_<row>_<column>" keys (row segment omitted when a group has exactly one row), matching
+// the "row_<n>_<field>" convention several SubmittedNotebooksPage.jsx custom-section detectors
+// already key off (e.g. getCardingBetweenWithinSections's row_<n>_hank/row_<n>_sample_weight).
+const groupsToPayload = (groups = []) => {
+  const payload = {};
+  const fieldLabels = {};
+
+  groups.forEach((group) => {
+    if (!group || !Array.isArray(group.columns) || !Array.isArray(group.rows)) return;
+    const groupSlug = slugify(group.title || group.key);
+    const multiRow = group.rows.length > 1;
+
+    group.rows.forEach((row, rowIndex) => {
+      group.columns.forEach((column) => {
+        const columnSlug = slugify(column.label || column.key);
+        if (!columnSlug) return;
+        const slug = multiRow
+          ? `${groupSlug}_${rowIndex + 1}_${columnSlug}`
+          : `${groupSlug}_${columnSlug}`;
+        payload[slug] = row?.[column.key];
+        fieldLabels[slug] = multiRow ? `${group.title} ${rowIndex + 1} - ${column.label}` : `${group.title} - ${column.label}`;
+      });
+    });
+  });
+
+  if (Object.keys(fieldLabels).length) payload.__field_labels = fieldLabels;
+  return payload;
+};
 
 const cleanPayloadValue = (value) => {
   if (value === undefined || value === null) return "";
@@ -123,20 +173,43 @@ export const recordSubmittedNotebook = async ({
   childRef,
   registeredActions,
   previewItems,
+  previewGroups = [],
   user,
+  // Fields that live on the container screen rather than the active sub-component (e.g. Blow
+  // Room's "Number of Sample Entries", which drives the Lap CV screens but is its own header
+  // input, not part of any child's getPreviewData()/getPayload()) - pass as [{label, value}] so
+  // they still end up in submitted_fields, without touching the child's own preview construction.
+  extraFields = [],
   extra = {},
 }) => {
   try {
+    const mergePayloads = (a, b) => {
+      const merged = { ...a, ...b };
+      const combinedLabels = { ...(a.__field_labels || {}), ...(b.__field_labels || {}) };
+      if (Object.keys(combinedLabels).length) merged.__field_labels = combinedLabels;
+      return merged;
+    };
+
     const submittedFields =
       childRef?.current?.getPayload?.() ||
       registeredActions?.getPayload?.() ||
-      previewItemsToPayload(previewItems);
+      (previewGroups.length
+        ? mergePayloads(previewItemsToPayload(previewItems), groupsToPayload(previewGroups))
+        : previewItemsToPayload(previewItems));
 
     if (!submittedFields || typeof submittedFields !== "object" || !Object.keys(submittedFields).length) {
       return null;
     }
 
-    const cleanedFields = removeL1ApprovalFields(cleanObject(submittedFields));
+    const extraFieldsPayload = extraFields.length ? previewItemsToPayload(extraFields) : {};
+    const mergedFieldLabels = {
+      ...(submittedFields.__field_labels || {}),
+      ...(extraFieldsPayload.__field_labels || {}),
+    };
+    const combinedFields = { ...submittedFields, ...extraFieldsPayload };
+    if (Object.keys(mergedFieldLabels).length) combinedFields.__field_labels = mergedFieldLabels;
+
+    const cleanedFields = removeL1ApprovalFields(cleanObject(combinedFields));
     const cleanedExtra = removeL1ApprovalFields(extra);
     const operatorName = user?.full_name || user?.fullName || user?.name || user?.username || user?.email || "";
     const resolvedEntryId = entryId || cleanedFields.entry_id || cleanedFields.entryId || "";

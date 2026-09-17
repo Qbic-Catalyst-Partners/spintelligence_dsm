@@ -671,6 +671,13 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     };
 
     const getPreviewData = () => {
+        const activeCountInput = studyType === "Type 3"
+            ? type3CountInput
+            : studyType === "Type 2"
+                ? type2CountInput
+                : type1CountInput;
+        const totalWasteKgValuePreview = wasteKgRows.reduce((sum, row) => sum + (Number(row.wasteKgValue) || 0), 0);
+
         const header = [
             { label: "Type", value: entryTypeLabel },
             { label: "Entry ID", value: entryId || "-" },
@@ -678,27 +685,45 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
             { label: "Variety", value: formData.variety },
             { label: "Carding Production (KGs)", value: formData.cardingProduction },
             { label: "Study Type", value: formData.studyType },
-            { label: "Overall Waste %", value: overallWaste },
+            { label: `Number of ${studyType || "Type 1"} Entries`, value: activeCountInput },
+            { label: `Number of Waste Types (Max ${WASTE_KG_MAX_TYPES})`, value: wasteKgCountInput },
+            { label: "Total Waste KGs Value", value: totalWasteKgValuePreview.toFixed(4) },
+            { label: "Total Waste KGs %", value: overallWaste },
             { label: "Remarks", value: remarks },
         ];
+
+        const activeColumns = studyType === "Type 3"
+            ? TYPE_3_COLUMNS
+            : studyType === "Type 2"
+                ? TYPE_2_COLUMNS
+                : TYPE_1_COLUMNS;
         const rowsForPreview = studyType === "Type 3"
             ? type3Rows
             : studyType === "Type 2"
                 ? type2Rows
                 : type1Rows;
-        const entries = rowsForPreview.map((row, idx)=>({
-            label: `Entry ${idx+1}`,
-            value: studyType === "Type 3"
-                ? TYPE_3_COLUMNS.map(col=>`${col.label}:${row[col.key]}`).join(" | ")
-                : studyType === "Type 2"
-                    ? TYPE_2_COLUMNS.map(col=>`${col.label}:${row[col.key]}`).join(" | ")
-                : TYPE_1_COLUMNS.map(col=>`${col.label}:${row[col.key]}`).join(" | ")
-        }));
-        const wasteKgEntries = wasteKgRows.map((row, idx) => ({
-            label: `Waste KGs ${idx + 1}`,
-            value: `Type:${row.wasteType} | Waste KG:${row.wasteKgValue} | Waste %:${row.wasteKgPercent}`,
-        }));
-        return [...header, ...entries, ...wasteKgEntries];
+
+        const groups = [];
+        if (studyType) {
+            groups.push({
+                key: "study-details",
+                title: `${studyType} Study Details`,
+                columns: activeColumns.map((col) => ({ key: col.key, label: col.label })),
+                rows: rowsForPreview,
+            });
+            groups.push({
+                key: "waste-kg",
+                title: "Waste KGs Calculation",
+                columns: [
+                    { key: "wasteType", label: "Waste Type" },
+                    { key: "wasteKgValue", label: "Waste KGs Value" },
+                    { key: "wasteKgPercent", label: "Waste KGs %" },
+                ],
+                rows: wasteKgRows,
+            });
+        }
+
+        return { items: header, groups };
     };
 
     useImperativeHandle(ref, () => ({

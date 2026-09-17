@@ -1539,29 +1539,46 @@ const WheelChange = forwardRef(function WheelChange(
     return payload;
   };
 
-  const getPreviewData = () => [
-    ...(unapprovedEntry
-      ? [
-          {
-            label: "⚠ Overwrite Warning",
-            value:
-              unapprovedEntry.status === "rejected"
-                ? "This machine/variety has a rejected entry still pending resubmission. Submitting will replace it — there is no undo."
-                : "This machine/variety already has an entry awaiting L4 verification. Submitting will overwrite it — there is no undo.",
-            wide: true,
-          },
-        ]
-      : []),
-    { label: "Checking Type", value: selectedTypeName || "-" },
-    { label: "Wheel Change Type", value: wheelChangeType || "-" },
-    { label: "Entry ID", value: entryId || "#SPN-001" },
-    { label: "Test No", value: testNo || "-" },
-    { label: referenceLabel, value: machineNumber || "-" },
-    ...activeRows.flatMap((row) => [
-      { label: `${row.label} - Existing`, value: values[row.key]?.existing || "-" },
-      { label: `${row.label} - Proposed`, value: values[row.key]?.proposed || "-" },
-    ]),
-  ];
+  const getPreviewData = () => {
+    const items = [
+      ...(unapprovedEntry
+        ? [
+            {
+              label: "⚠ Overwrite Warning",
+              value:
+                unapprovedEntry.status === "rejected"
+                  ? "This machine/variety has a rejected entry still pending resubmission. Submitting will replace it — there is no undo."
+                  : "This machine/variety already has an entry awaiting L4 verification. Submitting will overwrite it — there is no undo.",
+              wide: true,
+            },
+          ]
+        : []),
+      { label: "Checking Type", value: selectedTypeName || "-" },
+      { label: "Wheel Change Type", value: wheelChangeType || "-" },
+      { label: "Entry ID", value: entryId || "#SPN-001" },
+      { label: "Test No", value: testNo || "-" },
+      { label: referenceLabel, value: machineNumber || "-" },
+    ];
+
+    const groups = [
+      {
+        key: "wheel-change-parameters",
+        title: "Parameters (Existing / Proposed)",
+        columns: [
+          { key: "label", label: "Parameter" },
+          { key: "existing", label: "Existing" },
+          { key: "proposed", label: "Proposed" },
+        ],
+        rows: activeRows.map((row) => ({
+          label: row.label,
+          existing: values[row.key]?.existing || "-",
+          proposed: values[row.key]?.proposed || "-",
+        })),
+      },
+    ];
+
+    return { items, groups };
+  };
 
   useImperativeHandle(ref, () => ({
     clear,

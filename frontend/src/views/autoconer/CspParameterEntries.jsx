@@ -289,15 +289,19 @@ function CspParameterEntries({
     [lockedValues]
   );
 
-  const mergedValues = useMemo(
-    () => ({
-      ...lockedValues,
-      ...values,
-      totalOne,
-      totalTwo,
-    }),
-    [lockedValues, values, totalOne, totalTwo]
-  );
+  // `values` initializes every ALL_FIELDS key (including the quality fields this screen never
+  // lets the user edit) to "" - spreading it after lockedValues would silently overwrite the
+  // real pre-populated quality values with those empty placeholders before the preview ever
+  // reads them. Only let lockedValues' own keys override values when they actually hold real
+  // data, so the user's own CSP-field edits in `values` are never clobbered by lockedValues'
+  // always-empty CSP-field placeholders either.
+  const mergedValues = useMemo(() => {
+    const merged = { ...values, totalOne, totalTwo };
+    Object.keys(lockedValues).forEach((key) => {
+      if (lockedValues[key]) merged[key] = lockedValues[key];
+    });
+    return merged;
+  }, [lockedValues, values, totalOne, totalTwo]);
 
   const pendingEntries = useMemo(
     () =>
@@ -575,8 +579,20 @@ function CspParameterEntries({
                   <strong>{entry.values.strength || "-"}</strong>
                 </div>
                 <div className={styles.pendingMetaItem}>
+                  <span>Count CV</span>
+                  <strong>{entry.values.cv1 || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Strength CV</span>
+                  <strong>{entry.values.cv2 || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
                   <span>Calculated CSP</span>
                   <strong>{entry.calculatedCsp || entry.values.csp || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Cone Color</span>
+                  <strong>{entry.values.coneColor || "-"}</strong>
                 </div>
                 <div className={styles.pendingMetaItem}>
                   <span>U</span>

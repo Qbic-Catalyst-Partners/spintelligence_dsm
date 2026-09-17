@@ -339,31 +339,82 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   };
 
   const getPreviewData = () => {
-    const header = [
+    const items = [
       { label: "Date", value: date },
       { label: "B/R Line No", value: brLine },
       { label: "Target (ASV)", value: target },
       { label: "Entries (N)", value: form.entries },
+      { label: "Overall Openness %", value: overallOpen },
     ];
 
-    const stageMeta = stages.flatMap((stage, stageIndex) => [
-      { label: `${stage.stageName || `Stage ${stageIndex + 1}`} - Beater Type`, value: stage.beaterType },
-      { label: `${stage.stageName || `Stage ${stageIndex + 1}`} - Beater Speed (RPM)`, value: stage.beaterSpeed },
-    ]);
+    const stageLabel = (stage, stageIndex) => stage.stageName || `Stage ${stageIndex + 1}`;
 
-    const stageRows = stages.flatMap((stage, stageIndex) =>
+    const stageSetupGroup = {
+      key: "openness-stage-setup",
+      title: "Stage Setup",
+      columns: [
+        { key: "stage", label: "Stage" },
+        { key: "beaterType", label: "Beater Type" },
+        { key: "beaterSpeed", label: "Beater Speed (RPM)" },
+      ],
+      rows: stages.map((stage, stageIndex) => ({
+        stage: stageLabel(stage, stageIndex),
+        beaterType: stage.beaterType,
+        beaterSpeed: stage.beaterSpeed,
+      })),
+    };
+
+    const measurementsGroup = {
+      key: "openness-measurements",
+      title: "Openness Measurements",
+      columns: [
+        { key: "stage", label: "Stage" },
+        { key: "rowNo", label: "Row" },
+        { key: "weight", label: "Weight (M)" },
+        { key: "vol1", label: "Volume 1" },
+        { key: "vol2", label: "Volume 2" },
+        { key: "avgVol", label: "Average Volume (V)" },
+        { key: "asv", label: "Apparent Specific Vol (A=V/M)" },
+        { key: "aov", label: "Actual Op. Value (AOV)" },
+      ],
+      rows: stages.flatMap((stage, stageIndex) =>
         stage.rows.map((row, rowIndex) => ({
-        label: `${stage.stageName || `Stage ${stageIndex + 1}`} - Row ${rowIndex + 1}`,
-        value: `W:${row.weight} | V1:${row.vol1} | V2:${row.vol2} | V:${row.avgVol} | ASV:${row.asv} | AOV:${row.aov}`,
-      }))
-    );
+          stage: stageLabel(stage, stageIndex),
+          rowNo: rowIndex + 1,
+          weight: row.weight,
+          vol1: row.vol1,
+          vol2: row.vol2,
+          avgVol: row.avgVol,
+          asv: row.asv,
+          aov: row.aov,
+        }))
+      ),
+    };
 
-    const stageSummaries = stages.map((stage, stageIndex) => ({
-      label: `${stage.stageName || `Stage ${stageIndex + 1}`} Openness %`,
-      value: stage.openness,
-    }));
+    const stageAveragesGroup = {
+      key: "openness-stage-averages",
+      title: "Stage Averages",
+      columns: [
+        { key: "stage", label: "Stage" },
+        { key: "avgWeight", label: "Avg. Weight (M)" },
+        { key: "avgVol", label: "Avg. Volume (V)" },
+        { key: "avgAsv", label: "Average of Apparent Specific Vol (A=V/M)" },
+        { key: "avgAov", label: "Average of Actual Op. Value (AOV)" },
+        { key: "openness", label: "Openness %" },
+      ],
+      rows: stages.map((stage, stageIndex) => ({
+        stage: stageLabel(stage, stageIndex),
+        avgWeight: stage.avgWeight,
+        avgVol: stage.avgVol,
+        avgAsv: stage.avgAsv,
+        avgAov: stage.avgAov,
+        openness: stageIndex > 0 && stageIndex < stages.length - 1 ? stage.openness : "-",
+      })),
+    };
 
-    return [...header, ...stageMeta, ...stageRows, ...stageSummaries, { label: "Overall Openness %", value: overallOpen }];
+    const groups = [stageSetupGroup, measurementsGroup, stageAveragesGroup];
+
+    return { items, groups };
   };
 
   useImperativeHandle(ref, () => ({

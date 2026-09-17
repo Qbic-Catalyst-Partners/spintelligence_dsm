@@ -308,36 +308,80 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
     };
 
     const getPreviewData = () => {
-        const base = [
+        return [
             { label: "Machine Name", value: machine },
             { label: "Variety", value: variety },
+            { label: "Date", value: date },
+            { label: "Number of Sample Entries", value: sampleCount },
         ];
+    };
 
-        if (lapWeight) base.push({ label: "Lap Weight (KGs)", value: lapWeight });
-        if (lapLength) base.push({ label: "Lap Length (Mts)", value: lapLength });
-        if (gramsPerMeter) base.push({ label: "Grams / Meter", value: gramsPerMeter });
+    const getPreviewGroups = () => {
+        const groups = [];
 
-        const sampleItems = samples
-            .map((value, index) => ({ label: `Sample ${index + 1}`, value: value || "-" }))
-            .filter((item) => item.value !== "-");
+        if (lapWeight || lapLength || gramsPerMeter) {
+            groups.push({
+                key: "lap-details",
+                title: "Lap Details",
+                columns: [
+                    { key: "lapWeight", label: "Lap Weight (KGs)" },
+                    { key: "lapLength", label: "Lap Length (Mts)" },
+                    { key: "gramsPerMeter", label: "Grams / Meter" },
+                ],
+                rows: [
+                    {
+                        lapWeight: lapWeight || "-",
+                        lapLength: lapLength || "-",
+                        gramsPerMeter: gramsPerMeter || "-",
+                    },
+                ],
+            });
+        }
 
-        const statsItems = stats.avg
-            ? [
-                  { label: "Average", value: stats.avg },
-                  { label: "Minimum", value: stats.min },
-                  { label: "Maximum", value: stats.max },
-                  { label: "Standard Deviation", value: stats.sd },
-                  { label: "CV %", value: stats.cv },
-              ]
-            : [];
+        groups.push({
+            key: "samples",
+            title: "Sample Entries",
+            columns: [
+                { key: "sampleNo", label: "Sample No" },
+                { key: "value", label: "Value" },
+            ],
+            rows: samples.map((value, index) => ({
+                sampleNo: index + 1,
+                value: value || "-",
+            })),
+        });
 
-        return [...base, ...sampleItems, ...statsItems];
+        if (stats.avg) {
+            groups.push({
+                key: "stats",
+                title: "Calculated Statistics",
+                columns: [
+                    { key: "avg", label: "Average" },
+                    { key: "min", label: "Minimum" },
+                    { key: "max", label: "Maximum" },
+                    { key: "sd", label: "Standard Deviation" },
+                    { key: "cv", label: "CV %" },
+                ],
+                rows: [
+                    {
+                        avg: stats.avg,
+                        min: stats.min,
+                        max: stats.max,
+                        sd: stats.sd,
+                        cv: stats.cv,
+                    },
+                ],
+            });
+        }
+
+        return groups;
     };
 
     useImperativeHandle(ref, () => ({
         clear: resetForm,
         validate,
         getPreviewData,
+        getPreviewGroups,
         submit: handleSubmit,
         calculateStats,
     }));

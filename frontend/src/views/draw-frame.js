@@ -757,6 +757,7 @@ function DrawFrame() {
   const [errors, setErrors] = useState({});
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
+  const [previewGroups, setPreviewGroups] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const successHandledRef = useRef(false);
   const suppressAutoSuccessRef = useRef(false);
@@ -1456,54 +1457,118 @@ function DrawFrame() {
       items.push({ label: "Type", value: form.type });
       items.push({ label: "Entry ID", value: entryId || "-" });
       items.push({ label: "PDF File", value: aPercentFile?.name || "-" });
-      A_PERCENT_META_FIELDS.forEach((field) => {
-        if (field.key === "entryId") return;
-        items.push({
-          label: field.label,
-          value:
-            field.key === "pdfFile"
-              ? aPercentFile?.name || "-"
-              : aPercentOcrMeta?.[field.key] || "-",
-        });
-      });
-
-      aPercentOcrRows.forEach((row, index) => {
-        const isSummary = A_PERCENT_SUMMARY_ROWS.has(String(row.sampleNo || "").trim());
-        const prefix = isSummary ? `Summary ${row.label || index + 1}` : `Sample ${row.sampleNo || index + 1}`;
-        A_PERCENT_TABLE_COLUMNS.forEach((column) => {
-          items.push({
-            label: `${prefix} - ${column.label}`,
-            value: row[column.key] || "-",
-          });
-        });
-      });
+      // Meta/Sample/Summary are shown as real tables via buildPreviewGroups below,
+      // matching Comber Nolis %/Stretch %'s layout, instead of a flat card per field.
     } else if (isWheelChangeEntry) {
       items.push(...(wheelChangeRef.current?.getPreviewData?.() || []));
     } else if (!isHeaderEntry) {
       items.push({ label: "Type", value: form.type });
+      items.push({ label: "Entry ID", value: entryId || "-" });
       items.push({ label: "Date", value: form.date });
       items.push({ label: "Machine Number", value: form.machineNumber });
       items.push({ label: "Remarks", value: form.remarks });
       items.push({ label: "Number of Readings (N)", value: form.readingCount });
-      const ensureMetricCount = Math.max(form.readingCount || 0, oneYardReadings.length, halfYardReadings.length, 1);
-      const paddedOne = oneYardReadings.length ? oneYardReadings : Array.from({ length: ensureMetricCount }, () => "");
-      const paddedHalf = halfYardReadings.length ? halfYardReadings : Array.from({ length: ensureMetricCount }, () => "");
-
-      Array.from({ length: ensureMetricCount }).forEach((_, idx) => {
-        items.push({ label: `Reading ${idx + 1} - 1 Yard`, value: paddedOne[idx] || "-" });
-        items.push({ label: `Reading ${idx + 1} - 1/2 Yard`, value: paddedHalf[idx] || "-" });
-      });
-      items.push({ label: "AVG (1Y)", value: oneYardMetrics[0]?.avg || "-" });
-      items.push({ label: "HANK (1Y)", value: oneYardMetrics[0]?.hank || "-" });
-      items.push({ label: "SD (1Y)", value: oneYardMetrics[0]?.sd || "-" });
-      items.push({ label: "CV% (1Y)", value: oneYardMetrics[0]?.cv || "-" });
-      items.push({ label: "AVG (1/2Y)", value: halfYardMetrics[0]?.avg || "-" });
-      items.push({ label: "HANK (1/2Y)", value: halfYardMetrics[0]?.hank || "-" });
-      items.push({ label: "SD (1/2Y)", value: halfYardMetrics[0]?.sd || "-" });
-      items.push({ label: "CV% (1/2Y)", value: halfYardMetrics[0]?.cv || "-" });
     }
     return items;
   }, [aPercentFile, aPercentOcrMeta, aPercentOcrRows, entryId, form, isHeaderEntry, isWheelChangeEntry, machineEntries, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics, uPercentForm]);
+
+  // Yarn CV ("1 Yard / Half Yard CV Entry") groups: the readings entered per index
+  // (S.No / 1 Yard / 1/2 Yard) are a genuine repeating grid, so each reading becomes
+  // one real table row; the calculated AVG/HANK/SD/CV% values are a single summary
+  // row shared across all readings (calculateStats always yields exactly one result
+  // object regardless of reading count - see handleCalculate).
+  const buildPreviewGroups = useMemo(() => {
+    if (form.type === "A%") {
+      const isSummaryRow = (row) => A_PERCENT_SUMMARY_ROWS.has(String(row.sampleNo || "").trim());
+      const sampleRows = aPercentOcrRows.filter((row) => !isSummaryRow(row));
+      const summaryRows = aPercentOcrRows.filter(isSummaryRow);
+      const metaFields = A_PERCENT_META_FIELDS.filter((field) => field.key !== "entryId" && field.key !== "pdfFile");
+      return [
+        {
+          key: "aPercentMeta",
+          title: "Meta",
+          columns: metaFields.map((field) => ({ key: field.key, label: field.label })),
+          rows: [
+            metaFields.reduce((acc, field) => {
+              acc[field.key] = aPercentOcrMeta?.[field.key] || "-";
+              return acc;
+            }, {}),
+          ],
+        },
+        {
+          key: "aPercentSamples",
+          title: "Sample Rows",
+          columns: A_PERCENT_TABLE_COLUMNS,
+          rows: sampleRows.map((row, index) => ({
+            sampleNo: row.sampleNo || String(index + 1),
+            nMinus1: row.nMinus1 || "-",
+            n: row.n || "-",
+            nPlus1: row.nPlus1 || "-",
+          })),
+        },
+        {
+          key: "aPercentSummary",
+          title: "Summary Rows",
+          columns: [{ key: "label", label: "Label" }, ...A_PERCENT_TABLE_COLUMNS.slice(1)],
+          rows: summaryRows.map((row, index) => ({
+            label: row.sampleNo || String(index + 1),
+            nMinus1: row.nMinus1 || "-",
+            n: row.n || "-",
+            nPlus1: row.nPlus1 || "-",
+          })),
+        },
+      ];
+    }
+    if (isHeaderEntry || isWheelChangeEntry || form.type === "Draw Frame Cots Data Entry" || form.type === "U% Data Entry") {
+      return [];
+    }
+    const ensureMetricCount = Math.max(form.readingCount || 0, oneYardReadings.length, halfYardReadings.length, 1);
+    const paddedOne = oneYardReadings.length ? oneYardReadings : Array.from({ length: ensureMetricCount }, () => "");
+    const paddedHalf = halfYardReadings.length ? halfYardReadings : Array.from({ length: ensureMetricCount }, () => "");
+
+    return [
+      {
+        key: "readings",
+        title: "Readings",
+        columns: [
+          { key: "serial", label: "S.No" },
+          { key: "oneYard", label: "1 Yard Reading" },
+          { key: "halfYard", label: "1/2 Yard Reading" },
+        ],
+        rows: paddedOne.map((value, idx) => ({
+          serial: idx + 1,
+          oneYard: value || "-",
+          halfYard: paddedHalf[idx] || "-",
+        })),
+      },
+      {
+        key: "results",
+        title: "Calculation Results",
+        columns: [
+          { key: "avg1y", label: "AVG (1 Yard)" },
+          { key: "hank1y", label: "HANK (1 Yard)" },
+          { key: "sd1y", label: "SD (1 Yard)" },
+          { key: "cv1y", label: "CV% (1 Yard)" },
+          { key: "avgHalf", label: "AVG (1/2 Yard)" },
+          { key: "hankHalf", label: "HANK (1/2 Yard)" },
+          { key: "sdHalf", label: "SD (1/2 Yard)" },
+          { key: "cvHalf", label: "CV% (1/2 Yard)" },
+        ],
+        rows: [
+          {
+            avg1y: oneYardMetrics[0]?.avg || "-",
+            hank1y: oneYardMetrics[0]?.hank || "-",
+            sd1y: oneYardMetrics[0]?.sd || "-",
+            cv1y: oneYardMetrics[0]?.cv || "-",
+            avgHalf: halfYardMetrics[0]?.avg || "-",
+            hankHalf: halfYardMetrics[0]?.hank || "-",
+            sdHalf: halfYardMetrics[0]?.sd || "-",
+            cvHalf: halfYardMetrics[0]?.cv || "-",
+          },
+        ],
+      },
+    ];
+  }, [form.type, form.readingCount, isHeaderEntry, isWheelChangeEntry, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics, aPercentOcrRows, aPercentOcrMeta]);
 
   const handleSubmit = async () => {
     const isCots = form.type === "Draw Frame Cots Data Entry";
@@ -1547,6 +1612,13 @@ function DrawFrame() {
       ).then((result) => {
         if (!submitDrawFrameUqcInspection.fulfilled.match(result)) return null;
 
+        // Show the success popup as soon as the actual save has gone through -
+        // don't make the user wait on the submitted-notebook audit record and
+        // threshold ticketing below, which are best-effort side effects, not
+        // part of the save itself. Safe here since this screen's
+        // handleSuccessClose doesn't reload the page, so the background
+        // requests below still complete normally.
+        showSuccessOnce();
         void saveCustomFields(entryId);
         dispatch(fetchDrawFrameUqcEntries({ page: 1, limit: 10 }));
         return recordSubmittedNotebook({
@@ -1597,8 +1669,16 @@ function DrawFrame() {
           rawRows: aPercentRawOcrRows,
           meta: aPercentMeta,
         }));
-        await saveCustomFields(entryId);
-        await recordSubmittedNotebook({
+        // Show the success popup as soon as the actual save has gone through -
+        // don't make the user wait on the submitted-notebook audit record and
+        // threshold ticketing below, which are best-effort side effects, not
+        // part of the save itself. Safe here since this screen's
+        // handleSuccessClose doesn't reload the page, so the background
+        // requests below still complete normally.
+        showSuccessOnce();
+        void reserveEntryId();
+        saveCustomFields(entryId).catch((error) => console.error("Failed to save custom fields:", error));
+        recordSubmittedNotebook({
           department: "Quality Control",
           subDepartment: "Draw Frame",
           notebookName: form.type,
@@ -1614,21 +1694,17 @@ function DrawFrame() {
               meta: aPercentMeta,
             }),
           },
-        });
-        try {
-          await createThresholdViolationTickets({
-            department: "Quality Control",
-            subDepartment: "Draw Frame",
-            screenName: form.type,
-            machineName: form.type,
-            entryId,
-            values: buildPreviewItems,
-          });
-        } catch (ticketError) {
-          console.error("Threshold ticket generation failed:", ticketError);
-        }
-        await reserveEntryId();
-        showSuccessOnce();
+        }).catch((error) => console.error("Submitted notebook creation failed:", error))
+          .then(() =>
+            createThresholdViolationTickets({
+              department: "Quality Control",
+              subDepartment: "Draw Frame",
+              screenName: form.type,
+              machineName: form.type,
+              entryId,
+              values: buildPreviewItems,
+            }).catch((ticketError) => console.error("Threshold ticket generation failed:", ticketError))
+          );
       } catch (submitError) {
         setAPercentOcrMessage(submitError?.message || "Unable to save A% data.");
       } finally {
@@ -1645,7 +1721,16 @@ function DrawFrame() {
       setWheelChangeSaving(true);
       try {
         await submitDrawFrameWheelChangeEntry(payload);
-        await recordSubmittedNotebook({
+        // Show the success popup as soon as the actual save has gone through -
+        // don't make the user wait on the submitted-notebook audit record,
+        // threshold ticketing, and the version-history refresh below, which
+        // are best-effort side effects, not part of the save itself. Safe
+        // here since this screen's handleSuccessClose doesn't reload the
+        // page, so the background requests below still complete normally.
+        showSuccessOnce();
+        void reserveEntryId();
+        void wheelChangeRef.current?.loadLatestSaved?.();
+        recordSubmittedNotebook({
           department: "Quality Control",
           subDepartment: "Draw Frame",
           notebookName: wheelChangeNotebookName,
@@ -1655,22 +1740,17 @@ function DrawFrame() {
           extra: {
             submitted_fields: payload,
           },
-        }).catch((error) => console.error("Submitted notebook creation failed:", error));
-        try {
-          await createThresholdViolationTickets({
-            department: "Quality Control",
-            subDepartment: "Draw Frame",
-            screenName: wheelChangeNotebookName,
-            machineName: wheelChangeNotebookName,
-            entryId,
-            values: wheelChangePreviewItems,
-          });
-        } catch (ticketError) {
-          console.error("Threshold ticket generation failed:", ticketError);
-        }
-        await reserveEntryId();
-        await wheelChangeRef.current?.loadLatestSaved?.();
-        showSuccessOnce();
+        }).catch((error) => console.error("Submitted notebook creation failed:", error))
+          .then(() =>
+            createThresholdViolationTickets({
+              department: "Quality Control",
+              subDepartment: "Draw Frame",
+              screenName: wheelChangeNotebookName,
+              machineName: wheelChangeNotebookName,
+              entryId,
+              values: wheelChangePreviewItems,
+            }).catch((ticketError) => console.error("Threshold ticket generation failed:", ticketError))
+          );
       } catch (submitError) {
         setErrors((current) => ({
           ...current,
@@ -1737,6 +1817,11 @@ function DrawFrame() {
           void reserveEntryId();
           return null;
         }
+        // Show the success popup as soon as the actual save has gone through -
+        // don't make the user wait on the submitted-notebook audit record and
+        // threshold ticketing below, which are best-effort side effects, not
+        // part of the save itself.
+        showSuccessOnce();
         void saveCustomFields(entryId);
         // Acknowledgement Threshold's screen catalog tracks Cots Data Entry as two
         // separate notebooks ("Draw Frame Cots Data Entry - Breaker" / "- Finisher"),
@@ -1774,6 +1859,7 @@ function DrawFrame() {
   const openPreview = () => {
     if (!validate()) return;
     setPreviewItems(isWheelChangeEntry ? wheelChangeRef.current?.getPreviewData?.() || [] : buildPreviewItems);
+    setPreviewGroups(isWheelChangeEntry ? wheelChangeRef.current?.getPreviewGroups?.() || [] : buildPreviewGroups);
     setShowPreview(true);
   };
 
@@ -2582,6 +2668,7 @@ function DrawFrame() {
         title="Quality Control - Draw Frame Notebook"
         subtitle="Preview"
         items={previewItems}
+        groups={previewGroups}
         typeValue={form.type}
         onCancel={() => setShowPreview(false)}
         onConfirm={() => {

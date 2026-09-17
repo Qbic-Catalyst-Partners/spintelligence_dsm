@@ -3135,7 +3135,55 @@ const SPINNING_LHS_RHS_FIELD_KEY_BY_LABEL = {
   "Type-2": "type2",
 };
 
+// CSP Parameter Entries and U% Parameter Entries share one row per entry_id (see
+// fetchAutoconerCspParameterEntriesForReport/fetchAutoconerQualityParameterEntriesForReport in
+// apis/autoconer.js) - a row that only has U% data filled in has all its CSP-side columns
+// (act_count, strength, count_cv, strength_cv, csp) genuinely null, and vice versa. Without this
+// guard, getReportFieldValue's blind "first non-empty value anywhere on the row" fallback would
+// substitute some unrelated field (entry_id, count_name, ...) into those empty CSP/U% columns
+// instead of showing "-". Resolve these fields directly against the row's own column and stop.
+const AUTOCONER_CSP_U_PERCENT_FIELD_KEY_BY_LABEL = {
+  "Count Name": "count_name",
+  "Act Count": "act_count",
+  Strength: "strength",
+  "Count CV": "count_cv",
+  "Strength CV": "strength_cv",
+  CSP: "csp",
+  "Cone Color": "cone_color",
+  "U%": "u",
+  CVM: "cvm",
+  "1Mtr CV": "cv_1m",
+  "3Mtr CV": "cv_3m",
+  "10Mtr CV": "cv_10m",
+  "BR 1.5mm": "br_1_5mm",
+  CVB: "cvb",
+  "Normal IPI - Thin -50%": "thin_minus_50",
+  "Normal IPI - Thick +50%": "thick_plus_50",
+  "Normal IPI - Neps +200%": "neps_plus_200",
+  "Normal IPI - Total": "total_1",
+  "Normal IPI - TOTAL": "total_1",
+  "Extra Sensitive IPI - Thin -40%": "thin_minus_40",
+  "Extra Sensitive IPI - Thick +35%": "thick_plus_35",
+  "Extra Sensitive IPI - Neps +140%": "neps_plus_140",
+  "Extra Sensitive IPI - Total": "total_2",
+  "Extra Sensitive IPI - TOTAL": "total_2",
+  "Thin -30%": "thin_minus_30",
+  "Neps +400%": "neps_plus_400",
+  "Thick +70%": "thick_plus_70",
+};
+
 const getCellValue = (row, field, operatorByEntryKey = {}, context = {}) => {
+  if (
+    (context.reportType === "CSP Parameter Entries" || context.reportType === "U% Parameter Entries") &&
+    AUTOCONER_CSP_U_PERCENT_FIELD_KEY_BY_LABEL[field.label || field.key]
+  ) {
+    const directKey = AUTOCONER_CSP_U_PERCENT_FIELD_KEY_BY_LABEL[field.label || field.key];
+    const directValue = row?.[directKey];
+    return directValue !== null && typeof directValue !== "undefined" && String(directValue).trim() !== ""
+      ? String(directValue)
+      : "-";
+  }
+
   if (field.key === OPERATOR_FIELD_KEY) {
     const directOperatorName = String(
       row?.submitted_by_name || row?.submittedByName || row?.operator || row?.operator_name || ""

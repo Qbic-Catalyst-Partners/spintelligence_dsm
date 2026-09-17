@@ -222,11 +222,22 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
       { label: "MC Name", value: form.mcName },
     ];
 
-    details.forEach((detail, index) => {
-      items.push({ label: `${index + 1}. ${detail.item}`, value: detail.value || "-" });
-    });
+    const groups = [
+      {
+        key: "cots-damage-details",
+        title: "Damage / Status Details",
+        columns: [
+          { key: "item_name", label: "Item" },
+          { key: "status_value", label: "Status Value" },
+        ],
+        rows: details.map((detail) => ({
+          item_name: detail.item,
+          status_value: detail.value || "-",
+        })),
+      },
+    ];
 
-    return items;
+    return { items, groups };
   };
 
   useImperativeHandle(ref, () => ({

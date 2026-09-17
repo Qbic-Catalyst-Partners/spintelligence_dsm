@@ -320,14 +320,7 @@
   display: flex;
   justify-content: flex-end;
   gap: 14px;
-  position: sticky;
-  bottom: 0;
-  background: #fff;
   flex: 0 0 auto;
-}
-
-:global(:root[data-theme="dark"]) .footer {
-  background: #181818 !important;
 }
 
 .cancel,

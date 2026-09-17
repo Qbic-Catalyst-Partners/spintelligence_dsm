@@ -390,17 +390,38 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       { label: "Entry ID", value: entryId || "-" },
       { label: "CDG No. (Existing)", value: cdoNo || "-" },
       { label: "CDG No. (Proposed)", value: proposedCdgNos.length ? proposedCdgNos[0] : "-" },
-      ...parameterRows.flatMap((row) => [
-        { label: `${row.label} - Existing`, value: values[row.key]?.existing || "-" },
-        { label: `${row.label} - Proposed`, value: values[row.key]?.proposed || "-" },
-      ]),
       { label: "Remarks", value: remarks || "-" },
       ...customFieldDefs.map((field) => ({
         label: field.field_label,
         value: customFieldValues[field.id],
       })),
     ],
-    [cdoNo, entryId, proposedCdgNos, remarks, selectedType, unapprovedEntry, values, customFieldDefs, customFieldValues]
+    [cdoNo, entryId, proposedCdgNos, remarks, selectedType, unapprovedEntry, customFieldDefs, customFieldValues]
+  );
+
+  // The on-screen "Wheel Change Parameters" table is a genuinely repeating
+  // grid (one row per parameter, each with an Existing and a Proposed
+  // value) — it becomes a single preview group with one table row per
+  // parameter, rather than a flat, unlabeled list of "<Param> - Existing" /
+  // "<Param> - Proposed" items.
+  const previewGroups = useMemo(
+    () => [
+      {
+        key: "wheel-change-parameters",
+        title: "Wheel Change Parameters",
+        columns: [
+          { key: "parameter", label: "Parameter" },
+          { key: "existing", label: "Existing" },
+          { key: "proposed", label: "Proposed" },
+        ],
+        rows: parameterRows.map((row) => ({
+          parameter: row.label,
+          existing: values[row.key]?.existing || "-",
+          proposed: values[row.key]?.proposed || "-",
+        })),
+      },
+    ],
+    [values]
   );
 
   const clearError = (field) => {
@@ -536,6 +557,22 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
           notebookName: selectedType || "WheelChange",
           entryId: nextEntryId,
           previewItems,
+          // buildPayload()'s keys are backend column names (e.g. "del_hank_existing")
+          // that don't reliably match the on-screen parameter labels ("Del-Hank") -
+          // attach the same parameters array previewGroups already builds with the
+          // exact on-screen label per row, so SubmittedNotebooksPage.jsx's
+          // getWheelChangeParametersArraySections can use it directly instead of
+          // guessing a label from the raw key.
+          registeredActions: {
+            getPayload: () => ({
+              ...buildPayload(),
+              parameters: previewGroups[0]?.rows.map((row) => ({
+                label: row.parameter,
+                existing: row.existing,
+                proposed: row.proposed,
+              })) || [],
+            }),
+          },
           user,
         });
       } catch (recordError) {
@@ -845,6 +882,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
         title="Carding Preview"
         subtitle="Carding Notebook / Wheel Change"
         items={previewItems}
+        groups={previewGroups}
         typeValue={CHANGE_CONTROL_TYPE}
         onCancel={() => setShowPreview(false)}
         onConfirm={handleSubmit}

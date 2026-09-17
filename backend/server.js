@@ -246,7 +246,11 @@ const ENTRY_ID_ROUTE_TABLES = {
   // table. Scanning the real table directly fixes that drift at the source, same as the autoconer
   // mappings above.
   '/simplex/list': 'simplex.smx_breaks_study_header',
-  '/simplex/study': 'simplex.smx_breaks_study_header'
+  '/simplex/study': 'simplex.smx_breaks_study_header',
+  // BR Waste Study uses the shared BWS entry_id prefix and stores the committed id in
+  // blowroom.br_waste_study. Production can have rows that are ahead of the registry, so the
+  // next-id generator must scan the real table before issuing another BWS id.
+  '/blowroom/br-waste-study': 'blowroom.br_waste_study'
 };
 
 const ENTRY_ID_ROUTE_PREFIXES = {
@@ -427,9 +431,24 @@ const extractFrontendEntryId = (body) => {
   return '';
 };
 
-const getNextEntryIdForRoute = async ({ routePath, moduleName }) => {
+// CSP and U% Parameter Entries share ONE table/route_path via the actual save endpoint
+// (plain /autoconer/parameter-entries) but need two different prefixes (ACS/AUP) - the route
+// path alone can't tell them apart, so resolve it from the request body's inspection_type
+// instead. Reservation-preview calls (GET .../pending-csp|pending-quality) already resolve
+// correctly via ENTRY_ID_ROUTE_PREFIXES since those route paths ARE type-specific; this only
+// covers the save endpoint, for whenever the frontend's own pre-reservation didn't happen
+// (e.g. a race, or a future caller that posts here directly without reserving first).
+const AUTOCONER_PARAMETER_ENTRIES_ROUTE = '/autoconer/parameter-entries';
+const resolveAutoconerParameterEntriesPrefix = (body) => {
+  const inspectionType = String(body?.inspection_type || '').trim().toLowerCase();
+  return inspectionType.includes('u%') || inspectionType.includes('quality')
+    ? ENTRY_ID_ROUTE_PREFIXES['/autoconer/parameter-entries/pending-quality']
+    : ENTRY_ID_ROUTE_PREFIXES['/autoconer/parameter-entries/pending-csp'];
+};
+
+const getNextEntryIdForRoute = async ({ routePath, moduleName, overridePrefix }) => {
   const mappedTable = ENTRY_ID_ROUTE_TABLES[routePath];
-  const routePrefix = ENTRY_ID_ROUTE_PREFIXES[routePath];
+  const routePrefix = overridePrefix || ENTRY_ID_ROUTE_PREFIXES[routePath];
   // No bare-number fallback anymore - every route that reaches here MUST have a real prefix
   // configured in ENTRY_ID_ROUTE_PREFIXES. The old fallback (formatNextEntryId, plain padded
   // digits with no prefix) never actually produced a stored row - the PREFIX-NUMBER regex
@@ -496,9 +515,15 @@ app.use(async (req, res, next) => {
     if (!isDepartmentRoute) return next();
 
     const moduleName = getEntryModuleName(routePath);
+    // See resolveAutoconerParameterEntriesPrefix above - this route_path alone can't tell CSP
+    // (ACS) and U% (AUP) apart, both getNextEntryIdForRoute calls below need it explicitly.
+    const overridePrefix =
+      routePath === AUTOCONER_PARAMETER_ENTRIES_ROUTE
+        ? resolveAutoconerParameterEntriesPrefix(req.body)
+        : undefined;
     let entryId = extractFrontendEntryId(req.body);
     if (!entryId) {
-      const nextEntry = await getNextEntryIdForRoute({ routePath, moduleName });
+      const nextEntry = await getNextEntryIdForRoute({ routePath, moduleName, overridePrefix });
       entryId = nextEntry.entry_id;
       req.body.entry_id = entryId;
     } else {
@@ -507,12 +532,40 @@ app.use(async (req, res, next) => {
       // a reservation call that itself hit the same bug, manual/API submission) would otherwise
       // be stored unprefixed forever. Re-apply the route's prefix whenever the supplied id
       // doesn't already carry one, rather than only fixing this at generation time.
-      const routePrefix = ENTRY_ID_ROUTE_PREFIXES[routePath];
+      const routePrefix = overridePrefix || ENTRY_ID_ROUTE_PREFIXES[routePath];
       if (routePrefix && !entryId.startsWith(`${routePrefix.prefix}${routePrefix.separator}`)) {
         const numericSuffix = entryId.match(/(\d+)\s*$/)?.[1];
         if (numericSuffix) {
           entryId = `${routePrefix.prefix}${routePrefix.separator}${numericSuffix.padStart(routePrefix.width, '0')}`;
           req.body.entry_id = entryId;
+        }
+      }
+
+      // The frontend's reserved id can go stale between when it was fetched (GET /entry-id/next)
+      // and when the form is actually submitted - if enough other submissions landed on this
+      // same route in between, the reserved number can already exist in the real department
+      // table. The registry-collision retry below only catches that when the SAME id was
+      // already reserved through this registry; it does nothing when the id collides with a row
+      // that was never registered here (e.g. a submission from before this registry existed, or
+      // one that raced past this check), so that collision would otherwise only surface as an
+      // opaque unique-constraint failure deep inside the department route's own INSERT - e.g.
+      // Blow Room's "Duplicate waste study ID" on blowroom.br_waste_study. Bump forward to the
+      // real next id whenever the supplied one is already behind it.
+      // Only routes with a real prefix mapping can be re-checked here - getNextEntryIdForRoute
+      // throws for anything unmapped, and skipping this for those preserves the previous
+      // behavior (trust the frontend's id as-is) instead of turning an unmapped route into a
+      // new 500 here.
+      if (routePrefix) {
+        try {
+          const nextEntry = await getNextEntryIdForRoute({ routePath, moduleName, overridePrefix });
+          const suppliedNumber = Number(entryId.match(/(\d+)\s*$/)?.[1] || 0);
+          if (Number.isFinite(nextEntry.next_number) && suppliedNumber < nextEntry.next_number) {
+            entryId = nextEntry.entry_id;
+            req.body.entry_id = entryId;
+          }
+        } catch (_) {
+          // If this check itself fails, fall through and let the registry retry / department
+          // route's own unique-constraint handling catch a genuine collision as before.
         }
       }
     }

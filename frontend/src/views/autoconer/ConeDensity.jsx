@@ -325,16 +325,80 @@ const ConeDensity = forwardRef(function ConeDensity(
     return Object.keys(nextErrors).length === 0;
   };
 
-  const getPreviewData = () => [
-    ...Object.entries(form).map(([label, value]) => ({
-      label: label === "date" ? "Entry ID" : label,
-      value: label === "date" ? entryId || "-" : value || "-",
-    })),
-    ...readingRows.map((row, index) => ({
-      label: `Reading ${index + 1}`,
-      value: `${row.drumNo} | ${row.baseDiaE} | ${row.noseDiaE} | ${row.baseDia} | ${row.noseDia} | ${row.coneWeight} | ${row.coneTrav} | ${row.density} | ${row.volume}`,
-    })),
-  ];
+  const getPreviewData = () => {
+    const items = [
+      { label: "Type", value: selectedTypeName || form.type || "-" },
+      { label: "Entry ID", value: entryId || "-" },
+      { label: "Auto Coner No.", value: form.autoConerNo || "-" },
+      { label: "Count Name (From)", value: form.countNameFrom || "-" },
+      { label: "Drum From", value: form.drumFrom || "-" },
+      { label: "Drum To", value: form.drumTo || "-" },
+      { label: "Cone Tip", value: form.coneTip || "-" },
+    ];
+
+    const groups = [
+      {
+        key: "drums",
+        title: "Drum Readings",
+        columns: [
+          { key: "drumNo", label: "Drum" },
+          { key: "baseDiaE", label: "Base Dia (E) (D1)" },
+          { key: "noseDiaE", label: "Nose Dia (E) (D2)" },
+          { key: "baseDia", label: "Base Dia (I) (D3)" },
+          { key: "noseDia", label: "Nose Dia (I) (D4)" },
+          { key: "coneWeight", label: "Slant Height (B1)" },
+          { key: "coneTrav", label: "Vertical Height (B2)" },
+          { key: "density", label: "Cone Weight (Gms)" },
+          { key: "volume", label: "Volume (Cm3)" },
+          { key: "gmsPerCm3", label: "Density (Gms / Cm3)" },
+          { key: "gmsLitre", label: "Gms / Litre" },
+          { key: "windingSpeed", label: "W.Speed (m/Min)" },
+          { key: "cnTension", label: "cN Tension" },
+          { key: "tensionerRpm", label: "Tensioner RPM" },
+          { key: "tensionerForce", label: "Tensioner Force" },
+          { key: "nCradlePressure", label: "N Cradle Pressure" },
+          { key: "remarks", label: "Remarks" },
+        ],
+        rows: readingRows.map((row) => ({
+          drumNo: row.drumNo,
+          baseDiaE: row.baseDiaE,
+          noseDiaE: row.noseDiaE,
+          baseDia: row.baseDia,
+          noseDia: row.noseDia,
+          coneWeight: row.coneWeight,
+          coneTrav: row.coneTrav,
+          density: row.density,
+          volume: row.volume,
+          gmsPerCm3: row.gmsPerCm3,
+          gmsLitre: row.gmsLitre,
+          windingSpeed: row.windingSpeed,
+          cnTension: row.cnTension,
+          tensionerRpm: row.tensionerRpm,
+          tensionerForce: row.tensionerForce,
+          nCradlePressure: row.nCradlePressure,
+          remarks: row.remarks,
+        })),
+      },
+      {
+        key: "statistics",
+        title: "Statistics",
+        columns: [
+          { key: "label", label: "Metric" },
+          { key: "avg", label: "Average Value" },
+          { key: "min", label: "Minimum Value" },
+          { key: "max", label: "Maximum Value" },
+          { key: "range", label: "Range" },
+        ],
+        rows: [
+          { label: "Volume", ...summaryStats.volume },
+          { label: "Density", ...summaryStats.density },
+          { label: "Gms / Litre", ...summaryStats.gmsLitre },
+        ],
+      },
+    ];
+
+    return { items, groups };
+  };
 
 const calculateDensity = (row = {}) => {
   const weight = Number(row.density);

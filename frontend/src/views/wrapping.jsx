@@ -263,14 +263,17 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
     setIsErrorMessage(false);
     try {
       const saveEndpoint = WRAPPING_SAVE_ENDPOINTS[docType] || "/ocr-machine/api/save";
-      const response = await apiConfig.post(saveEndpoint, {
+      const requestPayload = {
         filename: file?.name || "",
         doc_type: docType,
         mc_name: rows.find((row) => String(row["Mac Name"] || "").trim())?.["Mac Name"] || "",
         ocr_json: ocrJson,
         manual_json: rows,
         rows: normalizeWrappingSaveRows(rows),
-      });
+      };
+      console.log(`[Wrapping ${selectedType}] Sending to ${saveEndpoint}:`, requestPayload);
+      const response = await apiConfig.post(saveEndpoint, requestPayload);
+      console.log(`[Wrapping ${selectedType}] Response from ${saveEndpoint}:`, response.data);
       setMessage("");
       setSuccessMessage(formatSavedRecordMessage(selectedType, response.data));
       setShowSuccess(true);
@@ -316,6 +319,7 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
         console.error("Threshold ticket generation failed:", ticketError);
       }
     } catch (error) {
+      console.error(`[Wrapping ${selectedType}] Save failed - response:`, error?.response?.data, 'status:', error?.response?.status, error);
       const message = error?.response?.data?.detail || error?.response?.data?.message || error.message || "Unknown error";
       setMessage(`Save failed: ${message}`);
       setIsErrorMessage(true);

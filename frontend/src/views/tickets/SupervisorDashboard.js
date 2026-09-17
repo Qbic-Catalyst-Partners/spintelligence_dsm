@@ -34,6 +34,22 @@ import {
 import { formatDateTime } from "../../utils/formatDateTime";
 
 const ITEMS_PER_PAGE = 6;
+// Wheel-change tickets store machine_name as a raw internal key like
+// "simplex.wheel_change:7" (sub-department prefix + screen key + machine number suffix) -
+// strip both and humanize what's left ("Wheel Change") for display. Other ticket types
+// already store a clean, human-readable notebook name with no dot in it, so those pass
+// through untouched.
+const formatNotebookName = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+  if (!raw.includes(".")) return raw;
+  const key = raw.split(".").pop().replace(/:\d+$/, "");
+  const humanized = key
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (ch) => ch.toUpperCase())
+    .trim();
+  return humanized || raw;
+};
 const formatDateDisplay = (value) => {
   if (!value) return "";
   const [year, month, day] = String(value).split("-");
@@ -1122,8 +1138,10 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
             <thead>
               <tr>
                 <th>TICKET ID</th>
-                <th>ENTRY ID</th>
+                <th>TICKET DATE</th>
                 <th>TICKET TYPE</th>
+                <th>ENTRY ID</th>
+                <th>NOTEBOOK NAME</th>
                 <th>OWNED/DELEGATE</th>
                 <th>LEVEL TYPE</th>
                 <th>USER NAME</th>
@@ -1132,7 +1150,6 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                 <th>DEFINED RES TIME</th>
                 <th>ACTUAL RES TIME</th>
                 <th>RESOLUTION GAP</th>
-                <th>CREATED AT</th>
               </tr>
             </thead>
             <tbody>
@@ -1152,8 +1169,10 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                     >
                       {t.ticket_id}
                     </td>
-                    <td>{t.entry_id || t.entryId || (t.ticketType === "Submission" ? "No entry submitted" : "-")}</td>
+                    <td>{formatDateTime(t.created_at)}</td>
                     <td>{t.ticketType}</td>
+                    <td>{t.entry_id || t.entryId || (t.ticketType === "Submission" ? "No entry submitted" : "-")}</td>
+                    <td>{formatNotebookName(t.notebook || t.machine_name)}</td>
                     <td>
                       {t.ownership.label}
                       {t.ownership.delegateName ? (
@@ -1220,12 +1239,11 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                     >
                       {t.resolution.gapLabel}
                     </td>
-                    <td>{formatDateTime(t.created_at)}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="12" style={{ textAlign: "center", padding: "24px" }}>
+                  <td colSpan="13" style={{ textAlign: "center", padding: "24px" }}>
                     No tickets found
                   </td>
                 </tr>

@@ -222,6 +222,7 @@ function CardThickPlaceEntry({
                     notebookName: selectedType,
                     entryId: nextEntryId,
                     previewItems,
+                    previewGroups,
                     user,
                 });
             } catch (recordError) {
@@ -269,14 +270,28 @@ function CardThickPlaceEntry({
     const previewItems = [
         { label: "Type", value: selectedType },
         { label: "Entry ID", value: entryId || "-" },
-        ...machines.flatMap((machine) => ([
-            { label: `${machine} (5m CV 1)`, value: machineValues[machine]?.cv1 || "-" },
-            { label: `${machine} (5m CV 2)`, value: machineValues[machine]?.cv2 || "-" },
-        ])),
+        { label: "Date", value: date },
         ...customFieldDefs.map((field) => ({
             label: field.field_label,
             value: customFieldValues[field.id],
         })),
+    ];
+
+    const previewGroups = [
+        {
+            key: "card-thick-place-values",
+            title: "Card Thick Place Values",
+            columns: [
+                { key: "machine", label: "Machine" },
+                { key: "cv1", label: "Card Thick Place Value" },
+                { key: "cv2", label: "5m CV" },
+            ],
+            rows: machines.map((machine) => ({
+                machine,
+                cv1: machineValues[machine]?.cv1 || "-",
+                cv2: machineValues[machine]?.cv2 || "-",
+            })),
+        },
     ];
 
     return (
@@ -400,6 +415,7 @@ function CardThickPlaceEntry({
                         title="Carding Preview"
                         subtitle="Carding Notebook / Thick place & CV"
                         items={previewItems}
+                        groups={previewGroups}
                         typeValue={selectedType}
                         onCancel={() => setShowPreview(false)}
                         onConfirm={handleSubmit}

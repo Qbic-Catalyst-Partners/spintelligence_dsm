@@ -2163,10 +2163,28 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     { label: "Wheel Change Type", value: wheelChangeType || "-" },
     { label: "Entry ID", value: entryId || "#DWC-001" },
     { label: "Date", value: date || "-" },
-    ...activeRows.flatMap((row) => [
-      { label: `${row.label} - Existing`, value: values[row.key]?.existing || "-" },
-      { label: `${row.label} - Proposed`, value: values[row.key]?.proposed || "-" },
-    ]),
+  ];
+
+  // All 7 Wheel Change sub-types (see ROWS_BY_TYPE / WHEEL_CHANGE_API_TYPES above)
+  // share the same shape: a set of parameter rows, each with an Existing and a
+  // Proposed value - only which rows apply differs per sub-type, and that's already
+  // resolved by `activeRows` for whichever wheelChangeType is currently selected.
+  // So one generic "Existing vs Proposed" table covers every sub-type correctly.
+  const getPreviewGroups = () => [
+    {
+      key: "wheel-change-parameters",
+      title: `${wheelChangeType || "Wheel Change"} Parameters`,
+      columns: [
+        { key: "parameter", label: "Parameter" },
+        { key: "existing", label: "Existing" },
+        { key: "proposed", label: "Proposed" },
+      ],
+      rows: activeRows.map((row) => ({
+        parameter: row.label,
+        existing: values[row.key]?.existing || "-",
+        proposed: values[row.key]?.proposed || "-",
+      })),
+    },
   ];
 
   useImperativeHandle(ref, () => ({
@@ -2183,6 +2201,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
       return payload;
     },
     getPreviewData,
+    getPreviewGroups,
     loadLatestSaved,
     saveCustomFields,
   }));
